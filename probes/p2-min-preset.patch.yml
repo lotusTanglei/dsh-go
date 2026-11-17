@@ -1,0 +1,23 @@
+- insert:
+    - id: p2-min-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-minimal
+        plugins: []
+    - id: p2-min-run
+      name: dsh-superagent/p2-real-run
+      config:
+        routerPreset: p2-minimal
+        workerPreset: p2-minimal
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-min
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-min-result.json
+        routerPrompt: Say done.
+        workerPrompt: Return the structured report.
+        routerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        workerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        outputSchema:
+          type: object
+          properties: {}
+          required: []
+          additionalProperties: false

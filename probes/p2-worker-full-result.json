@@ -1,0 +1,15 @@
+{
+  "state": "failed",
+  "acceptedTickets": 2,
+  "expectedTriggers": 3,
+  "workerReports": [],
+  "turns": {},
+  "tokenUsage": {},
+  "failure": {
+    "name": "RemoteError",
+    "code": "agent-preset/invalid"
+  },
+  "cleanup": {
+    "liveAgents": 0
+  }
+}

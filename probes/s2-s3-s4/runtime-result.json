@@ -1,0 +1,125 @@
+{
+  "scope": "Desktop real Agent + native tool executor; no LLM input",
+  "state": "finished",
+  "evidence": [],
+  "s2": {
+    "declarationAndAgentCreate": true,
+    "startActivation": "NOT RUN: no model or waking input authorized"
+  },
+  "s3": {
+    "routerTools": [
+      "load_workspace_dependencies",
+      "mnemon_document_create",
+      "mnemon_document_manage",
+      "mnemon_document_search",
+      "mnemon_forget",
+      "mnemon_link",
+      "mnemon_memory_bodies",
+      "mnemon_memory_body_create",
+      "mnemon_memory_body_merge",
+      "mnemon_memory_body_update",
+      "mnemon_recall",
+      "mnemon_related",
+      "mnemon_remember",
+      "mnemon_runtime_memory",
+      "mnemon_status",
+      "mnemon_subagent_result",
+      "mnemon_view_action",
+      "mnemon_view_route",
+      "plugin_updates",
+      "plugin_updates_doctor",
+      "team_task_create",
+      "team_task_get",
+      "team_task_list",
+      "team_task_update",
+      "working_directory"
+    ],
+    "workerTools": [
+      "load_workspace_dependencies",
+      "mnemon_document_create",
+      "mnemon_document_manage",
+      "mnemon_document_search",
+      "mnemon_forget",
+      "mnemon_link",
+      "mnemon_memory_bodies",
+      "mnemon_memory_body_create",
+      "mnemon_memory_body_merge",
+      "mnemon_memory_body_update",
+      "mnemon_recall",
+      "mnemon_related",
+      "mnemon_remember",
+      "mnemon_runtime_memory",
+      "mnemon_status",
+      "mnemon_subagent_result",
+      "mnemon_view_action",
+      "mnemon_view_route",
+      "plugin_updates",
+      "plugin_updates_doctor",
+      "team_task_create",
+      "team_task_get",
+      "team_task_list",
+      "team_task_update",
+      "working_directory"
+    ],
+    "routerPass": false,
+    "workerPass": false,
+    "routerStatus": "idle",
+    "workerStatus": "idle"
+  },
+  "s4": {
+    "mechanism": "AgentHandle.dispose only; not a product Assignment-state gate",
+    "before": {
+      "batch": {
+        "results": [
+          {
+            "callId": "f5c126bb-7930-4fdf-b7ae-539c99f902fd",
+            "result": {
+              "isError": true,
+              "error": {
+                "message": "unknown tool \"report_progress\"",
+                "info": {
+                  "name": "ToolNotFoundError",
+                  "code": "UNKNOWN_TOOL"
+                }
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Error: unknown tool \"report_progress\""
+                }
+              ]
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    },
+    "after": {
+      "batch": {
+        "results": [
+          {
+            "callId": "1ad33b41-0144-4a27-baef-8937fea20ebb",
+            "result": {
+              "isError": true,
+              "error": {
+                "message": "session \"b6515690-61a6-443d-b95a-e0c9d9e1b1fc\" is not live in this store"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Error: session \"b6515690-61a6-443d-b95a-e0c9d9e1b1fc\" is not live in this store"
+                }
+              ]
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    }
+  },
+  "cleanup": {
+    "liveProbeAgentsRemaining": 0
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "state": "finished",
+  "acceptedTickets": 2,
+  "expectedTriggers": 3,
+  "workerReports": [
+    {
+      "structured": null,
+      "hasStructured": false,
+      "stopReason": "error",
+      "outputCount": 2,
+      "outputKinds": [
+        "reasoning",
+        "text"
+      ]
+    },
+    {
+      "structured": null,
+      "hasStructured": false,
+      "stopReason": "error",
+      "outputCount": 2,
+      "outputKinds": [
+        "reasoning",
+        "text"
+      ]
+    }
+  ],
+  "turns": {
+    "router": 1,
+    "55f0f63f-bf40-494f-b269-cb898707cdd8": 1,
+    "378cef11-fd22-49a0-96a3-8ed068570025": 1
+  },
+  "tokenUsage": {
+    "router": null
+  },
+  "cleanup": {
+    "liveAgents": 0
+  }
+}

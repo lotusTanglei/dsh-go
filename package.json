@@ -1,0 +1,35 @@
+{
+  "name": "dsh-superagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Super-agent domain and SQLite foundation for DeepSeek Harness (P1)",
+  "main": "host.cjs",
+  "exports": {
+    ".": { "types": "./lib/index.d.ts", "default": "./host.cjs" },
+    "./client": { "types": "./lib/client/index.d.ts", "default": "./lib/client/index.js" },
+    "./domain": { "types": "./lib/domain/index.d.ts", "default": "./lib/domain/index.js" },
+    "./router": "./lib/p2/router.js",
+    "./worker": "./lib/p2/worker.js",
+    "./watchdog": "./lib/p2/watchdog.js",
+    "./p2-real-run": "./probes/p2-real-run.cjs",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "engines": { "node": ">=24.0.0", "dsh": ">=0.2.2-rc.3 <0.3.0" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web" }
+  },
+  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md"],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "@types/node": "^24.0.0"
+  }
+}

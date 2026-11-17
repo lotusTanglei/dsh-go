@@ -1,0 +1,16 @@
+- insert:
+    - id: superagent-preset-watchdog
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-superagent-watchdog
+        name: Superagent Watchdog
+        description: Read-only assignment observation and later intervention seam.
+        plugins:
+          - id: watchdog-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config: { read: true, readImage: false, write: false, edit: false, applyPatch: false }
+          - id: watchdog-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config: { sampleOverCapGlobResults: false }
+          - id: watchdog-business
+            name: dsh-superagent/watchdog

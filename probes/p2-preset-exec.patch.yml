@@ -1,0 +1,25 @@
+- insert:
+    - id: p2-exec-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-exec-role
+        plugins:
+          - id: bash-local
+            name: '@deepseek-ai/dsh-bash-local'
+          - id: shell-env
+            name: '@deepseek-ai/dsh-shell-env'
+          - id: bash
+            name: '@deepseek-ai/dsh-tool-bash'
+    - id: p2-exec-run
+      name: dsh-superagent/p2-real-run
+      config:
+        routerPreset: p2-exec-role
+        workerPreset: p2-exec-role
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-exec
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-exec-result.json
+        routerPrompt: Say done.
+        workerPrompt: Return a structured report.
+        routerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        workerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        outputSchema: { type: object, properties: {}, required: [], additionalProperties: false }

@@ -1,0 +1,13 @@
+node_modules/
+.probe/
+lib/
+coverage/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.lock
+*.bak.*
+.research/
+.superagent-state/
+*.lock.recovery
+*.pending

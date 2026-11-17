@@ -1,0 +1,19 @@
+- insert:
+    - id: superagent-preset-worker
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-superagent-worker
+        name: Superagent Worker
+        description: Ticket-scoped execution and structured reporting.
+        plugins:
+          - id: worker-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config: { read: true, readImage: true, write: true, edit: true, applyPatch: false }
+          - id: worker-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+          - id: worker-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+          - id: worker-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          - id: worker-business
+            name: dsh-superagent/worker

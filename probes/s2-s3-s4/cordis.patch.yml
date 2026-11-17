@@ -1,0 +1,64 @@
+# Disposable Desktop test. Does not change existing presets or defaults.
+- insert:
+    - id: superagent-probe-router-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: superagent-probe-router
+        name: Superagent local probe router
+        plugins:
+          - id: router-sentinels
+            name: 'dsh-superagent-s234-probe/router'
+            config:
+              installDir: /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh
+          - id: router-read
+            name: '@deepseek-ai/dsh-tool-fs'
+            config: { read: true, readImage: false, write: false, edit: false, applyPatch: false }
+    - id: superagent-probe-worker-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: superagent-probe-worker
+        name: Superagent local probe worker
+        plugins:
+          - id: worker-sentinel
+            name: 'dsh-superagent-s234-probe/worker'
+            config:
+              installDir: /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh
+          - id: worker-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+          - id: worker-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config: { read: true, readImage: false, write: true, edit: true, applyPatch: false }
+    - id: superagent-probe-watchdog-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: superagent-probe-watchdog
+        plugins: []
+    - id: superagent-probe-runner
+      name: 'dsh-superagent-s234-probe'
+      config:
+        routerPreset: superagent-probe-router
+        workerPreset: superagent-probe-worker
+        cwd: /Users/dundundebaba/sync/dsh-s-p/probes/s2-s3-s4
+        watchdogPreset: superagent-probe-watchdog
+        installDir: /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/s2-s3-s4/runtime-guard-result.json
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/probes/s2-s3-s4/probe.sqlite
+        modelProvider: superagent-probe-no-network
+        model: no-model
+        allowedSentinel: superagent_probe_allowed
+        deniedSentinel: superagent_probe_global_mutation
+        roles:
+          - preset: superagent-probe-router
+            allowedTools: [read, channel_reply, human_ask, superagent_probe_allowed]
+          - preset: superagent-probe-worker
+            worker: true
+            allowedTools: [read, write, edit, bash, report_progress, superagent_probe_allowed]
+          - preset: superagent-probe-watchdog
+            allowedTools: [read, superagent_probe_allowed]
+        endedCalls:
+          report_progress: {}
+          read: { file_path: '' }
+          write: { file_path: '', content: '' }
+          edit: { file_path: '', old_string: '', new_string: '' }
+          bash: { description: 'Probe ended worker admission without execution', command: 'exit 91' }
+          superagent_probe_allowed: {}

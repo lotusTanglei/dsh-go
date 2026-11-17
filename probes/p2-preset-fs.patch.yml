@@ -1,0 +1,22 @@
+- insert:
+    - id: p2-fs-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-fs-role
+        plugins:
+          - id: fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config: { read: true, readImage: false, write: false, edit: false, applyPatch: false }
+    - id: p2-fs-run
+      name: dsh-superagent/p2-real-run
+      config:
+        routerPreset: p2-fs-role
+        workerPreset: p2-fs-role
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-fs
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-fs-result.json
+        routerPrompt: Say done.
+        workerPrompt: Return a structured report.
+        routerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        workerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        outputSchema: { type: object, properties: {}, required: [], additionalProperties: false }

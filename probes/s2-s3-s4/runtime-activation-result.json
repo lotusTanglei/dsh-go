@@ -1,0 +1,12 @@
+{
+  "scope": "Desktop actual spawn activation",
+  "state": "failed",
+  "cleanup": {
+    "parentStillLive": false
+  },
+  "failure": {
+    "name": "SubagentError",
+    "code": "UNAUTHORIZED"
+  },
+  "timedOut": false
+}

@@ -1,0 +1,29 @@
+- insert:
+    - id: p2-worker-tools-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-worker-tools
+        plugins:
+          - id: fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config: { read: true, readImage: false, write: true, edit: true, applyPatch: false }
+          - id: search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config: { sampleOverCapGlobResults: false }
+          - id: bash
+            name: '@deepseek-ai/dsh-tool-bash'
+          - id: jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+    - id: p2-worker-tools-run
+      name: dsh-superagent/p2-real-run
+      config:
+        routerPreset: p2-worker-tools
+        workerPreset: p2-worker-tools
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-worker-tools
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-worker-tools-result.json
+        routerPrompt: Say done.
+        workerPrompt: Return a structured report.
+        routerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        workerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        outputSchema: { type: object, properties: {}, required: [], additionalProperties: false }

@@ -1,0 +1,50 @@
+- insert:
+    - id: superagent-p2-real-run
+      name: dsh-superagent/p2-real-run
+      config:
+        routerPreset: dsh-superagent-router
+        workerPreset: dsh-superagent-worker
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-real-run
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-real-run-result.json
+        routerPrompt: >-
+          Three fake human triggers are supplied: trigger-1 asks for a small
+          fixture task, trigger-2 asks for another fixture task, and
+          trigger-chat is conversational. A deterministic Router acceptance
+          layer will create exactly two Tickets and start exactly two Workers.
+          Acknowledge the supplied trigger set in one turn; do not use tools.
+        workerPrompt: >-
+          This is a harmless fixture. Do not use tools, ask a human, or contact
+          a channel. Return one complete structured report as JSON with exactly
+          these fields: state=ready, done=["fixture completed"], todo=[],
+          changedPaths=[], acceptance=[{id:"A1",result:"passed",evidence:"fixture"}],
+          risks=[], needHuman=[].
+        routerAgentOptions:
+          provider: deepseek-official
+          model: deepseek-flash
+          maxTokens: 256
+        workerAgentOptions:
+          provider: deepseek-official
+          model: deepseek-flash
+          maxTokens: 768
+        outputSchema:
+          type: object
+          properties:
+            state: { type: string, enum: [progress, ready, blocked, failed] }
+            done: { type: array, items: { type: string } }
+            todo: { type: array, items: { type: string } }
+            changedPaths: { type: array, items: { type: string } }
+            acceptance:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  result: { type: string, enum: [passed, failed, not-run] }
+                  evidence: { type: string }
+                required: [id, result, evidence]
+                additionalProperties: false
+            risks: { type: array, items: { type: string } }
+            needHuman: { type: array, items: { type: string } }
+          required: [state, done, todo, changedPaths, acceptance, risks, needHuman]
+          additionalProperties: false

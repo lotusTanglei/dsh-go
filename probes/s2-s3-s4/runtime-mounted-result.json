@@ -1,0 +1,129 @@
+{
+  "scope": "Desktop real Agent + native tool executor; no LLM input",
+  "state": "finished",
+  "evidence": [],
+  "s2": {
+    "declarationAndAgentCreate": true,
+    "startActivation": "NOT RUN: no model or waking input authorized"
+  },
+  "s3": {
+    "routerTools": [
+      "channel_reply",
+      "human_ask",
+      "load_workspace_dependencies",
+      "mnemon_document_create",
+      "mnemon_document_manage",
+      "mnemon_document_search",
+      "mnemon_forget",
+      "mnemon_link",
+      "mnemon_memory_bodies",
+      "mnemon_memory_body_create",
+      "mnemon_memory_body_merge",
+      "mnemon_memory_body_update",
+      "mnemon_recall",
+      "mnemon_related",
+      "mnemon_remember",
+      "mnemon_runtime_memory",
+      "mnemon_status",
+      "mnemon_subagent_result",
+      "mnemon_view_action",
+      "mnemon_view_route",
+      "plugin_updates",
+      "plugin_updates_doctor",
+      "read",
+      "team_task_create",
+      "team_task_get",
+      "team_task_list",
+      "team_task_update",
+      "working_directory"
+    ],
+    "workerTools": [
+      "bash",
+      "edit",
+      "load_workspace_dependencies",
+      "mnemon_document_create",
+      "mnemon_document_manage",
+      "mnemon_document_search",
+      "mnemon_forget",
+      "mnemon_link",
+      "mnemon_memory_bodies",
+      "mnemon_memory_body_create",
+      "mnemon_memory_body_merge",
+      "mnemon_memory_body_update",
+      "mnemon_recall",
+      "mnemon_related",
+      "mnemon_remember",
+      "mnemon_runtime_memory",
+      "mnemon_status",
+      "mnemon_subagent_result",
+      "mnemon_view_action",
+      "mnemon_view_route",
+      "plugin_updates",
+      "plugin_updates_doctor",
+      "read",
+      "report_progress",
+      "team_task_create",
+      "team_task_get",
+      "team_task_list",
+      "team_task_update",
+      "working_directory",
+      "write"
+    ],
+    "routerPass": true,
+    "workerPass": true,
+    "routerStatus": "idle",
+    "workerStatus": "idle",
+    "routerPreset": "superagent-probe-router",
+    "workerPreset": "superagent-probe-worker"
+  },
+  "s4": {
+    "mechanism": "AgentHandle.dispose only; not a product Assignment-state gate",
+    "before": {
+      "batch": {
+        "results": [
+          {
+            "callId": "c71442cb-5aa6-4fb9-a0c7-a93e938fcdb0",
+            "result": {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "progress-probe-ok"
+                }
+              ],
+              "value": "progress-probe-ok"
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    },
+    "after": {
+      "batch": {
+        "results": [
+          {
+            "callId": "6a366e53-61f2-41ee-b639-e410771d06d9",
+            "result": {
+              "isError": true,
+              "error": {
+                "message": "session \"d1baadbe-89d4-4f7e-a4e9-27d030c7dbb0\" is not live in this store"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Error: session \"d1baadbe-89d4-4f7e-a4e9-27d030c7dbb0\" is not live in this store"
+                }
+              ]
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    }
+  },
+  "cleanup": {
+    "liveProbeAgentsRemaining": 0
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "scope": "Desktop actual spawn activation",
+  "state": "finished",
+  "cleanup": {
+    "childStillLive": false,
+    "parentStillLive": false
+  },
+  "s2": {
+    "startActivationReturned": true,
+    "actualPreset": "superagent-probe-worker",
+    "expectedPreset": "superagent-probe-worker",
+    "childIsDistinct": true,
+    "stopReason": "completed",
+    "outputMatches": true,
+    "hasStructured": false
+  },
+  "s3": {
+    "routerTools": [
+      "channel_reply",
+      "human_ask",
+      "load_workspace_dependencies",
+      "mnemon_document_create",
+      "mnemon_document_manage",
+      "mnemon_document_search",
+      "mnemon_forget",
+      "mnemon_link",
+      "mnemon_memory_bodies",
+      "mnemon_memory_body_create",
+      "mnemon_memory_body_merge",
+      "mnemon_memory_body_update",
+      "mnemon_recall",
+      "mnemon_related",
+      "mnemon_remember",
+      "mnemon_runtime_memory",
+      "mnemon_status",
+      "mnemon_subagent_result",
+      "mnemon_view_action",
+      "mnemon_view_route",
+      "plugin_updates",
+      "plugin_updates_doctor",
+      "read",
+      "team_task_create",
+      "team_task_get",
+      "team_task_list",
+      "team_task_update",
+      "working_directory"
+    ],
+    "workerTools": [
+      "bash",
+      "edit",
+      "load_workspace_dependencies",
+      "mnemon_document_create",
+      "mnemon_document_manage",
+      "mnemon_document_search",
+      "mnemon_forget",
+      "mnemon_link",
+      "mnemon_memory_bodies",
+      "mnemon_memory_body_create",
+      "mnemon_memory_body_merge",
+      "mnemon_memory_body_update",
+      "mnemon_recall",
+      "mnemon_related",
+      "mnemon_remember",
+      "mnemon_runtime_memory",
+      "mnemon_status",
+      "mnemon_subagent_result",
+      "mnemon_view_action",
+      "mnemon_view_route",
+      "plugin_updates",
+      "plugin_updates_doctor",
+      "read",
+      "report_progress",
+      "team_task_create",
+      "team_task_get",
+      "team_task_list",
+      "team_task_update",
+      "working_directory",
+      "write"
+    ],
+    "routerPass": true,
+    "workerPass": true
+  },
+  "s4": {
+    "mechanism": "actual activation completion/dispose; not a live Assignment gate",
+    "before": {
+      "batch": {
+        "results": [
+          {
+            "callId": "e4c510b5-f327-46b4-9afa-12b9b1d26220",
+            "result": {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "progress-probe-ok"
+                }
+              ],
+              "value": "progress-probe-ok"
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    },
+    "afterResult": {
+      "batch": {
+        "results": [
+          {
+            "callId": "16877864-9845-4b9b-a170-dc565f66f3cb",
+            "result": {
+              "isError": true,
+              "error": {
+                "message": "session \"9af5827f-e980-405b-85cd-843c37c4de66\" is not live in this store"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Error: session \"9af5827f-e980-405b-85cd-843c37c4de66\" is not live in this store"
+                }
+              ]
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    },
+    "afterDispose": {
+      "batch": {
+        "results": [
+          {
+            "callId": "cb09eaef-19c3-4424-a840-4f8c5860b62a",
+            "result": {
+              "isError": true,
+              "error": {
+                "message": "session \"9af5827f-e980-405b-85cd-843c37c4de66\" is not live in this store"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Error: session \"9af5827f-e980-405b-85cd-843c37c4de66\" is not live in this store"
+                }
+              ]
+            }
+          }
+        ],
+        "additionalContexts": [],
+        "concluded": false
+      }
+    }
+  },
+  "timedOut": false
+}

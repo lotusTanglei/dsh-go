@@ -1,0 +1,20 @@
+{
+  "state": "finished",
+  "acceptedTickets": 2,
+  "expectedTriggers": 3,
+  "workerReports": [
+    null,
+    null
+  ],
+  "turns": {
+    "router": 1,
+    "6e1314a8-2105-40ab-8103-80466610b980": 1,
+    "b233a774-6902-48fa-bb3c-096ff32e6f32": 1
+  },
+  "tokenUsage": {
+    "router": null
+  },
+  "cleanup": {
+    "liveAgents": 0
+  }
+}

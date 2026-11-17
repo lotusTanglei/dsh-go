@@ -1,0 +1,22 @@
+- insert:
+    - id: p2-search-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-search-role
+        plugins:
+          - id: search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config: { sampleOverCapGlobResults: false }
+    - id: p2-search-run
+      name: dsh-superagent/p2-real-run
+      config:
+        routerPreset: p2-search-role
+        workerPreset: p2-search-role
+        cwd: /Users/dundundeba/sync/dsh-s-p
+        workRoot: /Users/dundundeba/sync/dsh-s-p/.superagent-state/work/p2-search
+        resultPath: /Users/dundundeba/sync/dsh-s-p/probes/p2-search-result.json
+        routerPrompt: Say done.
+        workerPrompt: Return a structured report.
+        routerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        workerAgentOptions: { provider: deepseek-official, model: deepseek-flash, maxTokens: 64 }
+        outputSchema: { type: object, properties: {}, required: [], additionalProperties: false }

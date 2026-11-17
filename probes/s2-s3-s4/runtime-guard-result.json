@@ -1,0 +1,102 @@
+{
+  "state": "finished",
+  "kind": "option-1 actual executor guard",
+  "counts": {
+    "superagent_probe_allowed": 1,
+    "superagent_probe_global_mutation": 2
+  },
+  "checks": {
+    "ordinaryBefore": {
+      "isError": false,
+      "code": null,
+      "name": null,
+      "value": "sentinel-ok"
+    },
+    "routerAllowed": {
+      "isError": false,
+      "code": null,
+      "name": null,
+      "value": "sentinel-ok"
+    },
+    "workerAllowed": {
+      "isError": false,
+      "code": null,
+      "name": null,
+      "value": "progress-probe-ok"
+    },
+    "routerDenied": {
+      "isError": true,
+      "code": "SA_ROLE_TOOL_DENIED",
+      "name": "SuperagentProbeDenial"
+    },
+    "workerDenied": {
+      "isError": true,
+      "code": "SA_ROLE_TOOL_DENIED",
+      "name": "SuperagentProbeDenial"
+    },
+    "watchdogDenied": {
+      "isError": true,
+      "code": "SA_ROLE_TOOL_DENIED",
+      "name": "SuperagentProbeDenial"
+    },
+    "unbound": {
+      "isError": true,
+      "code": "SA_ASSIGNMENT_UNBOUND",
+      "name": "SuperagentProbeDenial"
+    },
+    "stale": {
+      "isError": true,
+      "code": "SA_ASSIGNMENT_STALE",
+      "name": "SuperagentProbeDenial"
+    },
+    "ended": {
+      "report_progress": {
+        "isError": true,
+        "code": "SA_ASSIGNMENT_ENDED",
+        "name": "SuperagentProbeDenial"
+      },
+      "read": {
+        "isError": true,
+        "code": "SA_ASSIGNMENT_ENDED",
+        "name": "SuperagentProbeDenial"
+      },
+      "write": {
+        "isError": true,
+        "code": "SA_ASSIGNMENT_ENDED",
+        "name": "SuperagentProbeDenial"
+      },
+      "edit": {
+        "isError": true,
+        "code": "SA_ASSIGNMENT_ENDED",
+        "name": "SuperagentProbeDenial"
+      },
+      "bash": {
+        "isError": true,
+        "code": "SA_ASSIGNMENT_ENDED",
+        "name": "SuperagentProbeDenial"
+      },
+      "superagent_probe_allowed": {
+        "isError": true,
+        "code": "SA_ASSIGNMENT_ENDED",
+        "name": "SuperagentProbeDenial"
+      }
+    },
+    "workerStillLiveWhenEnded": true,
+    "ordinaryAfter": {
+      "isError": false,
+      "code": null,
+      "name": null,
+      "value": "sentinel-ok"
+    }
+  },
+  "cleanup": {
+    "liveAgents": 0
+  },
+  "loadedMarkerEmitted": true,
+  "sqlite": {
+    "wal": "wal",
+    "commitVisible": true,
+    "rollbackInvisible": true
+  },
+  "guardDefinitionsStillVisible": true
+}
