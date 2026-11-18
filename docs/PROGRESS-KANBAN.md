@@ -91,6 +91,14 @@
 - 补修旧draft禁发/待办加载更多/设置归组/卡片attention非交互正文；UI子任务数次runtime中断但完整源码已保留，lead接手集成，不重复整项重做。
 - 无生产provider/部署/核心依赖DDL修改，未提交失败；阶段commit待当前最后门禁+完整diffreview，不push。
 
+## 2026-11-18T21:26:37+08:00 · S1提交 / S2独立review通过
+
+- 后端已独立提交 `05a8ab8 feat(runtime): add durable scoped workspace input`。不是拿未暂存UI的绿灯替后端提交：将精确index tree导出自有`.probe/s1-staged-20261118-212700`、链接既有依赖、独立build/typecheck/267tests/build/pack全部exit0才提交；证据在`s1-staged-20261118-212700/`。源代码whitespace检查绿；失败原始日志含尾空格/EOF空行，专用git-check选项忽略其格式但原字节保留，没有为了绿闸清洗证据。
+- S2新完整集成272tests/typecheck/build/pack exit0；VM真实client artifact只验证factory/3slots注册，不模拟DOM。UI独立review已冻结；修复404不得解锁新ID（原超时请求仍可能晚受理）、终态false flush不锁死草稿、stop超时后可重试、ticket审批135条全态分页、board409避免0delay忙循环、button内块元素改phrasing span。
+- 两次git check因原始日志whitespace退出2均已诊断、未commit；只对证据路径临时忽略blank-at-eol/eof后检查通过，不改git持久配置；保护资料与S2文件仍未混入S1。
+- 正在独立S4 Host probe验证3preset、真实client bundle资源、owner/Origin与清理；先前6个自有Host SQLite均assignment/trigger/eval/outbox非终态0、lock不存在，无superagent-dev进程。
+- 私有scope可审阅问题与生产L1/L2阻断保持，不把UI完成写为工程闭环。
+
 ## 尚未通过的强制门禁
 
 - L1 首工具前 Ticket 边界与 L2 allowWrite/denyWrite shell 强制能力待实证；旧四反例不是本轮完整安全证明。

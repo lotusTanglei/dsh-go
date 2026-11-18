@@ -1,0 +1,548 @@
+/** Serialized by the client builder. Keep every runtime helper inside this factory. */
+export function createWorkspacePage(React: any, request: (path: string, body?: any, signal?: any) => Promise<any>, t: any, css: string) {
+  const h = React.createElement
+  const columns = ['pending', 'running', 'waiting', 'ended']
+  const tr = (key: string) => t(`w${key}`)
+  const array = (value: any): any[] => Array.isArray(value) ? value : []
+  const text = (value: any) => value === undefined || value === null || value === '' ? tr('Unknown') : String(value)
+  const time = (value: any) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? new Date(value).toLocaleString() : tr('Unknown')
+  const names: Record<string, string> = { open: 'Pending', pending: 'Pending', running: 'Running', waiting: 'Waiting', waiting_human: 'Waiting', ended: 'Ended', completed: 'Completed', failed: 'Failed', stopped: 'Stopped', dropped: 'Dropped', unknown: 'Unknown', received: 'Received', queued: 'Queued', claimed: 'Claimed', admitted: 'Admitted', processing: 'Processing', published: 'Published', canceled: 'Canceled', rejected: 'Rejected', approved: 'Approved', denied: 'Denied', expired: 'Expired', superseded: 'Superseded', consumed: 'Consumed', user: 'You', assistant: 'Title', notice: 'Notice' }
+  const stateName = (value: any) => names[value] ? tr(names[value]) : text(value)
+  const fieldNames: Record<string, string> = { goal: 'Goal', scope: 'Scope', repo: 'Project', subdirs: 'Subdirs', base: 'Base', ref: 'Ref', requireCleanTree: 'CleanTree', allowWrite: 'AllowWrite', denyWrite: 'DenyWrite', runtime: 'Runtime', acceptance: 'Acceptance', outOfScope: 'OutOfScope', blockers: 'Blockers', firstAction: 'FirstAction', approvalsRequired: 'ApprovalsRequired', done: 'Done', changedPaths: 'ChangedFiles', changedFiles: 'ChangedFiles', risks: 'Risks', needHuman: 'NeedHuman', result: 'Result', check: 'Check', evidence: 'Evidence', reason: 'Reason', description: 'Description', repository: 'Project', branch: 'Branch', commit: 'Commit', pr: 'PullRequest', recipient: 'Recipient', body: 'Body', subject: 'Subject', amount: 'Amount', currency: 'Currency', purpose: 'Purpose', operation: 'Operation', impact: 'Impact', state: 'State', ok: 'Health', paused: 'Paused', available: 'Available', active: 'Active', workers: 'Workers', maxWorkers: 'WorkerLimit', pending: 'Pending', dropped: 'Dropped', attempts: 'Attempts', nextAt: 'NextRetry', error: 'Error', version: 'Version', sizeBytes: 'SizeBytes', lastAt: 'LastEvent', lastProgressAt: 'LastProgress', startedAt: 'Started', endedAt: 'EndedAt', steps: 'Steps', usage: 'Tokens', tokens: 'Tokens', durationMs: 'Duration', at: 'Time', rule: 'Rule', action: 'Action', outcome: 'Outcome', decisions: 'Decisions', metrics: 'Metrics', repeatedCalls: 'RepeatedCalls', stallMs: 'Stall', waitingMs: 'WaitingMs', code: 'Code', count: 'Count', kind: 'Kind', attended: 'Attended', current: 'Current', limit: 'Limit' }
+  const label = (key: string) => fieldNames[key] ? tr(fieldNames[key]) : key
+  const button = (title: string, onClick: () => void, disabled = false, props: any = {}) => h('button', { type: 'button', className: 'saw-btn', disabled, onClick, ...props }, title)
+  const merge = (old: any[], incoming: any[], order: (a: any, b: any) => number) => {
+    const rows = new Map(old.map(item => [String(item.id), item]))
+    for (const item of incoming) if (item && item.id !== undefined) rows.set(String(item.id), { ...rows.get(String(item.id)), ...item })
+    return [...rows.values()].sort(order)
+  }
+  const messageOrder = (a: any, b: any) => Number(a.seq) - Number(b.seq) || String(a.id).localeCompare(String(b.id))
+  const timelineOrder = (a: any, b: any) => Number(b.id) - Number(a.id)
+  const valueView = (value: any, depth = 0): any => {
+    if (value === undefined || value === null) return tr('Unknown')
+    if (typeof value === 'boolean') return tr(value ? 'Yes' : 'No')
+    if (typeof value !== 'object') return String(value)
+    if (depth > 12) return tr('Unknown')
+    if (Array.isArray(value)) return value.length ? h('ul', { className: 'saw-list' }, ...value.map((item, i) => h('li', { key: i }, valueView(item, depth + 1)))) : tr('None')
+    return Object.keys(value).length ? h('dl', { className: 'saw-fields' }, ...Object.entries(value).map(([key, item]) => h(React.Fragment, { key }, h('dt', null, label(key)), h('dd', null, valueView(item, depth + 1))))) : tr('None')
+  }
+  const fields = (entries: Array<[string, any]>) => h('dl', { className: 'saw-fields' }, ...entries.map(([key, value]) => h(React.Fragment, { key }, h('dt', null, tr(key)), h('dd', null, value))))
+  const briefView = (brief: any) => brief ? h('div', { className: 'saw-brief' }, ...['goal', 'scope', 'base', 'allowWrite', 'denyWrite', 'runtime', 'acceptance', 'blockers', 'outOfScope', 'firstAction', 'approvalsRequired'].map(key => h('section', { key }, h('h4', null, label(key)), valueView(brief[key])))) : h('p', null, tr('BriefMissing'))
+  const storageKey = (epoch: string) => `superagent.workspace.v1:${encodeURIComponent(epoch)}`
+  const blankComposer = () => ({ draft: '', intent: 'message', target: null, pending: null, receipt: null })
+  const readComposer = (epoch: string) => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey(epoch)) || 'null')
+      if (!saved || typeof saved.draft !== 'string') return blankComposer()
+      const pending = saved.pending
+      const validPending = pending && pending.epoch === epoch && typeof pending.requestId === 'string' && typeof pending.text === 'string' && ['message', 'new-task', 'ticket-input'].includes(pending.intent) && (pending.intent !== 'ticket-input' || typeof pending.ticketId === 'string')
+      return { draft: saved.draft, intent: saved.intent === 'new-task' ? 'new-task' : 'message', target: saved.target && typeof saved.target.id === 'string' ? saved.target : null, pending: validPending ? pending : null, receipt: saved.receipt || null }
+    } catch { return blankComposer() }
+  }
+  const completeBrief = (plan: any) => {
+    const brief = plan?.brief
+    return plan?.reviewable !== false && brief && typeof brief.goal === 'string' && typeof brief.scope?.repo === 'string' && Array.isArray(brief.scope?.subdirs) && ['allowWrite', 'denyWrite', 'acceptance', 'blockers', 'outOfScope'].every(key => Array.isArray(brief[key])) && !JSON.stringify(brief).includes('[REDACTED')
+  }
+  const mintId = () => {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+    const bytes = new Uint8Array(16)
+    globalThis.crypto.getRandomValues(bytes)
+    bytes[6] = (bytes[6]! & 15) | 64; bytes[8] = (bytes[8]! & 63) | 128
+    const hex = [...bytes].map(n => n.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+
+  return function WorkspacePage() {
+    const [workspace, setWorkspace] = React.useState(null as any)
+    const [board, setBoard] = React.useState(null as any)
+    const [conversation, setConversation] = React.useState({} as any)
+    const [composer, setComposer] = React.useState(blankComposer())
+    const [historyEpoch, setHistoryEpoch] = React.useState('')
+    const [draftEpoch, setDraftEpoch] = React.useState('')
+    const [mobileTab, setMobileTab] = React.useState('board')
+    const [collapsed, setCollapsed] = React.useState(false)
+    const [query, setQuery] = React.useState('')
+    const [outcome, setOutcome] = React.useState('')
+    const [error, setError] = React.useState('')
+    const [boardError, setBoardError] = React.useState('')
+    const [historyError, setHistoryError] = React.useState('')
+    const [notice, setNotice] = React.useState('')
+    const [storageError, setStorageError] = React.useState(false)
+    const [lastSync, setLastSync] = React.useState(0)
+    const [sending, setSending] = React.useState(false)
+    const [paging, setPaging] = React.useState('')
+    const [detailId, setDetailId] = React.useState('')
+    const [detail, setDetail] = React.useState(null as any)
+    const [detailTab, setDetailTab] = React.useState('overview')
+    const [detailError, setDetailError] = React.useState('')
+    const [system, setSystem] = React.useState('')
+    const [systemData, setSystemData] = React.useState({} as any)
+    const [systemError, setSystemError] = React.useState('')
+    const [confirmation, setConfirmation] = React.useState(null as any)
+    const [reason, setReason] = React.useState('')
+    const [acting, setActing] = React.useState(false)
+    const [actionError, setActionError] = React.useState('')
+    const [stopping, setStopping] = React.useState({} as any)
+    const alive = React.useRef(false)
+    const epochRef = React.useRef('')
+    const workspaceRef = React.useRef(null as any)
+    const historyRef = React.useRef('')
+    const conversations = React.useRef({} as any)
+    const composerCache = React.useRef({} as any)
+    const composerRef = React.useRef(blankComposer())
+    const draftEpochRef = React.useRef('')
+    const boardRef = React.useRef(null as any)
+    const filterRef = React.useRef({ query: '', outcome: '' })
+    const loaded = React.useRef({ pending: 20, running: 20, waiting: 20, ended: 20 } as any)
+    const boardBusy = React.useRef(false)
+    const historyBusy = React.useRef(false)
+    const detailBusy = React.useRef(false)
+    const detailRef = React.useRef(null as any)
+    const detailIdRef = React.useRef('')
+    const systemRef = React.useRef('')
+    const systemDataRef = React.useRef({} as any)
+    const systemBusy = React.useRef(false)
+    const approvalsLoaded = React.useRef(20)
+    const detailApprovalsLoaded = React.useRef({} as Record<string, number>)
+    const controllers = React.useRef(new Set<AbortController>())
+    const sendController = React.useRef(null as AbortController | null)
+    const sendBusy = React.useRef(false)
+    const actionBusy = React.useRef(false)
+    const poke = React.useRef(() => {})
+    const dialogRef = React.useRef(null as HTMLDialogElement | null)
+    const detailCloseRef = React.useRef(null as HTMLElement | null)
+    const systemCloseRef = React.useRef(null as HTMLElement | null)
+    const detailFocus = React.useRef(null as HTMLElement | null)
+    const systemFocus = React.useRef(null as HTMLElement | null)
+    const confirmationFocus = React.useRef(null as HTMLElement | null)
+    const inputRef = React.useRef(null as HTMLTextAreaElement | null)
+    const messagesRef = React.useRef(null as HTMLElement | null)
+    const historyAnchor = React.useRef(null as any)
+    const autoScroll = React.useRef(true)
+    const messageOf = (e: any) => `${tr('RequestFailed')}${e?.code ? ` (${String(e.code)})` : ''}`
+    const saveComposer = (epoch: string, next: any) => {
+      composerCache.current[epoch] = next
+      try { sessionStorage.setItem(storageKey(epoch), JSON.stringify(next)) } catch { if (alive.current) setStorageError(true) }
+      if (epoch === draftEpochRef.current) { composerRef.current = next; if (alive.current) setComposer(next) }
+    }
+    const updateComposer = (patch: any, epoch = draftEpochRef.current) => {
+      if (!epoch) return
+      saveComposer(epoch, { ...(composerCache.current[epoch] || readComposer(epoch)), ...patch })
+    }
+    const call = async (path: string, body: any = {}, own?: AbortController) => {
+      const controller = own || new AbortController()
+      controllers.current.add(controller)
+      try {
+        if (controller.signal.aborted || !alive.current) { const aborted = new Error('aborted'); aborted.name = 'AbortError'; throw aborted }
+        const result = await request(path, body, controller.signal)
+        if (controller.signal.aborted || !alive.current) { const aborted = new Error('aborted'); aborted.name = 'AbortError'; throw aborted }
+        return result
+      } finally { controllers.current.delete(controller) }
+    }
+    const setConversationPage = (epoch: string, page: any, mode: string) => {
+      const old = conversations.current[epoch] || { items: [] }
+      const next = { ...old, items: merge(old.items, array(page.items), messageOrder), ...(mode !== 'before' ? { nextAfter: page.nextAfter, deltaMore: mode === 'after' && page.hasMore } : {}), ...(mode !== 'after' ? { nextBefore: page.nextBefore, hasMore: page.hasMore } : {}), error: '' }
+      conversations.current = { ...conversations.current, [epoch]: next }
+      setConversation(conversations.current)
+    }
+    const readConversation = async (epoch: string, before?: string) => {
+      if (!epoch || historyBusy.current) return
+      historyBusy.current = true
+      const old = conversations.current[epoch]
+      let mode = before ? 'before' : old?.nextAfter ? 'after' : 'recent'
+      try {
+        // Bound each tick. Remaining deltas keep their cursor for the next tick.
+        for (let i = 0; i < 4; i++) {
+          const current = conversations.current[epoch]
+          const page = await call('conversation', { epoch, limit: 30, ...(mode === 'before' ? { before } : mode === 'after' ? { after: current.nextAfter } : {}) })
+          if (!alive.current) return
+          setConversationPage(epoch, page, mode)
+          if (historyRef.current === epoch) setHistoryError('')
+          if (mode !== 'after' || !page.hasMore) break
+        }
+      } catch (e: any) {
+        if (!alive.current) return
+        if (historyRef.current === epoch) setHistoryError(messageOf(e))
+        if (!before && ['invalid_cursor', 'epoch_mismatch'].includes(e?.code)) {
+          // Keep displayed history; replace only the read watermark on the next tick.
+          conversations.current[epoch] = { ...(conversations.current[epoch] || { items: [] }), nextAfter: undefined }
+        }
+      } finally { historyBusy.current = false }
+    }
+    const readBoard = async () => {
+      if (boardBusy.current) return
+      boardBusy.current = true
+      const filter = { ...filterRef.current }
+      try {
+        const fresh = await call('board', { ...filter, limit: 20 })
+        const nextColumns = { ...fresh.columns }
+        for (const column of columns) {
+          let page = nextColumns[column]
+          let items = array(page?.items)
+          const target = Math.max(20, Number(loaded.current[column]) || 20)
+          while (page?.hasMore && page.cursor && items.length < target) {
+            const more = await call('board', { ...filter, column, cursor: page.cursor, limit: Math.min(100, Math.max(1, target - items.length)) })
+            if (more.revision !== fresh.revision) { const conflict: any = new Error(); conflict.code = 'board_resync_required'; conflict.status = 409; throw conflict }
+            page = more.columns[column]
+            items = merge(items, array(page?.items), (a, b) => Number(b.createdAt) - Number(a.createdAt) || String(a.id).localeCompare(String(b.id)))
+          }
+          nextColumns[column] = { ...page, items }
+        }
+        if (!alive.current || JSON.stringify(filter) !== JSON.stringify(filterRef.current)) return
+        const next = { ...fresh, columns: nextColumns }
+        boardRef.current = next; setBoard(next); setBoardError('')
+        setStopping((previous: any) => Object.fromEntries(Object.entries(previous).filter(([id]) => !columns.some(column => array(next.columns[column]?.items).some((item: any) => item.id === id && item.state === 'ended')))))
+      } catch (e: any) { if (alive.current) { setBoardError(e?.status === 409 ? tr('BoardResync') : messageOf(e)); } }
+      finally { boardBusy.current = false }
+    }
+    const readDetail = async (id: string, more = false) => {
+      if (!id || detailBusy.current) return
+      detailBusy.current = true
+      try {
+        const old = detailRef.current?.ticket?.id === id ? detailRef.current : null
+        const first = await call('ticket', { id, limit: 30, ...(more && old?.timelineCursor ? { timelineCursor: old.timelineCursor } : {}) })
+        let next = first
+        if (more && old) next = { ...old, timeline: merge(array(old.timeline), array(first.timeline), timelineOrder), timelineCursor: first.timelineCursor }
+        else if (old) {
+          let timeline = array(first.timeline), cursor = first.timelineCursor
+          while (cursor && timeline.length < array(old.timeline).length) {
+            const page = await call('ticket', { id, timelineCursor: cursor, limit: 100 })
+            timeline = merge(timeline, array(page.timeline), timelineOrder); cursor = page.timelineCursor
+          }
+          next = { ...first, timeline, timelineCursor: cursor }
+        }
+        let approvals = array(next.approvals), approvalCursor = next.approvalsNext
+        const desired = detailApprovalsLoaded.current[id] || 30
+        while (approvalCursor && approvals.length < desired) {
+          const page = await call('approvals', { ticketId: id, cursor: approvalCursor, limit: Math.min(100, desired - approvals.length) })
+          approvals = merge(approvals, array(page.items), (a, b) => String(a.id).localeCompare(String(b.id)))
+          approvalCursor = page.next
+        }
+        next = { ...next, approvals, approvalsNext: approvalCursor }
+        if (!alive.current || detailIdRef.current !== id) return
+        detailRef.current = next; setDetail(next); setDetailError('')
+        if (next.ticket?.state === 'ended') setStopping((items: any) => { const result = { ...items }; delete result[id]; return result })
+      } catch (e: any) { if (alive.current && detailIdRef.current === id) setDetailError(messageOf(e)) }
+      finally { detailBusy.current = false }
+    }
+    const readSystem = async (more = false) => {
+      const tab = systemRef.current
+      if (!tab || systemBusy.current) return
+      systemBusy.current = true
+      const route = tab === 'settings' ? 'settings' : tab === 'todo' ? 'approvals' : 'health'
+      try {
+        const old = systemDataRef.current[tab]
+        let data = await call(route, tab === 'todo' ? { state: 'pending', limit: 20, ...(more && old?.next ? { cursor: old.next } : {}) } : {})
+        if (tab === 'todo') {
+          let items = more ? merge(array(old?.items), array(data.items), (a, b) => String(a.id).localeCompare(String(b.id))) : array(data.items)
+          while (!more && data.next && items.length < approvalsLoaded.current) {
+            const page = await call('approvals', { state: 'pending', limit: Math.min(100, approvalsLoaded.current - items.length), cursor: data.next })
+            if (page.next === data.next) break
+            items = merge(items, array(page.items), (a, b) => String(a.id).localeCompare(String(b.id))); data = page
+          }
+          data = { ...data, items }
+          if (more) approvalsLoaded.current = items.length
+        }
+        if (!alive.current || systemRef.current !== tab) return
+        systemDataRef.current = { ...systemDataRef.current, [tab]: data }
+        setSystemData(systemDataRef.current); setSystemError('')
+      } catch (e: any) { if (alive.current && systemRef.current === tab) { setSystemError(e?.status === 409 ? tr('DecisionConflict') : messageOf(e)); if (e?.status === 409) poke.current() } }
+      finally { systemBusy.current = false }
+    }
+    React.useEffect(() => {
+      alive.current = true
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let inFlight = false, again = false, failures = 0
+      const tick = async () => {
+        if (!alive.current) return
+        if (inFlight) { again = true; return }
+        clearTimeout(timer); inFlight = true
+        try {
+          const data = await call('workspace')
+          if (!alive.current) return
+          const epoch = typeof data.epoch === 'string' ? data.epoch : ''
+          if (!epoch) throw new Error('invalid_workspace')
+          if (epoch !== epochRef.current) {
+            const prior = epochRef.current
+            sendController.current?.abort()
+            sendController.current = null
+            epochRef.current = epoch
+            const composerEpoch = prior || epoch
+            const nextComposer = composerCache.current[composerEpoch] || readComposer(composerEpoch)
+            composerCache.current[composerEpoch] = nextComposer; composerRef.current = nextComposer; setComposer(nextComposer)
+            draftEpochRef.current = composerEpoch; setDraftEpoch(composerEpoch)
+            historyRef.current = epoch; setHistoryEpoch(epoch)
+            if (prior) { setNotice(tr('EpochChanged')); dialogRef.current?.close(); setConfirmation(null) }
+          }
+          workspaceRef.current = data; setWorkspace(data); setError('')
+          await readConversation(historyRef.current || epoch)
+          await readBoard()
+          await readDetail(detailIdRef.current)
+          await readSystem()
+          if (!alive.current) return
+          setLastSync(Date.now()); failures = 0
+        } catch (e: any) { if (alive.current) { setError(messageOf(e)); failures++ } }
+        finally {
+          inFlight = false
+          if (alive.current) {
+            const delay = again ? 0 : document.visibilityState === 'hidden' ? 30000 : Math.min(60000, 5000 * 2 ** Math.min(failures, 3))
+            again = false; timer = setTimeout(tick, delay)
+          }
+        }
+      }
+      poke.current = () => { clearTimeout(timer); void tick() }
+      const visible = () => { if (document.visibilityState === 'visible') poke.current() }
+      document.addEventListener('visibilitychange', visible)
+      void tick()
+      return () => {
+        alive.current = false; clearTimeout(timer)
+        document.removeEventListener('visibilitychange', visible)
+        for (const controller of controllers.current) controller.abort()
+        controllers.current.clear(); sendController.current?.abort()
+        poke.current = () => {}
+      }
+    }, [])
+    React.useLayoutEffect(() => {
+      const node = messagesRef.current
+      if (!node) return
+      const anchor = historyAnchor.current
+      if (anchor && anchor.epoch === historyEpoch) { node.scrollTop = anchor.top + node.scrollHeight - anchor.height; historyAnchor.current = null }
+      else if (autoScroll.current) node.scrollTop = node.scrollHeight
+    }, [conversation, historyEpoch])
+    React.useEffect(() => {
+      if (!detailId) return
+      detailCloseRef.current?.focus()
+      return () => { if (detailFocus.current?.isConnected) detailFocus.current.focus() }
+    }, [detailId])
+    React.useEffect(() => {
+      if (!system) return
+      systemCloseRef.current?.focus()
+      return () => { if (systemFocus.current?.isConnected) systemFocus.current.focus() }
+    }, [!!system])
+    React.useEffect(() => {
+      if (!confirmation || !dialogRef.current) return
+      confirmationFocus.current = document.activeElement as HTMLElement
+      dialogRef.current.showModal()
+      dialogRef.current.querySelector('textarea,button')?.focus()
+      return () => { if (confirmationFocus.current?.isConnected) confirmationFocus.current.focus() }
+    }, [confirmation])
+    const applyReceipt = (epoch: string, payload: any, receipt: any) => {
+      const current = composerCache.current[epoch] || readComposer(epoch)
+      // An older response must not erase a different/newer draft or request.
+      const matches = current.pending?.requestId === payload.requestId
+      saveComposer(epoch, { ...current, receipt, ...(matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage)) ? { pending: null, ...(receipt.accepted === true && current.draft === payload.text ? { draft: '' } : {}) } : {}) })
+      if (alive.current && epoch === draftEpochRef.current) setNotice(receipt.accepted === true ? tr('AcceptedNotice') : tr('UnknownNotice'))
+    }
+    const submit = async (checkOnly = false) => {
+      if (sendBusy.current || !epochRef.current) return
+      const saved = composerRef.current
+      const existing = saved.pending
+      const epoch = existing?.epoch || draftEpochRef.current
+      if (!existing && epoch !== epochRef.current) return
+      if (!existing && (checkOnly || !saved.draft.trim() || workspaceRef.current?.capabilities?.send !== true || historyRef.current !== epoch)) return
+      if (!existing && (new TextEncoder().encode(saved.draft).length > 16384 || saved.draft.includes('\0'))) { setNotice(tr('TextLimit')); return }
+      let payload: any = existing
+      try {
+        if (!payload) payload = { epoch, requestId: mintId(), intent: saved.target ? 'ticket-input' : saved.intent, text: saved.draft, ...(saved.target ? { ticketId: saved.target.id } : {}) }
+      } catch { setNotice(tr('SecureIdUnavailable')); return }
+      const controller = new AbortController()
+      sendController.current = controller; sendBusy.current = true; setSending(true)
+      updateComposer({ pending: payload }, epoch)
+      try {
+        if (existing) {
+          try {
+            const receipt = await call('command-status', { epoch, requestId: payload.requestId }, controller)
+            applyReceipt(epoch, payload, receipt)
+            if (receipt.accepted === true || checkOnly || ['canceled', 'rejected'].includes(receipt.stage)) return
+          } catch (e: any) {
+            if (controller.signal.aborted || !alive.current) return
+            if (e?.code !== 'command_not_found') throw e
+            updateComposer({ pending: payload, receipt: { stage: 'not-found', accepted: false } }, epoch)
+            if (checkOnly) { setNotice(tr('NotFoundNotice')); return }
+          }
+        }
+        if (controller.signal.aborted || epochRef.current !== epoch || historyRef.current !== epoch) return
+        // Never send the local recovery metadata; replay exactly the immutable command.
+        const exact = { epoch: payload.epoch, requestId: payload.requestId, intent: payload.intent, text: payload.text, ...(payload.ticketId ? { ticketId: payload.ticketId } : {}) }
+        const receipt = await call('command', exact, controller)
+        applyReceipt(epoch, payload, receipt)
+        if (alive.current && epochRef.current === epoch) poke.current()
+      } catch (e: any) {
+        if (!alive.current || controller.signal.aborted) return
+        updateComposer({ receipt: { stage: 'unknown', accepted: false, code: e?.code } }, epoch)
+        setNotice(e?.code === 'epoch_mismatch' ? tr('EpochChanged') : tr('UnknownNotice'))
+        if (e?.status === 409) poke.current()
+      } finally {
+        sendBusy.current = false
+        if (sendController.current === controller) sendController.current = null
+        if (alive.current) setSending(false)
+      }
+    }
+    const loadMoreBoard = async (column: string) => {
+      if (boardBusy.current || paging) return
+      const old = boardRef.current, page = old?.columns?.[column]
+      if (!page?.hasMore || !page.cursor) return
+      boardBusy.current = true; setPaging(column)
+      const filter = { ...filterRef.current }
+      try {
+        const data = await call('board', { ...filter, column, cursor: page.cursor, limit: 20 })
+        if (data.revision !== old.revision) { const conflict: any = new Error(); conflict.status = 409; throw conflict }
+        if (!alive.current || JSON.stringify(filter) !== JSON.stringify(filterRef.current)) return
+        const more = data.columns[column]
+        const items = merge(array(page.items), array(more.items), (a, b) => Number(b.createdAt) - Number(a.createdAt) || String(a.id).localeCompare(String(b.id)))
+        const next = { ...old, columns: { ...old.columns, [column]: { ...more, items } } }
+        loaded.current[column] = items.length; boardRef.current = next; setBoard(next); setBoardError('')
+      } catch (e: any) { if (alive.current) { setBoardError(e?.status === 409 ? tr('BoardResync') : messageOf(e)); poke.current() } }
+      finally { boardBusy.current = false; if (alive.current) setPaging('') }
+    }
+    const changeFilter = (q: string, o: string) => {
+      setQuery(q); setOutcome(o); filterRef.current = { query: q, outcome: o }
+      loaded.current = { pending: 20, running: 20, waiting: 20, ended: 20 }
+      setBoardError(tr('FilterRefreshing')); poke.current()
+    }
+    const openDetail = (item: any) => {
+      detailFocus.current = document.activeElement as HTMLElement
+      if (detailIdRef.current !== item.id) { detailRef.current = null; setDetail(null) }
+      detailIdRef.current = item.id; setDetailId(item.id); setDetailTab('overview'); setDetailError('')
+      void readDetail(item.id)
+    }
+    const closeDetail = () => { detailIdRef.current = ''; setDetailId('') }
+    const openSystem = (tab: string) => {
+      if (!systemRef.current) systemFocus.current = document.activeElement as HTMLElement
+      systemRef.current = tab; setSystem(tab); setSystemError(''); void readSystem()
+    }
+    const closeSystem = () => { systemRef.current = ''; setSystem('') }
+    const askConfirm = (kind: string, item: any, decision: string) => { setActionError(''); setReason(''); setConfirmation({ kind, item, decision, epoch: epochRef.current }) }
+    const closeConfirm = () => { if (actionBusy.current) return; dialogRef.current?.close(); setConfirmation(null); setActionError(''); setReason('') }
+    const perform = async () => {
+      const value = confirmation
+      if (!value || actionBusy.current || (value.kind !== 'admission' && !reason.trim())) return
+      if (value.epoch !== epochRef.current) { setActionError(tr('EpochChanged')); return }
+      if (value.kind === 'admission' && value.decision === 'approve' && !completeBrief(value.item)) { setActionError(tr('ScopeHidden')); return }
+      actionBusy.current = true; setActing(true); setActionError('')
+      if (value.kind === 'stop') setStopping((old: any) => ({ ...old, [value.item.id]: true }))
+      try {
+        const route = value.kind === 'admission' ? 'admission' : value.kind === 'approval' ? 'approval' : 'ticket-action'
+        const body = value.kind === 'admission' ? { epoch: value.epoch, requestId: value.item.requestId, planId: value.item.planId, fingerprint: value.item.fingerprint, decision: value.decision } : value.kind === 'approval' ? { id: value.item.id, fingerprint: value.item.fingerprint, decision: value.decision, reason: reason.trim() } : { id: value.item.id, action: 'stop', reason: reason.trim() }
+        const result = await call(route, body)
+        if (!alive.current) return
+        if (value.kind === 'stop' && result.state === 'ended') setStopping((old: any) => { const next = { ...old }; delete next[value.item.id]; return next })
+        setNotice(value.kind === 'stop' ? result.state === 'ended' ? tr('StoppedNotice') : tr('Stopping') : tr('DecisionSaved'))
+        dialogRef.current?.close(); setConfirmation(null); setReason(''); poke.current()
+      } catch (e: any) {
+        if (!alive.current) return
+        setActionError(e?.status === 409 ? tr('DecisionConflict') : messageOf(e))
+        // Preserve uncertainty in the notice, but do not permanently disable retry.
+        if (value.kind === 'stop') setStopping((old: any) => { const next = { ...old }; delete next[value.item.id]; return next })
+        poke.current()
+      } finally { actionBusy.current = false; if (alive.current) setActing(false) }
+    }
+    const supplement = (item: any) => {
+      if (composerRef.current.pending || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveRequestFirst')); return }
+      updateComposer({ target: { id: item.id, title: item.title || tr('Untitled') } }); setMobileTab('chat'); setCollapsed(false)
+      inputRef.current?.focus()
+    }
+    const approvalView = (item: any) => {
+      const pending = item.state === 'pending'
+      const expired = typeof item.expiresAt === 'number' && item.expiresAt <= Date.now()
+      const canApprove = pending && !expired && item.allowed?.approve === true && item.impact?.reviewable === true && !!item.fingerprint
+      return h('article', { className: 'saw-box', key: item.id }, h('h4', null, item.summary || tr('Approval')), fields([
+        ['Kind', text(item.kind)], ['State', stateName(item.state)], ['RequestedBy', text(item.requestedBy)], ['Created', time(item.createdAt)], ['Expiry', time(item.expiresAt)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(item.fingerprint))],
+      ]), h('h4', null, tr('Impact')), valueView(item.impact?.details), item.impact?.description ? h('p', { className: 'saw-pre' }, item.impact.description) : null,
+      item.impact?.reason ? h('p', { className: 'saw-error' }, `${tr('NotReviewable')}: ${item.impact.reason}`) : null,
+      item.reason ? fields([['Reason', item.reason], ['DecidedBy', text(item.decidedBy)], ['DecidedAt', time(item.decidedAt)]]) : null,
+      pending ? h('div', { className: 'saw-row' }, button(tr('Approve'), () => askConfirm('approval', item, 'approve'), !canApprove, { title: !canApprove ? tr('CannotApprove') : undefined }), button(tr('Reject'), () => askConfirm('approval', item, 'deny'), expired || item.allowed?.deny !== true || !item.fingerprint)) : null)
+    }
+    const admissionView = (plan: any, confirm = false) => h('article', { className: 'saw-box', key: plan.planId }, h('h3', null, tr('Admission')), h('p', { className: 'saw-meta' }, tr('AdmissionHint')), fields([
+      ['State', stateName(plan.state)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(plan.fingerprint))], ['Expiry', time(plan.expiresAt)], ['PolicyVersion', text(plan.policyVersion)],
+    ]), briefView(plan.brief), !completeBrief(plan) ? h('p', { className: 'saw-error' }, tr('ScopeHidden')) : null, plan.blockedReason ? h('p', { className: 'saw-error' }, plan.blockedReason) : null,
+    !confirm && plan.state === 'pending' ? h('div', { className: 'saw-row' }, button(tr('ApprovePlan'), () => askConfirm('admission', plan, 'approve'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint || !completeBrief(plan)), button(tr('RejectPlan'), () => askConfirm('admission', plan, 'reject'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint)) : null)
+    const chooseDraftEpoch = (epoch: string) => {
+      if (sendBusy.current) return
+      draftEpochRef.current = epoch; setDraftEpoch(epoch)
+      const next = composerCache.current[epoch] || readComposer(epoch)
+      composerCache.current[epoch] = next; composerRef.current = next; setComposer(next)
+    }
+    const oldDraft = !!draftEpoch && draftEpoch !== workspace?.epoch
+    const archive = !!historyEpoch && historyEpoch !== workspace?.epoch
+    const currentMessages = conversation[historyEpoch]
+    const pendingPlans = array(workspace?.admissions).filter(plan => plan.state === 'pending' || plan.state === 'approved')
+    const todoCount = typeof workspace?.pendingApprovals === 'number' ? workspace.pendingApprovals + pendingPlans.filter(plan => plan.state === 'pending').length : null
+    const latest = composer.receipt
+    const pendingRequest = composer.pending
+    const item = detail?.ticket
+    const systemContent = () => {
+      const data = systemData[system]
+      if (!data) return h('p', null, tr('Loading'))
+      if (system === 'todo') return h(React.Fragment, null, h('h3', null, tr('Admission')), ...pendingPlans.map(plan => admissionView(plan)), !pendingPlans.length ? h('p', null, tr('NoPlans')) : null, h('h3', null, tr('Approvals')), h('p', { className: 'saw-meta' }, tr('ApprovalWindow')), ...array(data.items).map(approvalView), !array(data.items).length ? h('p', null, tr('NoApprovals')) : null, data.next ? button(tr('MoreApprovals'), () => { void readSystem(true) }, systemBusy.current) : null)
+      if (system === 'sources') return h(React.Fragment, null, h('p', null, tr('Readonly')), ...array(data.sources).map((source: any, i: number) => h('article', { className: 'saw-box', key: source.id || i }, h('h3', null, source.id || tr('Source')), fields([['Kind', text(source.kind)], ['Health', source.ok === true ? tr('Healthy') : source.ok === false ? tr('Unhealthy') : tr('Unknown')], ['LastEvent', time(source.lastAt)], ['Paused', source.paused === true ? tr('Yes') : source.paused === false ? tr('No') : tr('Unknown')], ['Attended', source.attended === true ? tr('Yes') : source.attended === false ? tr('No') : tr('Unknown')]]))), !array(data.sources).length ? h('p', null, tr('NoSources')) : null)
+      if (system === 'settings') {
+        const groups: Record<string, any[]> = {}
+        const groupFor = (key: string) => /stateDir|dbPath|lockPath|workRoot/.test(key) ? 'storage' : /watchdog|stall|repeat|waitingHuman/.test(key) ? 'supervision' : /approval|confirm/.test(key) ? 'approvals' : /^max|queueLimit/.test(key) ? 'budgets' : /roleTools|routerReadScope|sources|acceptMode|bots/.test(key) ? 'permissions' : 'runtime'
+        for (const entry of array(data.effective)) (groups[groupFor(String(entry.key))] ||= []).push(entry)
+        const groupNames: Record<string, string> = { runtime: 'Runtime', budgets: 'Budgets', budget: 'Budgets', watchdog: 'Supervision', supervision: 'Supervision', approvals: 'Approvals', approval: 'Approvals', storage: 'Storage', policy: 'Permissions', permissions: 'Permissions', other: 'Other' }
+        return h(React.Fragment, null, h('p', null, tr('Readonly')), ...Object.entries(groups).map(([group, entries]) => h('section', { key: group, className: 'saw-box' }, h('h3', null, tr(groupNames[group] || 'Other')), ...entries.map((entry: any) => h('div', { key: entry.key, className: 'saw-setting' }, h('h4', null, entry.key), valueView(entry.redacted || /^(stateDir|dbPath|lockPath|workRoot)$/.test(entry.key) ? '[REDACTED_PATH]' : entry.value), h('p', { className: 'saw-meta' }, `${tr('Origin')}: ${text(entry.origin)}${entry.originDetail ? ` · ${entry.originDetail}` : ''}`))))))
+      }
+      return h(React.Fragment, null, h('p', null, tr('Readonly')), ...[['Runtime', data.runtime], ['Database', data.db], ['Workers', data.workers], ['Supervision', data.watchdog], ['Outbox', data.outbox], ['RecentErrors', data.recentErrors]].map(([key, value]) => h('section', { key, className: 'saw-box' }, h('h3', null, tr(key)), valueView(value))))
+    }
+    return h('section', { className: 'saw', 'aria-label': tr('Workspace') }, h('style', null, css),
+      h('header', { className: 'saw-top' }, h('h1', null, tr('Title')), h('div', { className: 'saw-connection' }, h('span', null, error ? tr('Disconnected') : workspace ? tr('Connected') : tr('Connecting')), h('small', null, `${tr('LastSync')}: ${time(lastSync)}`)),
+        h('label', { className: 'saw-search' }, h('span', { className: 'saw-sr' }, tr('Search')), h('input', { type: 'search', value: query, maxLength: 200, placeholder: tr('Search'), onChange: (e: any) => changeFilter(e.target.value, outcome) })),
+        h('label', null, h('span', { className: 'saw-sr' }, tr('OutcomeFilter')), h('select', { value: outcome, onChange: (e: any) => changeFilter(query, e.target.value), 'aria-label': tr('OutcomeFilter') }, h('option', { value: '' }, tr('AllOutcomes')), ...['completed', 'failed', 'stopped', 'dropped'].map(key => h('option', { value: key, key }, stateName(key))))),
+        button(`${tr('Todo')}${todoCount === null ? '' : ` · ${todoCount}`}`, () => openSystem('todo')), button(tr('Sync'), () => poke.current()), button(tr('System'), () => openSystem('health'))),
+      h('div', { className: 'saw-boundary', role: 'note' }, h('strong', null, tr('BoundaryTitle')), ' ', tr('BoundaryBody')),
+      workspace?.model?.available === false ? h('div', { className: 'saw-banner' }, tr('ModelUnavailable')) : null,
+      workspace && workspace.capabilities?.send !== true ? h('div', { className: 'saw-banner' }, tr('SendUnavailable')) : null,
+      error ? h('div', { className: 'saw-error saw-banner', role: 'alert' }, error, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => poke.current())) : null,
+      storageError ? h('div', { className: 'saw-error saw-banner' }, tr('StorageUnavailable')) : null,
+      h('div', { className: 'saw-sr', role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, notice),
+      h('nav', { className: 'saw-mobile-tabs', 'aria-label': tr('WorkspaceView') }, ...['board', 'chat'].map(tab => button(tr(tab === 'board' ? 'Board' : 'Conversation'), () => setMobileTab(tab), false, { key: tab, 'aria-pressed': mobileTab === tab }))),
+      h('div', { className: `saw-workspace${collapsed ? ' saw-collapsed' : ''}`, 'data-mobile-tab': mobileTab },
+        h('section', { className: 'saw-chat', 'aria-label': tr('Conversation') }, h('div', { className: 'saw-section-head' }, h('h2', null, tr('Conversation')), button(collapsed ? tr('ExpandChat') : tr('CollapseChat'), () => setCollapsed(!collapsed), false, { className: 'saw-btn saw-collapse' })),
+          h('div', { className: 'saw-chat-inner' }, array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('HistoryGroup'), h('select', { value: historyEpoch, onChange: (e: any) => { const epoch = e.target.value; historyRef.current = epoch; setHistoryEpoch(epoch); autoScroll.current = true; setHistoryError(''); void readConversation(epoch) } }, h('option', { value: workspace.epoch }, tr('CurrentConversation')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedConversation')} ${index + 1} · ${time(row.createdAt)}`)))) : null,
+          archive ? h('p', { className: 'saw-banner' }, tr('ArchiveReadonly')) : null,
+          historyError ? h('p', { className: 'saw-error' }, historyError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readConversation(historyEpoch) })) : null,
+          h('div', { className: 'saw-messages', ref: messagesRef, onScroll: (e: any) => { const node = e.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80 }, 'aria-label': tr('ConversationHistory') },
+            currentMessages?.hasMore && currentMessages.nextBefore ? button(tr('OlderMessages'), () => { const node = messagesRef.current; if (node) historyAnchor.current = { epoch: historyEpoch, top: node.scrollTop, height: node.scrollHeight }; void readConversation(historyEpoch, currentMessages.nextBefore) }, historyBusy.current) : null,
+            !currentMessages ? h('p', { className: 'saw-meta' }, historyError ? tr('HistoryUnavailable') : tr('Connecting')) : !array(currentMessages.items).length ? h('div', { className: 'saw-empty' }, h('h3', null, tr('StartHere')), h('p', null, tr('StartHint'))) : null,
+            ...array(currentMessages?.items).map((message: any) => h('article', { className: `saw-message saw-message-${message.kind}`, key: message.id }, h('div', { className: 'saw-message-head' }, h('strong', null, stateName(message.kind)), h('time', null, time(message.at))), h('p', { className: 'saw-pre' }, message.text), message.stage ? h('small', { className: 'saw-meta' }, `${tr('DeliveryStage')}: ${stateName(message.stage)}`) : null)),
+            !archive ? pendingPlans.map(plan => admissionView(plan)) : null),
+          h('form', { className: 'saw-composer', onSubmit: (e: any) => { e.preventDefault(); void submit() } },
+            array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('DraftGroup'), h('select', { value: draftEpoch, disabled: sending, onChange: (e: any) => chooseDraftEpoch(e.target.value) }, h('option', { value: workspace.epoch }, tr('CurrentDraft')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedDraft')} ${index + 1}`)))) : null,
+            oldDraft ? h('p', { className: 'saw-banner' }, tr('OldDraftHint')) : null,
+            h('div', { className: 'saw-row' }, h('span', { className: 'saw-meta' }, tr('SendTo')), composer.target ? h('span', { className: 'saw-chip' }, `${tr('SupplementTo')}: ${composer.target.title}`, button('×', () => updateComposer({ target: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelTarget') })) : h('strong', null, tr('Title')),
+            !composer.target ? h('select', { value: composer.intent, disabled: sending || !!pendingRequest, 'aria-label': tr('MessageIntent'), onChange: (e: any) => updateComposer({ intent: e.target.value }) }, h('option', { value: 'message' }, tr('Message')), h('option', { value: 'new-task' }, tr('NewTask'))) : null),
+            h('label', { className: 'saw-sr', htmlFor: 'saw-draft' }, tr('InputLabel')), h('textarea', { id: 'saw-draft', ref: inputRef, value: composer.draft, placeholder: tr('InputPlaceholder'), rows: 3, disabled: sending || !!pendingRequest || archive || oldDraft || !workspace, onChange: (e: any) => updateComposer({ draft: e.target.value }), onKeyDown: (e: any) => { if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing || e.isComposing || e.nativeEvent?.keyCode === 229 || e.keyCode === 229) return; e.preventDefault(); void submit() }, 'aria-describedby': 'saw-input-help' }),
+            h('p', { id: 'saw-input-help', className: 'saw-meta' }, tr('InputHelp')),
+            pendingRequest ? h('div', { className: 'saw-request' }, h('p', null, tr('PendingRequest')), h('details', null, h('summary', null, tr('RequestDetails')), h('code', { className: 'saw-fingerprint' }, pendingRequest.requestId)), h('div', { className: 'saw-row' }, button(tr('CheckStatus'), () => { void submit(true) }, sending), button(tr('RetrySameRequest'), () => { void submit(false) }, sending || pendingRequest.epoch !== workspace?.epoch || archive), null)) : h('button', { type: 'submit', className: 'saw-btn saw-send', disabled: sending || archive || oldDraft || !composer.draft.trim() || workspace?.capabilities?.send !== true }, sending ? tr('Sending') : tr('Send')),
+            latest ? h('p', { className: 'saw-meta' }, `${latest.accepted === true ? tr('Accepted') : tr('Unknown')}: ${stateName(latest.stage)}${latest.code ? ` · ${latest.code}` : ''}`) : null,
+            notice ? h('p', { className: 'saw-meta' }, notice) : null))),
+        h('section', { className: 'saw-board-region', 'aria-label': tr('Board') }, h('div', { className: 'saw-board-head' }, h('h2', null, tr('Board')), h('span', { className: 'saw-meta' }, `${board?.filtered ? tr('FilteredCounts') : tr('AllCounts')} · ${tr('Snapshot')}: ${time(board?.snapshotAt)}`)),
+          boardError ? h('div', { className: 'saw-error saw-banner' }, boardError, ' ', tr('StaleData')) : null,
+          h('div', { className: 'saw-columns' }, ...columns.map(column => {
+            const page = board?.columns?.[column]
+            return h('section', { className: 'saw-column', key: column, 'aria-label': stateName(column) }, h('header', { className: 'saw-column-head' }, h('h3', null, stateName(column)), h('span', { className: 'saw-count', 'aria-label': tr('ServerTotal') }, page ? page.total : '—')),
+              h('div', { className: 'saw-column-scroll' }, !page ? h('p', { className: 'saw-meta' }, tr('Loading')) : !array(page.items).length ? h('p', { className: 'saw-meta' }, tr('EmptyColumn')) : null,
+                ...array(page?.items).map((card: any) => h('article', { className: 'saw-card', key: card.id }, h('button', { type: 'button', className: 'saw-card-open', onClick: () => openDetail(card), 'aria-label': `${tr('OpenTask')}: ${card.title || tr('Untitled')}` }, h('span', { className: 'saw-badge' }, stopping[card.id] ? tr('Stopping') : stateName(card.state === 'ended' ? card.outcome : card.state)), h('span', { className: 'saw-card-title' }, card.title || tr('Untitled')), card.progress ? h('span', { className: 'saw-card-line' }, card.progress) : null,
+                  card.pendingApprovals ? h('span', { className: 'saw-card-line' }, `${tr('Approvals')}: ${card.pendingApprovals}`) : null,
+                  card.anomaly ? h('span', { className: 'saw-error saw-card-line' }, tr('StateConflict')) : null,
+                  card.disabledReason ? h('span', { className: 'saw-meta saw-card-line' }, tr('ExecutionBlocked')) : null,
+                  h('span', { className: 'saw-meta saw-card-line' }, `${tr('LastProgress')}: ${time(card.lastProgressAt)}`), h('span', { className: 'saw-meta saw-card-line' }, `${tr('Steps')}: ${text(card.budget?.steps)} · ${tr('Tokens')}: ${text(card.budget?.usage)}`), typeof card.acceptance?.passed === 'number' ? h('span', { className: 'saw-meta saw-card-line' }, `${tr('Acceptance')}: ${card.acceptance.passed}/${text(card.acceptance.total)}`) : null),
+                  card.attention ? h('div', { className: 'saw-attention' }, valueView(card.attention)) : null,
+                  card.allowed?.input === true ? button(tr('Supplement'), () => supplement(card), !!pendingRequest) : null)),
+                page?.hasMore ? button(paging === column ? tr('Loading') : tr('MoreTasks'), () => { void loadMoreBoard(column) }, !!paging) : null))
+          })),
+          detailId ? h('aside', { className: 'saw-detail', role: 'dialog', 'aria-modal': false, 'aria-label': item?.title || tr('TaskDetails'), onKeyDown: (e: any) => { if (e.key === 'Escape' && !confirmation) { e.stopPropagation(); closeDetail() } } }, h('header', { className: 'saw-detail-head' }, h('h2', null, item?.title || tr('TaskDetails')), button('×', closeDetail, false, { ref: detailCloseRef, 'aria-label': tr('CloseDetails') })),
+            detailError ? h('div', { className: 'saw-error saw-banner' }, detailError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readDetail(detailId) })) : null,
+            !detail ? h('p', null, tr('Loading')) : h(React.Fragment, null,
+              h('nav', { className: 'saw-detail-tabs', 'aria-label': tr('TaskSections') }, ...['overview', 'timeline', 'approvals', 'results'].map(tab => button(tr(({ overview: 'Overview', timeline: 'Timeline', approvals: 'Approvals', results: 'Results' } as any)[tab]), () => setDetailTab(tab), false, { key: tab, 'aria-pressed': detailTab === tab }))),
+              h('div', { className: 'saw-detail-scroll' },
+                detailTab === 'overview' ? h(React.Fragment, null, fields([['State', stopping[item.id] ? tr('Stopping') : stateName(item.state === 'ended' ? item.outcome : item.state)], ['LastProgress', time(item.lastProgressAt)]]), item.anomaly ? h('p', { className: 'saw-error' }, tr('StateConflict')) : null, item.attention ? valueView(item.attention) : null, briefView(detail.brief), h('details', null, h('summary', null, tr('TechnicalDetails')), fields([['TaskId', h('code', { className: 'saw-fingerprint' }, text(item.id))]]), button(tr('CopyId'), () => { if (navigator.clipboard) void navigator.clipboard.writeText(String(item.id)).then(() => setNotice(tr('Copied')), () => setNotice(tr('CopyFailed'))); else setNotice(tr('CopyFailed')) }))) : null,
+                detailTab === 'timeline' ? h(React.Fragment, null, h('p', { className: 'saw-meta' }, tr('TaskTimelineHint')), h('ol', { className: 'saw-timeline' }, ...array(detail.timeline).map((event: any) => h('li', { key: event.id }, h('time', null, time(event.at)), h('strong', null, text(event.action)), h('small', null, text(event.actor))))), !array(detail.timeline).length ? h('p', null, tr('NoEvents')) : null, detail.timelineCursor ? button(tr('OlderEvents'), () => { void readDetail(detailId, true) }, detailBusy.current) : null) : null,
+                detailTab === 'approvals' ? h(React.Fragment, null, ...array(detail.approvals).map(approvalView), !array(detail.approvals).length ? h('p', null, tr('NoApprovals')) : null, detail.approvalsNext ? button(tr('MoreApprovals'), () => { detailApprovalsLoaded.current[detailId] = array(detail.approvals).length + 30; void readDetail(detailId) }, detailBusy.current) : null) : null,
+                detailTab === 'results' ? h(React.Fragment, null, h('p', { className: 'saw-meta' }, tr('ResultsHint')), ...array(detail.assignments).map((assignment: any, index: number) => h('article', { className: 'saw-box', key: assignment.id || index }, h('h3', null, `${tr('Attempt')} ${index + 1}`), fields([['State', stateName(assignment.state)], ['Started', time(assignment.startedAt)], ['EndedAt', time(assignment.endedAt)], ['LastProgress', time(assignment.lastProgressAt)], ['Steps', text(assignment.steps)], ['Tokens', text(assignment.usage)]]), assignment.report ? valueView(assignment.report) : h('p', null, tr('NoReport')))), h('h3', null, tr('Delivery')), valueView(detail.delivery), h('p', { className: 'saw-meta' }, tr('NoReadAck'))) : null),
+              h('footer', { className: 'saw-detail-actions' }, item.allowed?.input === true ? button(tr('Supplement'), () => supplement(item), !!pendingRequest) : null, item.allowed?.stop === true ? button(stopping[item.id] ? tr('Stopping') : tr('StopTask'), () => askConfirm('stop', item, 'stop'), !!stopping[item.id]) : null))) : null)),
+      system ? h('aside', { className: 'saw-system', role: 'dialog', 'aria-modal': false, 'aria-label': tr('System'), onKeyDown: (e: any) => { if (e.key === 'Escape' && !confirmation) { e.stopPropagation(); closeSystem() } } }, h('header', { className: 'saw-detail-head' }, h('h2', null, tr(system === 'todo' ? 'Todo' : 'System')), button('×', closeSystem, false, { ref: systemCloseRef, 'aria-label': tr('CloseSystem') })), h('nav', { className: 'saw-detail-tabs', 'aria-label': tr('SystemSections') }, ...['todo', 'health', 'sources', 'settings'].map(tab => button(tr(({ todo: 'Todo', health: 'Health', sources: 'Sources', settings: 'Settings' } as any)[tab]), () => openSystem(tab), false, { key: tab, 'aria-pressed': system === tab }))), systemError ? h('div', { className: 'saw-error saw-banner' }, systemError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readSystem() })) : null, h('div', { className: 'saw-system-scroll' }, systemContent())) : null,
+      confirmation ? h('dialog', { ref: dialogRef, className: 'saw-confirm', 'aria-labelledby': 'saw-confirm-title', onCancel: (e: any) => { e.preventDefault(); closeConfirm() } }, h('h2', { id: 'saw-confirm-title' }, tr('ConfirmAction')), h('p', null, tr(confirmation.kind === 'stop' ? 'StopConfirm' : confirmation.decision === 'approve' ? 'ApproveConfirm' : 'RejectConfirm')), h('div', { className: 'saw-confirm-body' }, confirmation.kind === 'admission' ? admissionView(confirmation.item, true) : confirmation.kind === 'approval' ? h(React.Fragment, null, h('h3', null, confirmation.item.summary || tr('Approval')), fields([['Kind', text(confirmation.item.kind)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(confirmation.item.fingerprint))], ['Expiry', time(confirmation.item.expiresAt)]]), valueView(confirmation.item.impact?.details)) : h('p', null, confirmation.item.title)), confirmation.kind !== 'admission' ? h('label', { className: 'saw-reason' }, tr('ReasonRequired'), h('textarea', { rows: 3, value: reason, required: true, maxLength: 2000, onChange: (e: any) => setReason(e.target.value), 'aria-required': true })) : null, actionError ? h('p', { className: 'saw-error', role: 'alert' }, actionError) : null, h('div', { className: 'saw-row' }, button(tr('Cancel'), closeConfirm, acting), button(acting ? tr('Saving') : tr('Confirm'), () => { void perform() }, acting || confirmation.kind !== 'admission' && !reason.trim()))) : null)
+  }
+}

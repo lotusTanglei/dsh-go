@@ -3,30 +3,37 @@ import { readFileSync } from 'node:fs'
 import { createClientPlugin } from '../../src/client/index.js'
 import { createChannelDefinitions } from '../../src/client/channel.js'
 
-// Check the public registration contract only: no DOM or renderer emulation.
-describe('P5 client module contract', () => {
-  it('registers the sidebar and matching keyed main panel, never the app root', () => {
+// Public registration only: neither the default Workspace nor any host page is
+// rendered here. Real serialized-factory closure evidence is in artifact.test.ts.
+describe('Workspace client module contract', () => {
+  it('keeps the three-argument default factory registration compatible and never owns the root', () => {
     const slots: Array<{ name: string; id?: string; key?: string }> = []
+    const components: unknown[] = []
     const owners: string[] = []
     const dictionaries = { en: JSON.parse(readFileSync('locale/en.json', 'utf8')).panel, zh: JSON.parse(readFileSync('locale/zh.json', 'utf8')).panel }
     let localeRemoved = false
+    let channelRemoved = false
     const disposers: Array<() => void> = []
     const plugin = createClientPlugin({ createElement() { throw new Error('registration must not render') } }, dictionaries, createChannelDefinitions())
     plugin.apply({
       effect(factory: () => (() => void)) { disposers.push(factory()) },
-      uiConversation: { events: { register(definition: { kind: string }) { expect(definition.kind).toBe('superagent-channel-notice'); return () => {} } } },
-      locale: { register(name: string) { expect(name).toBe('superagent'); return () => { localeRemoved = true } }, bind() { return (key: string) => key } },
-      layout: { selectPanel() {} },
-      slots: { inject(owner: string, factory: () => void) { owners.push(owner); factory() }, register(options: typeof slots[number]) { slots.push(options) } },
+      uiConversation: { events: { register(definition: { kind: string }) { expect(definition.kind).toBe('superagent-channel-notice'); return () => { channelRemoved = true } } } },
+      locale: { register(name: string, values: unknown) { expect(name).toBe('superagent'); expect(values).toBe(dictionaries); return () => { localeRemoved = true } }, bind() { return (key: string) => key } },
+      layout: { selectPanel() { throw new Error('registration must not navigate') } },
+      slots: { inject(owner: string, factory: () => void) { owners.push(owner); factory() }, register(options: typeof slots[number], component: unknown) { slots.push(options); components.push(component) } },
     })
     expect(plugin.inject).toEqual(['slots', 'locale', 'layout', 'uiConversation'])
     expect(owners).toEqual(['conversation.chat.node', 'sidebar.panellist', 'main'])
     expect(slots).toMatchObject([{ name: 'conversation.chat.node', key: 'superagent-channel-notice' }, { name: 'sidebar.panellist', id: 'superagent' }, { name: 'main', key: 'superagent' }])
-    expect(slots.some(slot => slot.name === 'root')).toBe(false)
+    expect(slots).toHaveLength(3)
+    expect((components[2] as Function).name).toBe('WorkspacePage')
+    expect(slots.some(slot => slot.name === 'root' || slot.key === 'conversation')).toBe(false)
     disposers.forEach(dispose => dispose())
     expect(localeRemoved).toBe(true)
+    expect(channelRemoved).toBe(true)
   })
-  it('keeps visible strings localized and browser imports host-owned', () => {
+
+  it('keeps browser imports host-owned and serializes both imported factories explicitly', () => {
     const source = readFileSync('src/client/index.ts', 'utf8')
     const en = JSON.parse(readFileSync('locale/en.json', 'utf8')).panel as Record<string, string>
     const zh = JSON.parse(readFileSync('locale/zh.json', 'utf8')).panel as Record<string, string>
@@ -38,7 +45,14 @@ describe('P5 client module contract', () => {
     const build = readFileSync('scripts/build-client.mjs', 'utf8')
     expect(build).toContain("window.__ModuleLoader__.load({id:'dsh-superagent'")
     expect(build).toContain("require('react')")
-    expect(source).toContain('credentials: \'same-origin\'')
+    expect(build).toContain('createClientPlugin.toString()')
+    expect(build).toContain('createChannelDefinitions.toString()')
+    expect(build).toContain('createWorkspacePage.toString()')
+    expect(build).toContain('workspaceStyles.toString()')
+    expect(source).toContain('workspaceFactory = createWorkspacePage')
+    expect(source).toContain('styleFactory = workspaceStyles')
+    expect(source).toContain('workspaceFactory(React, request, t, styleFactory())')
+    expect(source).toContain("credentials: 'same-origin'")
     expect(source).toContain('new URL(`/api/superagent/')
   })
 })
