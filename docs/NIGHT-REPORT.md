@@ -1,5 +1,7 @@
 # Overnight development report
 
+> 历史报告更正（2026-11-18）：此页的“完整 A3 已通过”、Router turns/注入计数和 tokenUsage 解释存在证据问题；见 [P2 诊断更正](P2-DIAGNOSIS.md)。下文为历史记录，不代表当前验收结论。
+
 时间：2026-11-17（Asia/Shanghai）
 
 ## 总结

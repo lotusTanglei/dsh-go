@@ -1,0 +1,7 @@
+# Command-line overlay only. Not installed into any profile patch.
+- insert:
+    - id: superagent-final-runtime-probe
+      name: dsh-superagent/final-runtime-probe
+      config:
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/final-runtime-result.json

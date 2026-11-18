@@ -2,7 +2,9 @@
 
 在 DeepSeek Harness 上实现的一个 Super-agent bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
-**当前状态：P1 已完成验收，停在 P2 之前等待确认。** 已通过真实 Desktop 子会话/preset/执行拒绝闸探针；P1 只做领域、SQLite 与空插件，不启动业务会话或面板。验收与限制见 [P1 报告](docs/P1-report.md)。
+**当前状态：P3/P4/P5 部分完成，真实启动验收未通过，按硬停止条件暂停。** 最新 typecheck／109 项测试／build 通过；隔离 profile 三个预设健康，但 Router setup 返回契约错误导致两次初始化失败。未跑真实 3 Trigger → 2 Ticket → 2 Worker → 2 report，也未证明侧栏可见。不修改 desktop。
+
+证据与下一步见 [最终验收记录](docs/FINAL-VERIFY.md)、[P3](docs/P3-report.md)／[P4](docs/P4-report.md)／[P5](docs/P5-report.md) 报告。旧 P2/A3 计数与注入证明的问题已在 [诊断更正](docs/P2-DIAGNOSIS.md) 披露。
 
 ## 读什么
 

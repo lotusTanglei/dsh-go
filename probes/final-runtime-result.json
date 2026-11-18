@@ -1,0 +1,11 @@
+{
+  "state": "idle",
+  "kind": "production-runtime-e2e",
+  "modelsStarted": false,
+  "ready": false,
+  "startupError": {
+    "name": "TypeError",
+    "code": "",
+    "reason": "setupCommit?.commit is not a function"
+  }
+}

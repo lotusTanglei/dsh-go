@@ -1,5 +1,7 @@
 # P2/A3 diagnosis and closure
 
+> 2026-11-18 审计更正：下文保留历史输出，不再把该探针当完整 A3 端到端验收。脚本中的 acceptedTickets/expectedTriggers/Router turns 是预设值；routerInjectedReports 只是数组 correlation，并未调用 Router.inject；cleanup 只检查持有的 Router handle，不能证明所有 Worker 已退出。已证实的窄结论只有两个真实 Worker 返回 structured report。tokenUsage=null 是探针读取位置错误，DSH 实际 usage 在 assistant/message.data.usage。新的 P3/P4/P5 验收必须从持久状态、真实 session 事件、实际注入和清理取证，不能沿用这些计数。此前“完整 A3 已通过”的说法撤回。
+
 ## 前置
 
 - 分支：`main`
