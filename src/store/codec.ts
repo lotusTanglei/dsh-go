@@ -33,23 +33,25 @@ function redactValue(value: unknown, redactPaths: boolean): unknown {
 
 function hasLongSecret(value: string): boolean {
   if (SECRET_PREFIX.test(value) || PRIVATE_URL_VALUE.test(value)) return true
-  // A path component is not a credential merely because it is long/high-entropy.
-  if (USER_PATH_KEY.test(value)) return false
-  const matches = value.match(/\b(?=[A-Za-z0-9+/]{32,}={0,2}\b)(?![a-f0-9]{64}\b)[A-Za-z0-9+/]{32,}={0,2}\b/g)
-  return Boolean(matches?.length)
+  return /\b(?=[A-Za-z0-9+/]{32,}={0,2}\b)(?![a-f0-9]{64}\b)[A-Za-z0-9+/]{32,}={0,2}\b/i.test(value)
 }
 
-function hasSensitiveContractValue(value: unknown): boolean {
+function hasSensitiveContractValue(value: unknown, pathField = false): boolean {
   if (typeof value === 'string') {
+    // Only declared execution path fields may contain long path components.
+    // A goal containing a path must not exempt unrelated credentials in its text.
+    if (pathField && /^(?:\/(?:Users|home)\/|[A-Z]:[\\/]+Users[\\/]+)[^\r\n\0]*$/i.test(value)) return SECRET_PREFIX.test(value) || PRIVATE_URL_VALUE.test(value)
     try {
-      const parsed = JSON.parse(value) as { schemaVersion?: unknown; value?: unknown }
-      if (parsed && parsed.schemaVersion === JSON_SCHEMA_VERSION && Object.hasOwn(parsed, 'value')) return hasSensitiveContractValue(parsed.value)
+      const parsed: unknown = JSON.parse(value)
+      // Scan every key, including extra fields on a purported wrapper. Nested strings
+      // are still data; never discard everything except a convenient .value member.
+      if (parsed && typeof parsed === 'object') return hasSensitiveContractValue(parsed)
     } catch { /* ordinary string */ }
     return hasLongSecret(value)
   }
-  if (Array.isArray(value)) return value.some(hasSensitiveContractValue)
+  if (Array.isArray(value)) return value.some(item => hasSensitiveContractValue(item))
   if (value && typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>).some(([key, item]) => SECRET_KEY.test(key) || PRIVATE_URL_KEY.test(key) || USER_PATH_KEY.test(key) && hasSensitiveContractValue(item) || hasSensitiveContractValue(item))
+    return Object.entries(value as Record<string, unknown>).some(([key, item]) => SECRET_KEY.test(key) || hasLongSecret(key) || hasSensitiveContractValue(item, ['repo', 'scope', 'workdir'].includes(key)))
   }
   return false
 }

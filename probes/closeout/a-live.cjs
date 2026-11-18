@@ -5,6 +5,9 @@ const { createHash } = require('node:crypto')
 exports.inject = ['superagentRuntime', 'agentPresets', 'agents', 'clientModules', 'connection']
 exports.apply = function (ctx, config) {
   let disposed = false
+  let modelRequests = 0
+  // Observe every streaming request in this isolated Host and fail before its adapter.
+  ctx.on('llm/stream', function () { modelRequests++; throw Object.assign(new Error('zero-token gate refused model call'), { code: 'SA_ZERO_TOKEN_MODEL_REQUEST' }) })
   const task = (async () => {
     const result = { kind: 'closeout-a-live-zero-token', startedAt: new Date().toISOString(), modelsStarted: false, visual: 'pending-human' }
     try {
@@ -33,12 +36,13 @@ exports.apply = function (ctx, config) {
       result.settingsOrigins = { explicit: settings.find(row => row.key === 'maxWorkers')?.origin, environment: settings.find(row => row.key === 'panelPollMs')?.origin, default: settings.find(row => row.key === 'queueLimit')?.origin, derived: settings.find(row => row.key === 'dbPath')?.origin }
       await ctx.superagentRuntime.dispose()
       result.liveAgents = ctx.agents.list().length
-      result.state = result.presets.every(row => row.present && !row.broken) && result.resource.status === 200 && result.resource.includesCurrentFactory && result.resource.markers && result.resource.localizedPages && result.resource.slotRegistrations === 3 && Object.values(result.routes).every(row => row.status === 200 && row.response.ok) && result.routes.health.response.data?.runtime?.state === 'ready' && result.settingsOrigins.explicit === 'patch' && result.settingsOrigins.environment === 'environment' && result.settingsOrigins.default === 'default' && result.settingsOrigins.derived === 'derived' && result.liveAgents === 0 ? 'passed' : 'failed'
+      result.state = result.presets.every(row => row.present && !row.broken) && result.resource.status === 200 && result.resource.includesCurrentFactory && result.resource.markers && result.resource.localizedPages && result.resource.slotRegistrations === 3 && Object.values(result.routes).every(row => row.status === 200 && row.response.ok) && result.routes.health.response.data?.runtime?.state === 'ready' && result.settingsOrigins.explicit === 'patch' && result.settingsOrigins.environment === 'environment' && result.settingsOrigins.default === 'default' && result.settingsOrigins.derived === 'derived' && result.liveAgents === 0 && modelRequests === 0 ? 'passed' : 'failed'
     } catch (error) {
       result.state = 'failed'
       result.error = { code: String(error?.code || 'SA_CLOSEOUT_A_FAILED') }
       try { await ctx.superagentRuntime.dispose(); result.liveAgents = ctx.agents.list().length } catch { result.cleanupFailed = true }
     } finally {
+      result.modelRequests = modelRequests
       result.finishedAt = new Date().toISOString()
       writeFileSync(resolve(config.resultPath), JSON.stringify(result, null, 2) + '\n', { mode: 0o600 })
     }

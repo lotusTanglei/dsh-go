@@ -8,14 +8,14 @@ import { createRuntime } from '../src/runtime.js'
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-function harness(code: string, explicit = false) {
+function harness(code: string, explicit = false, snapshot?: unknown) {
   const dir = resolve(mkdtempSync(join(tmpdir(), 'superagent-main-recovery-')))
   cleanups.push(() => { if (!dir.startsWith(resolve(tmpdir()) + '/') || !dir.includes('superagent-main-recovery-')) throw new Error('unexpected fixture'); rmSync(dir, { recursive: true, force: true }) })
   const config = resolveConfig({ ...defaults, stateDir: dir, dbPath: '', lockPath: '', workRoot: '', sources: [], roleTools: defaults.roleTools, ...(explicit ? { mainSessionId: 'gone-router' } : {}) } as Config)
   const store = openStore({ dbPath: config.dbPath }); cleanups.push(() => store.close())
   store.repos.kv.insert({ k: 'mainSessionId', v: 'gone-router' })
   const agents = new Map<string, any>(), resumed: string[] = [], created: string[] = []
-  const runtime = createRuntime({ effect() {}, on() { return () => {} }, agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } }, agents: { get(id) { return agents.get(id) }, async resume(input) { resumed.push(input.resumeSessionId); throw new Error('unexpected resume') }, async create(input) { created.push(input.sessionId); const agent = { id: input.sessionId, ctx: {}, async inject() {}, async steer() {}, async followup() {} }; await input.setup({}); agents.set(agent.id, agent); return { agent, async dispose() { agents.delete(agent.id) } } } }, subagents: { async startActivation() { throw new Error('no model fixture') } }, sessionQuery: { async readSession() { throw Object.assign(new Error('synthetic storage problem'), { code }) } } }, store, config)
+  const runtime = createRuntime({ effect() {}, on() { return () => {} }, agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } }, agents: { get(id) { return agents.get(id) }, async resume(input) { resumed.push(input.resumeSessionId); throw new Error('unexpected resume') }, async create(input) { created.push(input.sessionId); const agent = { id: input.sessionId, ctx: {}, async inject() {}, async steer() {}, async followup() {} }; await input.setup({}); agents.set(agent.id, agent); return { agent, async dispose() { agents.delete(agent.id) } } } }, subagents: { async startActivation() { throw new Error('no model fixture') } }, sessionQuery: { async readSession() { if (code === 'RESOLVE') return snapshot; throw Object.assign(new Error('synthetic storage problem'), { code }) } } }, store, config)
   cleanups.push(() => runtime.dispose())
   return { runtime, store, agents, created, resumed }
 }
@@ -40,6 +40,14 @@ describe('closeout deleted-main-session recovery', () => {
     await expect(h.runtime.ready).rejects.toMatchObject({ code })
     expect(h.created).toEqual([]); expect(h.store.repos.kv.get('mainSessionId')?.v).toBe('gone-router')
     expect(await h.runtime.panelPorts.health()).toMatchObject({ ok: false, runtime: { state: 'failed' } })
+  })
+  it.each([null, undefined, false])('does not replace a Router on invalid resolved snapshot %s', async snapshot => {
+    for (const explicit of [false, true]) {
+      const h = harness('RESOLVE', explicit, snapshot)
+      await expect(h.runtime.ready).rejects.toThrow('snapshot is invalid')
+      expect(h.created).toEqual([]); expect(h.resumed).toEqual([])
+      expect(h.store.repos.kv.get('mainSessionId')?.v).toBe('gone-router')
+    }
   })
   it('does not silently replace an explicitly configured missing Router', async () => {
     const h = harness('SESSION_QUERY_SESSION_NOT_FOUND', true)

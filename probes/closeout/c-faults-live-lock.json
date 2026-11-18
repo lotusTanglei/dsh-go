@@ -1,13 +1,13 @@
 {
   "case": "live-lock",
-  "recordedAt": "2026-11-18T07:59:14.750Z",
+  "recordedAt": "2026-11-18T09:39:15.027Z",
   "mode": "offline-real-sqlite-fake-host",
   "firstAliveDuringSecondOpen": true,
   "lockOwnerMatched": true,
   "secondExitCode": 2,
   "response": {
     "opened": false,
-    "message": "Store is locked by pid 11688"
+    "message": "Store is locked by pid 63415"
   },
   "ownerUnchanged": true,
   "firstExit": {

@@ -1,6 +1,6 @@
 {
   "case": "readonly",
-  "recordedAt": "2026-11-18T07:59:14.472Z",
+  "recordedAt": "2026-11-18T09:39:14.704Z",
   "mode": "offline-real-sqlite-fake-host",
   "fileMode": 292,
   "directWriteFailure": {

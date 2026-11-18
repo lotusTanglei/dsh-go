@@ -288,15 +288,17 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       let handle: any
       if (candidate && ctx.agents.resume) {
         let persisted: any
+        let missing = false
         try {
           persisted = await ctx.sessionQuery.readSession(candidate)
         } catch (error) {
           const code = (error as { code?: unknown })?.code
           if (config.mainSessionId || code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
           // A stale persisted binding is recoverable only when the query proves exact absence.
-          persisted = undefined
+          missing = true
         }
-        if (persisted) {
+        if (!missing) {
+          if (!persisted || typeof persisted !== 'object' || !persisted.session || !Array.isArray(persisted.events)) throw new Error('Persisted Router snapshot is invalid')
           if (persisted.session?.agentPreset !== 'dsh-superagent-router') throw new Error('Persisted Router has a different preset')
           handle = await ctx.agents.resume({ resumeSessionId: candidate, setup })
         } else {

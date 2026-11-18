@@ -2,11 +2,11 @@
 
 在 DeepSeek Harness 上实现的一个 Super-agent bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
-**当前状态：主链路与真实 e2e 已通过，P3/P4/P5 按保留项标为部分交付。** 最新 typecheck／115 项测试／build 通过；真实 3 Trigger → 2 Ticket → 2 Worker → 2 有效汇报，两个任务 completed；审批落库/重启一致，liveAgents=0、无 owner lock。
+**当前状态：A/B 自动验收完成，整体仍是部分交付，不可宣称生产上线。** 最新 typecheck／**165 项测试**／build 通过；A四页真实数据/静态证据完成，B受控单Worker stall→nudge→cancel→escalate真实链完成，C离线并发/故障/注入证据完成。
 
-补充验证：Channel通知即时投影实现完成，真实持久事件只一条且不唤醒模型；只读Watchdog真实抽样成功并释放。尚未完成：实际浏览器中的通知显示、侧栏点击与主题视觉，以及完整生产tick→Worker steer实证。用户允许视觉待人工继续 e2e，但不把它标为通过。desktop 未改。
+仍未完成：实际浏览器视觉、10-ticket真实成本曲线，以及 Ticket `allowWrite/denyWrite` 的执行级文件/命令隔离。C1-2已实测 write/bash 越界工具体可达，属于 **RELEASE BLOCKER**；不要把 prompt标记、workspace sandbox 或局部角色guard冒称为逐文件安全边界。desktop 未改。
 
-证据与下一步见 [最终验收记录](docs/FINAL-VERIFY.md)、[P3](docs/P3-report.md)／[P4](docs/P4-report.md)／[P5](docs/P5-report.md) 报告。旧 P2/A3 计数与注入证明的问题已在 [诊断更正](docs/P2-DIAGNOSIS.md) 披露。
+证据与下一步见 [最终验收2](docs/FINAL-VERIFY-2.md)、[收口A](docs/CLOSEOUT-A.md)／[B](docs/CLOSEOUT-B.md)／[C](docs/CLOSEOUT-C.md)、[已知限制](docs/KNOWN-LIMITS.md)、[发布](docs/RELEASE.md)与[运维](docs/OPERATIONS.md)。旧证据保留于[最终验收记录](docs/FINAL-VERIFY.md)、[P3](docs/P3-report.md)／[P4](docs/P4-report.md)／[P5](docs/P5-report.md) 报告。旧 P2/A3 计数与注入证明的问题已在 [诊断更正](docs/P2-DIAGNOSIS.md) 披露。
 
 ## 读什么
 

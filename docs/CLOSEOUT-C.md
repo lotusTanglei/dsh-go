@@ -21,7 +21,7 @@
 
 [c-concurrency-50.json](../probes/closeout/c-concurrency-50.json)、[overflow](../probes/closeout/c-concurrency-overflow.json)、[capacity](../probes/closeout/c-concurrency-capacity.json)。
 
-- Promise.all 50 + replay 50：50 accepted / 50 duplicate，50 unique Trigger/Ticket，50 consumed；89.97ms；RSS增量4,128,768 bytes，为逐操作采样峰值，不是连续OS峰值。
+- Promise.all 50 + replay 50：50 accepted / 50 duplicate，50 unique Trigger/Ticket，50 consumed；续做门禁本次63.57ms；RSS增量4,800,512 bytes，为逐操作采样峰值，不是连续OS峰值。
 - 225超队列：queueLimit保持200，200 accepted、25 rejected/queue-full；225条Trigger/disposition均持久，未放宽阈值。
 - fake Worker容量：maxWorkers=3，5请求即时启动3、排队2，全部完成，liveAgents=0，realModelCalls=0。
 - 这些是SQLite/FakeSource/fake activation的产品路径证据，不是50个真实模型并发成本证明；paused/subscription绕队列上限的设计边界仍需后续单独决策。
@@ -39,11 +39,11 @@
 
 ## C4 成本与预算
 
-现有Watchdog预算测试与 B1 真实结果：预算顺序 `nudge → cancel → escalate` 有离线证据；B1 stall真实1次provider请求、4938 token。没有再做10次真实Ticket模型调用，以免叠加成本和触碰提示词真实请求上限；10-ticket曲线未验，明确标未验。
+现有Watchdog预算测试与 B1 真实结果：预算顺序 `nudge → cancel → escalate` 有离线证据；B1 stall真实1次provider请求、4938 token。10-Ticket成本曲线按提示词§9可裁剪项本轮省略，明确标未验；原方案允许fake Worker+真实Router一轮，不要求10次真实请求。没有用“上限”伪装成必须花费的额度，也不将B1单次用量冒充10单曲线。
 
 ## C5 安全扫描
 
-四sink合成扫描与9项安全测试通过：日志（固定插件加载日志+合成redactor诊断）、audit.detail、面板JSON、trigger.raw中指定秘密前缀/私有URL/三类用户路径无泄漏。范围不等于所有Host/OS日志；当前路径正则已覆盖带空格的指定Unix/Windows用户路径，任意编码/OS仍未声称覆盖。
+四sink合成扫描与11项安全测试通过：日志（固定插件加载日志+合成redactor诊断）、audit.detail、面板JSON、trigger.raw中指定秘密前缀/私有URL/三类用户路径无泄漏。范围不等于所有Host/OS日志；当前路径正则已覆盖带空格的指定Unix/Windows用户路径，任意编码/OS仍未声称覆盖。
 
 ## 发布判定
 

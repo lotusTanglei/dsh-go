@@ -1,0 +1,11 @@
+# Final zero-token gate; CLI-only, isolated, no desktop mutation.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/closeout-d
+    maxWorkers: 1
+    panelPollMs: !!js Number(process.env.SA_CLOSEOUT_POLL_MS || 5000)
+- insert:
+    - id: superagent-closeout-d-zero
+      name: dsh-superagent/closeout-a-probe
+      config:
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/closeout/d-final-zero-result.json

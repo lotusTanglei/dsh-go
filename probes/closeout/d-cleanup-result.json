@@ -1,0 +1,90 @@
+{
+  "kind": "closeout-owned-fixture-cleanup",
+  "at": "2026-11-18T09:41:08.225Z",
+  "state": "passed",
+  "checks": [
+    {
+      "fixture": "closeout-a",
+      "activeAssignments": 0,
+      "pendingTriggers": 0,
+      "evaluatingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbound": 0,
+      "ownerLockPresent": false,
+      "recoverySentinelPresent": true
+    },
+    {
+      "fixture": "closeout-b",
+      "activeAssignments": 0,
+      "pendingTriggers": 0,
+      "evaluatingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbound": 0,
+      "ownerLockPresent": false,
+      "recoverySentinelPresent": true
+    },
+    {
+      "fixture": "closeout-b2",
+      "activeAssignments": 0,
+      "pendingTriggers": 0,
+      "evaluatingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbound": 0,
+      "ownerLockPresent": false,
+      "recoverySentinelPresent": true
+    },
+    {
+      "fixture": "closeout-d",
+      "activeAssignments": 0,
+      "pendingTriggers": 0,
+      "evaluatingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbound": 0,
+      "ownerLockPresent": false,
+      "recoverySentinelPresent": true
+    }
+  ],
+  "listeners": [
+    {
+      "port": 55342,
+      "listening": false
+    },
+    {
+      "port": 57821,
+      "listening": false
+    }
+  ],
+  "snapshots": [
+    {
+      "receipt": "a-live-result.json",
+      "state": "passed",
+      "liveAgents": 0
+    },
+    {
+      "receipt": "b-live-result.json",
+      "state": "failed",
+      "liveAgents": 0
+    },
+    {
+      "receipt": "b2-live-result.json",
+      "state": "passed",
+      "liveAgents": 0
+    },
+    {
+      "receipt": "d-zero-result.json",
+      "state": "passed",
+      "liveAgents": 0
+    },
+    {
+      "receipt": "d-final-zero-result.json",
+      "state": "passed",
+      "liveAgents": 0
+    },
+    {
+      "receipt": "d-resume-zero-result.json",
+      "state": "passed",
+      "liveAgents": 0
+    }
+  ],
+  "retained": "History, backups and recovery sentinels retained; no user data deleted. No claim about unrelated desktop or historical fixtures."
+}

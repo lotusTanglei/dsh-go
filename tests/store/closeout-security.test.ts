@@ -75,6 +75,10 @@ describe('CLOSE-OUT C privacy sinks and execution-contract separation', () => {
     expect(hasSensitiveContractData(JSON.stringify({ schemaVersion: 1, value: { scope: { repo: legalPath } } }))).toBe(false)
     const store = makeStore()
     expect(() => ticket(store, 'wrapped-secret', JSON.stringify({ schemaVersion: 1, value: { token: 'short-secret-not-prefixed' } }), {})).toThrow('Sensitive value')
+    expect(hasSensitiveContractData({ 'sk-SYNTHETICKEY123': 'ordinary' })).toBe(true)
+    expect(hasSensitiveContractData({ goal: JSON.stringify({ schemaVersion: 1, value: 'safe', token: 'synthetic-short-secret' }) })).toBe(true)
+    expect(hasSensitiveContractData({ goal: '/Users/fixture/repo and ' + 'aB7x'.repeat(10) })).toBe(true)
+    expect(() => ticket(store, 'nested-wrapper', { goal: JSON.stringify({ schemaVersion: 1, value: 'safe', token: 'synthetic-short-secret' }) }, {})).toThrow('Sensitive value')
   })
 
   it.each(paths)('roundtrips legal brief/mandate paths exactly for %s without weakening secret rejection', path => {

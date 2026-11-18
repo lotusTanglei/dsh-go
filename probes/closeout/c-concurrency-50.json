@@ -1,6 +1,6 @@
 {
   "case": "50",
-  "recordedAt": "2026-11-18T07:59:16.668Z",
+  "recordedAt": "2026-11-18T09:39:16.462Z",
   "mode": "offline-real-product-sqlite-explicit-test-doubles",
   "submittedUnique": 50,
   "replayed": 50,
@@ -13,10 +13,10 @@
   "uniqueTicketCount": 50,
   "consumedCount": 50,
   "maxPending": 50,
-  "durationMs": 56.73112500000002,
-  "rssStart": 85590016,
-  "rssPeak": 89899008,
-  "rssDeltaBytes": 4308992,
+  "durationMs": 63.57237500000002,
+  "rssStart": 85360640,
+  "rssPeak": 90161152,
+  "rssDeltaBytes": 4800512,
   "peakScope": "sampled after each ingest and settlement, not continuous OS peak",
   "intake": [
     {
