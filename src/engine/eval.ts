@@ -16,6 +16,7 @@ export interface EvalStartOptions {
   readonly now?: () => number
   readonly timeoutMs?: number
   readonly evalId?: EvalId
+  readonly maxRequeues?: number
 }
 
 export interface EvalDecisionInput {
@@ -119,14 +120,16 @@ export function getEval(store: Store, id: EvalId): Eval | undefined {
  * subscription + trigger dispositions in one SQLite transaction.
  */
 export function settleEval(store: Store, evaluationId: EvalId, input: EvalDecisionInput, policy: Pick<Policy, 'version'>, options: { readonly now?: () => number } = {}): EvalResult {
-  const at = input.at ?? nowOf(options.now)
+  const checkedAt = nowOf(options.now)
+  const at = input.at ?? checkedAt
   return store.transaction(() => {
     const row = store.repos.eval.get(evaluationId) as Record<string, unknown> | undefined
     if (!row) throw new Error(`eval: unknown evaluation ${String(evaluationId)}`)
     const evaluation = mapEval(row)
     if (evaluation.state !== 'running') throw new Error(`eval: cannot decide ${evaluation.state}`)
     if (evaluation.policyVersion !== policy.version) throw new Error('eval: stale policy version')
-    if (at >= evaluation.deadline) throw new Error('eval: deadline has elapsed')
+    if (checkedAt >= evaluation.deadline || at >= evaluation.deadline) throw new Error('eval: deadline has elapsed')
+    if (!Number.isSafeInteger(at) || at < evaluation.startedAt) throw new Error('eval: decision time precedes evaluation')
     if (input.kind === 'accept' && !input.ticket) throw new Error('eval: accept requires ticket payload')
     const decision: Decision = decideEval(evaluation, {
       id: input.id ?? makeDecisionId(`decision:${randomUUID()}`), kind: input.kind, reason: input.reason, strength: input.strength, at,
@@ -164,6 +167,7 @@ export async function evaluateThread(store: Store, threadKey: ThreadKey, policy:
     let evaluation: Eval | undefined
     for (;;) {
       const thread = store.repos.thread.get(threadKey) as Record<string, unknown> | undefined
+      if (Boolean(thread?.paused) || policy.paused || globalPaused(store)) return undefined
       const existing = thread?.evaluating ? store.repos.eval.get(thread.evaluating) as Record<string, unknown> | undefined : undefined
       evaluation = existing?.state === 'running' ? mapEval(existing) : startEval(store, threadKey, policy, options)
       if (!evaluation || evaluation.policyVersion !== policy.version) return undefined
@@ -184,7 +188,7 @@ export async function evaluateThread(store: Store, threadKey: ThreadKey, policy:
         return settled
       } catch (error) {
         if (error instanceof Error && error.message === 'eval: evaluation timed out') {
-          const retried = expireAndRequeue(store, evaluation.id, { evalTimeoutMs: policy.evalTimeoutMs, maxRequeues: 2 }, { now: () => evaluation!.deadline })
+          const retried = expireAndRequeue(store, evaluation.id, { evalTimeoutMs: policy.evalTimeoutMs, maxRequeues: options.maxRequeues ?? 2 }, { now: () => evaluation!.deadline })
           if (retried?.state === 'running') continue
           return undefined
         }

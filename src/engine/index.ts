@@ -32,7 +32,7 @@ export function createEngine(store: Store, config: EngineConfig, ports: EnginePo
     },
     async evaluate(threadKey: ThreadKey): Promise<EvalResult | undefined> {
       if (!ports.evaluate) throw new Error('engine: evaluate port is not configured')
-      return evaluateThread(store, threadKey, config.policy, ports.evaluate, { now })
+      return evaluateThread(store, threadKey, config.policy, ports.evaluate, { now, maxRequeues: config.maxEvalRequeues })
     },
     enqueue(message: OutboxMessage) {
       return enqueueOutbox(store, message, { now })

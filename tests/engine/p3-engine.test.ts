@@ -12,6 +12,7 @@ import { setPaused, isPaused, pendingTriggers } from '../../src/engine/pause.js'
 import { reconcile } from '../../src/engine/recovery.js'
 import { ticketId, assignmentId } from '../../src/domain/ids.js'
 import { evaluateThread } from '../../src/engine/eval.js'
+import { FakeSource } from '../../src/sources/fake.js'
 
 const dirs: string[] = []
 function makeStore(): Store {
@@ -37,6 +38,41 @@ describe('P3 engine persistence', () => {
     expect(pendingTriggers(store)).toHaveLength(1)
     expect(store.db.prepare('SELECT state FROM thread_trigger').get()).toEqual({ state: 'pending' })
     expect(store.db.prepare('SELECT delivered_to FROM trigger_disposition').get()).toEqual({ delivered_to: null })
+    store.close()
+  })
+
+  it('accepts a new fake Source without engine changes and three duplicates produce one Trigger and one Ticket', async () => {
+    const store = makeStore(); const p = policy()
+    const fake = new FakeSource(sourceId('session:test'), item => { ingestTrigger(store, item, { policy: p, now: () => 1 }) })
+    await fake.start()
+    await fake.emitMany([trigger('fake-dedup'), trigger('fake-dedup'), trigger('fake-dedup')])
+    const evaluation = startEval(store, threadKey('session:test'), p, { now: () => 2 })!
+    settleEval(store, evaluation.id, { kind: 'accept', reason: 'explicit task', strength: 'explicit', ticket: { title: 'Fake task', brief, mandate: { strength: 'explicit', policyVersion: p.version, grantedBy: { id: 'human', source: sourceId('session:test'), bot: false }, at: 2, scope: 'repo', via: 'addressed', rules: [] }, workdir: '/tmp/fake-task' } }, p, { now: () => 3 })
+    expect(store.repos.trigger.all()).toHaveLength(1)
+    expect(store.repos.ticket.all()).toHaveLength(1)
+    expect(store.repos.decision.all()).toHaveLength(1)
+    await fake.stop(); store.close()
+  })
+
+  it('does not let a backdated decision bypass the Host clock or a stale policy', () => {
+    const store = makeStore(); const p = policy()
+    ingestTrigger(store, trigger('deadline'), { policy: p, now: () => 1 })
+    const evaluation = startEval(store, threadKey('session:test'), p, { now: () => 2 })!
+    expect(() => settleEval(store, evaluation.id, { kind: 'ignore', reason: 'late', strength: 'inferred', at: 3 }, p, { now: () => 13 })).toThrow('deadline')
+    expect(() => settleEval(store, evaluation.id, { kind: 'ignore', reason: 'old', strength: 'inferred', at: 3 }, { version: 'different' }, { now: () => 3 })).toThrow('stale policy')
+    expect(store.repos.decision.all()).toHaveLength(0)
+    store.close()
+  })
+
+  it('pause retains ordered pending input and resume permits one evaluation', () => {
+    const store = makeStore(); const p = policy()
+    setPaused(store, true, { now: () => 1 })
+    ingestTrigger(store, trigger('pause-1'), { policy: p, now: () => 1 })
+    ingestTrigger(store, trigger('pause-2'), { policy: p, now: () => 1 })
+    expect(startEval(store, threadKey('session:test'), p, { now: () => 2 })).toBeUndefined()
+    expect(isPaused(store)).toBe(true)
+    setPaused(store, false, { now: () => 3 })
+    expect(startEval(store, threadKey('session:test'), p, { now: () => 3 })?.triggerIds).toEqual(['session:test:pause-1', 'session:test:pause-2'])
     store.close()
   })
 
@@ -70,7 +106,7 @@ describe('P3 engine persistence', () => {
     const store = makeStore(); const p = policy(); ingestTrigger(store, trigger('con-1'), { policy: p, now: () => 1 })
     let calls = 0
     const evaluator = async () => { calls++; await new Promise((resolve) => setTimeout(resolve, 2)); return { kind: 'ignore' as const, reason: 'conversation', strength: 'inferred' as const, at: 3 } }
-    const results = await Promise.all([evaluateThread(store, threadKey('session:test'), p, evaluator), evaluateThread(store, threadKey('session:test'), p, evaluator), evaluateThread(store, threadKey('session:test'), p, evaluator)])
+    const results = await Promise.all([evaluateThread(store, threadKey('session:test'), p, evaluator, { now: () => 2 }), evaluateThread(store, threadKey('session:test'), p, evaluator, { now: () => 2 }), evaluateThread(store, threadKey('session:test'), p, evaluator, { now: () => 2 })])
     expect(calls).toBe(1)
     expect(results.filter(Boolean)).toHaveLength(1)
     expect(store.db.prepare('SELECT state FROM eval').get()).toEqual({ state: 'decided' })
@@ -88,7 +124,7 @@ describe('P3 engine persistence', () => {
       }
       return { kind: 'ignore' as const, reason: `eval-${evaluation.triggerIds.join(',')}`, strength: 'inferred' as const, at: 4 }
     }
-    const result = await evaluateThread(store, threadKey('session:test'), p, evaluator)
+    const result = await evaluateThread(store, threadKey('session:test'), p, evaluator, { now: () => 2 })
     expect(result?.decision.triggerIds).toHaveLength(2)
     expect(calls).toBe(2)
     expect(store.db.prepare("SELECT COUNT(*) AS n FROM thread_trigger WHERE state = 'consumed'").get()).toEqual({ n: 3 })

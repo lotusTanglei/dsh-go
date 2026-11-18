@@ -16,6 +16,8 @@ export class SessionSource implements Source {
   private unsubscribe?: () => void
   private lastAt?: number
   private error?: string
+  private readonly pending = new Set<Promise<void>>()
+  private stopping = false
   constructor(readonly sessionId: string, private readonly ports: SessionSourcePorts, private readonly sink: TriggerSink) {
     if (!sessionId.trim()) throw new Error('session source: session id required')
     this.id = sourceId(`session:${sessionId}`)
@@ -33,17 +35,22 @@ export class SessionSource implements Source {
   }
   async start(): Promise<void> {
     if (this.unsubscribe) return
+    this.stopping = false
     this.unsubscribe = this.ports.on('session/event', (session, event) => {
+      if (this.stopping) return
       const input = { session, event }
-      void this.verify(input).then(async accepted => {
-        if (!accepted) return
+      const work = this.verify(input).then(async accepted => {
+        if (!accepted || this.stopping) return
         const trigger = await this.normalize(input)
+        if (this.stopping) return
         await this.sink(trigger)
         this.lastAt = trigger.at; this.error = undefined
       }).catch(error => { this.error = 'Source event failed'; this.ports.onError?.(error) })
+      this.pending.add(work)
+      void work.finally(() => this.pending.delete(work))
     })
   }
-  async stop(): Promise<void> { this.unsubscribe?.(); this.unsubscribe = undefined }
+  async stop(): Promise<void> { this.stopping = true; this.unsubscribe?.(); this.unsubscribe = undefined; await Promise.allSettled([...this.pending]) }
   async health() { return { ok: !this.error, lastAt: this.lastAt, detail: this.error } }
   async readThread(key: Parameters<Source['readThread']>[0]): Promise<ThreadContext> {
     if (String(key) !== String(this.id)) throw new Error('session source: foreign thread')
