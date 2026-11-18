@@ -1,0 +1,32 @@
+[superagent] loaded
+[superagent] runtime initialization failed
+dsh: startup failed: 1 required plugin did not activate
+
+Failed plugins (1):
+  modules (required)
+    Package: @deepseek-ai/dsh-client-modules
+    AggregateError: client-modules: 1 client package failed to compose:
+      other failures:
+        - client-modules: package dsh-superagent resolves from multiple active Loader sources: "dsh-superagent" from file:///Users/dundundebaba/.dsh/profiles/superagent-dev/, "file:///Users/dundundebaba/sync/dsh-s-p/probes/kanban/s1-host.cjs" from file:///Users/dundundebaba/.dsh/profiles/superagent-dev/; remove one entry
+        at new ClientModuleRegistry (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-client-modules/lib/index.js:619:34)
+        at Fiber.execute (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:362:24)
+        at file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:436:34
+        at file:///Users/dundundebaba/.dsh/profiles/superagent-dev/#modules
+        at file:///Users/dundundebaba/.dsh/profiles/superagent-dev/#include
+    Error: client-modules: package dsh-superagent resolves from multiple active Loader sources: "dsh-superagent" from file:///Users/dundundebaba/.dsh/profiles/superagent-dev/, "file:///Users/dundundebaba/sync/dsh-s-p/probes/kanban/s1-host.cjs" from file:///Users/dundundebaba/.dsh/profiles/superagent-dev/; remove one entry
+        at ClientModuleRegistry.reconcilePackage (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-client-modules/lib/index.js:951:10)
+        at ClientModuleRegistry.processOne (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-client-modules/lib/index.js:927:13)
+        at ClientModuleRegistry.flush (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-client-modules/lib/index.js:989:14)
+        at new ClientModuleRegistry (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-client-modules/lib/index.js:618:8)
+        at Fiber.execute (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:362:24)
+        at file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:436:34
+        at composeError (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:205:18)
+        at Fiber._execute (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:431:10)
+        at Fiber._reload (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/cordis/lib/index.js:677:52)
+
+Plugins waiting for services (2):
+  Plugin                     Missing services
+  client-hmr                 clientModules
+  kanban-s1-20261118-203800  clientModules
+
+Full diagnostics: /Users/dundundebaba/.dsh/logs/startup-2026-11-18T12-40-58.426Z-2f03814f-e964-4370-bee2-055afde8303b.log

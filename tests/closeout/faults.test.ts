@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { writeEvidence } from '../evidence.js'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -19,8 +20,7 @@ function temporary() {
   return dir
 }
 function evidence(name: string, value: Record<string, unknown>) {
-  mkdirSync('probes/closeout', { recursive: true })
-  writeFileSync(`probes/closeout/c-faults-${name}.json`, JSON.stringify({ case: name, recordedAt: new Date().toISOString(), mode: 'offline-real-sqlite-fake-host', ...value }, null, 2) + '\n')
+  writeEvidence(`c-faults-${name}`, { case: name, recordedAt: new Date().toISOString(), mode: 'offline-real-sqlite-fake-host', ...value })
 }
 function exit(child: ChildProcess): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve({ code: child.exitCode, signal: child.signalCode })

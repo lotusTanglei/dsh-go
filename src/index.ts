@@ -12,6 +12,7 @@ export interface PluginContext {
   /** Loader raw values still include !!js markers before interpolation/defaults. */
   readonly fiber?: { readonly entry?: { readonly options: { readonly config?: unknown } } }
   provide?(name: string, value: unknown): unknown
+  get?: RuntimeContext['get']
   logger?: { info(message: string): void }
   tools?: { guard?(callback: (execution: import('./tools/runtime.js').ToolExecutionContext) => unknown): unknown }
   agentPresets?: { composedPreset(ctx: unknown): string | undefined }
@@ -19,10 +20,13 @@ export interface PluginContext {
   agents?: RuntimeContext['agents']
   subagents?: RuntimeContext['subagents']
   sessionQuery?: RuntimeContext['sessionQuery']
+  sessions?: RuntimeContext['sessions']
+  agentDefaultModel?: RuntimeContext['agentDefaultModel']
+  llm?: RuntimeContext['llm']
   on?: RuntimeContext['on']
 }
 
-export const inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagents', 'sessionQuery']
+export const inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagents', 'sessionQuery', 'sessions', 'llm']
 
 export function apply(ctx: PluginContext, input: Config): void {
   const config = resolveConfig(input)
@@ -50,6 +54,7 @@ export function apply(ctx: PluginContext, input: Config): void {
     })
     roleGuard = ctx.tools && ctx.agentPresets ? installRoleGuard({ tools: ctx.tools, agentPresets: ctx.agentPresets }, {
       roleTools: config.roleTools,
+      executionBlocked: true,
       routerPreset: 'dsh-superagent-router',
       workerPreset: 'dsh-superagent-worker',
       watchdogPreset: 'dsh-superagent-watchdog',

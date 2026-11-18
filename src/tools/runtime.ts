@@ -10,6 +10,8 @@ export interface RuntimeRoleConfig {
   readonly watchdogPreset?: string
   /** Production bindings are resolved freshly on every call; never supplied by tool args. */
   readonly resolveWorker?: (agent: object) => WorkerGuardSnapshot | undefined
+  /** Release gate applies to recovery as well as fresh assignment starts. */
+  readonly executionBlocked?: boolean
 }
 
 export interface ToolExecutionContext {
@@ -43,6 +45,7 @@ export function installRoleGuard(context: ToolGuardContext, config: RuntimeRoleC
   const bindings = new WeakMap<object, WorkerGuardSnapshot>()
   const guardDisposer = context.tools.guard(execution => {
     const composedPreset = execution.agent?.ctx ? context.agentPresets!.composedPreset(execution.agent.ctx) : undefined
+    if (config.executionBlocked && composedPreset === (config.workerPreset ?? 'dsh-superagent-worker')) return { reason: 'Worker execution is blocked until L1 and L2 boundaries are verified.', info: { name: 'SuperagentToolGuardError', code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' } }
     const snapshot = execution.agent ? (config.resolveWorker ? config.resolveWorker(execution.agent) : bindings.get(execution.agent)) : undefined
     const input: ToolGuardInput = {
       composedPreset,

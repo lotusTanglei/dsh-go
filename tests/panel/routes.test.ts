@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { openStore, type Store } from '../../src/store/index.js'
 import { installPanelRoutes, type PanelContext } from '../../src/panel/routes.js'
+import { approvalFingerprint } from '../../src/panel/board.js'
 
 const dirs: string[] = []
 const stores: Store[] = []
@@ -23,9 +24,9 @@ async function post(routes: Map<string, (request: Request) => Promise<Response>>
 }
 
 describe('panel host routes', () => {
-  it('registers all nine exact POST buffered routes and uses a stable envelope', async () => {
+  it('registers all fifteen exact POST buffered routes and uses a stable envelope', async () => {
     const store = makeStore(); const { routes } = setup(store)
-    expect([...routes.keys()].sort()).toEqual(['/api/superagent/approval', '/api/superagent/approvals', '/api/superagent/health', '/api/superagent/overview', '/api/superagent/settings', '/api/superagent/threads', '/api/superagent/ticket', '/api/superagent/ticket-action', '/api/superagent/tickets'])
+    expect([...routes.keys()].sort()).toEqual(['admission', 'approval', 'approvals', 'board', 'command', 'command-status', 'conversation', 'health', 'overview', 'settings', 'threads', 'ticket', 'ticket-action', 'tickets', 'workspace'].map(name => `/api/superagent/${name}`))
     const result = await post(routes, '/settings', {})
     expect(result.status).toBe(200); expect(result.body).toEqual({ ok: true, data: { effective: expect.arrayContaining([expect.objectContaining({ key: 'panelPageSize', value: 20, origin: expect.any(String) })]) } })
   })
@@ -43,22 +44,22 @@ describe('panel host routes', () => {
   })
 
   it('performs approval transition with reason, CAS and audit, then rejects replay', async () => {
-    const store = makeStore(); store.repos.approval.insert({ id: 'approval-1', ticket_id: null, kind: 'merge-pr', summary: 'Merge change', payload_json: { token: 'secret' }, requested_by: 'agent', created_at: Date.now(), state: 'pending' })
+    const store = makeStore(); store.repos.approval.insert({ id: 'approval-1', ticket_id: null, kind: 'merge-pr', summary: 'Merge change', payload_json: { repository: 'fixture', ref: 'feature', base: 'main', commit: 'abcdef1' }, requested_by: 'agent', created_at: Date.now(), state: 'pending' })
     const { routes } = setup(store)
-    const first = await post(routes, '/approval', { id: 'approval-1', decision: 'approve', reason: 'Reviewed by owner', actor: 'owner' })
+    const first = await post(routes, '/approval', { id: 'approval-1', fingerprint: approvalFingerprint(store.repos.approval.get('approval-1')!), decision: 'approve', reason: 'Reviewed by owner', actor: 'owner' })
     expect(first.status).toBe(200); expect((first.body.data as Record<string, unknown>).state).toBe('approved')
     expect(store.repos.approval.get('approval-1')?.state).toBe('approved')
     expect(store.repos.audit.all()).toHaveLength(1)
-    const replay = await post(routes, '/approval', { id: 'approval-1', decision: 'deny', reason: 'replay', actor: 'owner' })
+    const replay = await post(routes, '/approval', { id: 'approval-1', fingerprint: approvalFingerprint(store.repos.approval.get('approval-1')!), decision: 'deny', reason: 'replay', actor: 'owner' })
     expect(replay.status).toBe(409)
   })
 
   it('advances a linked waiting-human ticket atomically with approval', async () => {
     const store = makeStore()
     store.repos.ticket.insert({ id: 'ticket-linked', thread_key: 'thread-linked', decision_id: 'decision-1', title: 'Waiting', state: 'waiting_human', mandate_json: {}, brief_json: {}, workdir: '/private/path', created_at: 1, updated_at: 1, attention_json: { id: 'approval-1', question: 'Approve?' } })
-    store.repos.approval.insert({ id: 'approval-linked', ticket_id: 'ticket-linked', kind: 'permission', summary: 'Continue', payload_json: { secret: 'hidden' }, requested_by: 'agent', created_at: Date.now(), state: 'pending' })
+    store.repos.approval.insert({ id: 'approval-linked', ticket_id: 'ticket-linked', kind: 'permission', summary: 'Continue', payload_json: { scope: 'ticket', operation: 'run-tests', impact: 'synthetic only' }, requested_by: 'agent', created_at: Date.now(), state: 'pending' })
     const { routes } = setup(store)
-    const result = await post(routes, '/approval', { id: 'approval-linked', decision: 'approve', reason: 'Owner approved' })
+    const result = await post(routes, '/approval', { id: 'approval-linked', fingerprint: approvalFingerprint(store.repos.approval.get('approval-linked')!), decision: 'approve', reason: 'Owner approved' })
     expect(result.status).toBe(200)
     expect(store.repos.ticket.get('ticket-linked')?.state).toBe('open')
     expect(store.repos.audit.all()).toHaveLength(2)
@@ -69,7 +70,7 @@ describe('panel host routes', () => {
     const store = makeStore(); store.repos.approval.insert({ id: 'approval-old', ticket_id: null, kind: 'payment', summary: 'Old', payload_json: {}, requested_by: 'agent', created_at: 1, state: 'pending' })
     store.repos.ticket.insert({ id: 'ticket-1', thread_key: 'thread-1', decision_id: 'decision-1', title: 'Ticket', state: 'open', mandate_json: {}, brief_json: {}, workdir: '/private/path', created_at: 1, updated_at: 1 })
     const { routes } = setup(store, { approvalTimeoutMs: 5 })
-    const expired = await post(routes, '/approval', { id: 'approval-old', decision: 'approve', reason: 'too late' })
+    const expired = await post(routes, '/approval', { id: 'approval-old', fingerprint: approvalFingerprint(store.repos.approval.get('approval-old')!), decision: 'approve', reason: 'too late' })
     expect(expired.status).toBe(409); expect((expired.body.error as Record<string, unknown>).code).toBe('expired'); expect(store.repos.approval.get('approval-old')?.state).toBe('expired')
     const unavailable = await post(routes, '/ticket-action', { id: 'ticket-1', action: 'stop', reason: 'stop now' })
     expect(unavailable.status).toBe(503)
@@ -91,11 +92,11 @@ describe('panel host routes', () => {
   it('keeps a ticket waiting until all approvals are allowed and ignores spoofed audit actors', async () => {
     const store = makeStore()
     store.repos.ticket.insert({ id: 'multi-ticket', thread_key: 'multi-thread', decision_id: 'decision', title: 'Wait', state: 'waiting_human', mandate_json: {}, brief_json: {}, workdir: '/tmp/test', created_at: 1, updated_at: 1 })
-    for (const id of ['first', 'second']) store.repos.approval.insert({ id, ticket_id: 'multi-ticket', kind: 'permission', summary: 'Check', payload_json: {}, requested_by: 'worker', created_at: Date.now(), state: 'pending' })
+    for (const id of ['first', 'second']) store.repos.approval.insert({ id, ticket_id: 'multi-ticket', kind: 'permission', summary: 'Check', payload_json: { scope: 'ticket', operation: 'run-tests', impact: 'synthetic only' }, requested_by: 'worker', created_at: Date.now(), state: 'pending' })
     const { routes } = setup(store)
-    expect((await post(routes, '/approval', { id: 'first', decision: 'approve', reason: 'reviewed', actor: 'impersonated-admin' })).status).toBe(200)
+    expect((await post(routes, '/approval', { id: 'first', fingerprint: approvalFingerprint(store.repos.approval.get('first')!), decision: 'approve', reason: 'reviewed', actor: 'impersonated-admin' })).status).toBe(200)
     expect(store.repos.ticket.get('multi-ticket')?.state).toBe('waiting_human')
-    expect((await post(routes, '/approval', { id: 'second', decision: 'deny', reason: 'not safe' })).status).toBe(200)
+    expect((await post(routes, '/approval', { id: 'second', fingerprint: approvalFingerprint(store.repos.approval.get('second')!), decision: 'deny', reason: 'not safe' })).status).toBe(200)
     expect(store.repos.ticket.get('multi-ticket')?.state).toBe('waiting_human')
     expect(store.repos.audit.all().every(row => row.actor === 'panel-owner')).toBe(true)
   })
@@ -104,7 +105,7 @@ describe('panel host routes', () => {
     const dir = mkdtempSync(join(tmpdir(), 'panel-restart-')); dirs.push(dir)
     let store = openStore({ dbPath: join(dir, 'state.sqlite') }); stores.push(store)
     store.repos.approval.insert({ id: 'approval-restart', ticket_id: null, kind: 'permission', summary: 'Persist', payload_json: {}, requested_by: 'agent', created_at: Date.now(), state: 'pending' })
-    const first = setup(store); await post(first.routes, '/approval', { id: 'approval-restart', decision: 'deny', reason: 'No', actor: 'owner' }); store.close(); stores.splice(stores.indexOf(store), 1)
+    const first = setup(store); await post(first.routes, '/approval', { id: 'approval-restart', fingerprint: approvalFingerprint(store.repos.approval.get('approval-restart')!), decision: 'deny', reason: 'No', actor: 'owner' }); store.close(); stores.splice(stores.indexOf(store), 1)
     store = openStore({ dbPath: join(dir, 'state.sqlite') }); stores.push(store)
     const second = setup(store); const listed = await post(second.routes, '/approvals', {})
     expect((listed.body.data as { items: Array<Record<string, unknown>> }).items[0]?.state).toBe('denied')

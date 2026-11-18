@@ -52,6 +52,7 @@ function makeHarness(options: HarnessOptions = {}) {
     followup: async (_message: unknown) => undefined,
   })
   const ctx: any = {
+    sessions: { async flush() { return true } }, // Explicit fake persistence listener.
     effect(factory: () => () => void | Promise<void>) { effects.push(factory()) },
     on(name: string, listener: (...args: any[]) => unknown) { listeners.set(name, listener); return () => listeners.delete(name) },
     agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } },
@@ -80,7 +81,7 @@ function makeHarness(options: HarnessOptions = {}) {
     },
     sessionQuery: { async readSession() { return { events: [], session: { agentPreset: 'dsh-superagent-router' } } } },
   }
-  const runtime = createRuntime(ctx, store, config)
+  const runtime = createRuntime(ctx, store, config, undefined, { spawner: ctx.subagents, legacyInput: true })
   return { ctx, config, store, runtime, agents, listeners, effects, main: () => [...agents.values()].find(agent => !String(agent.id).startsWith('worker-')), get workerDisposeCount() { return workerDisposeCount } }
 }
 
@@ -163,7 +164,7 @@ describe('runtime safety boundaries', () => {
     const router = h.main()!
     h.listeners.get('session/event')!({ id: router.id }, { type: 'user/message', time: Date.now(), data: { id: 'thread-message', source: { kind: 'user' }, content: [{ type: 'text', text: 'thread' }] } })
     await flush()
-    router.inject = async () => { throw new Error('inject failed') }
+    router.inject = () => { throw new Error('inject failed') }
     h.runtime.engine.enqueue({ channel: 'session', threadKey: `session:${router.id}` as any, body: 'reply', kind: 'reply', idempotencyKey: 'outbound-test' })
     const result = await h.runtime.engine.drainOutbox()
     expect(result.sent).toBe(0)

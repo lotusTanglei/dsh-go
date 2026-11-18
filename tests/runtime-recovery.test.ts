@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { writeEvidence } from './evidence.js'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -15,7 +16,7 @@ function harness(code: string, explicit = false, snapshot?: unknown) {
   const store = openStore({ dbPath: config.dbPath }); cleanups.push(() => store.close())
   store.repos.kv.insert({ k: 'mainSessionId', v: 'gone-router' })
   const agents = new Map<string, any>(), resumed: string[] = [], created: string[] = []
-  const runtime = createRuntime({ effect() {}, on() { return () => {} }, agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } }, agents: { get(id) { return agents.get(id) }, async resume(input) { resumed.push(input.resumeSessionId); throw new Error('unexpected resume') }, async create(input) { created.push(input.sessionId); const agent = { id: input.sessionId, ctx: {}, async inject() {}, async steer() {}, async followup() {} }; await input.setup({}); agents.set(agent.id, agent); return { agent, async dispose() { agents.delete(agent.id) } } } }, subagents: { async startActivation() { throw new Error('no model fixture') } }, sessionQuery: { async readSession() { if (code === 'RESOLVE') return snapshot; throw Object.assign(new Error('synthetic storage problem'), { code }) } } }, store, config)
+  const runtime = createRuntime({ effect() {}, on() { return () => {} }, agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } }, agents: { get(id) { return agents.get(id) }, async resume(input) { resumed.push(input.resumeSessionId); throw new Error('unexpected resume') }, async create(input) { created.push(input.sessionId); const agent = { id: input.sessionId, ctx: {}, async inject() {}, async steer() {}, async followup() {} }; await input.setup({}); agents.set(agent.id, agent); return { agent, async dispose() { agents.delete(agent.id) } } } }, subagents: { async startActivation() { throw new Error('no model fixture') } }, sessionQuery: { async readSession(id) { if (agents.has(id)) return { session: { agentPreset: 'dsh-superagent-router' }, events: [] }; if (code === 'RESOLVE') return snapshot; throw Object.assign(new Error('synthetic storage problem'), { code }) } } }, store, config)
   cleanups.push(() => runtime.dispose())
   return { runtime, store, agents, created, resumed }
 }
@@ -31,8 +32,7 @@ describe('closeout deleted-main-session recovery', () => {
     expect(h.runtime.sources.all()[0]!.id).toBe(`session:${binding}`)
     expect(h.store.repos.audit.all()).toEqual([expect.objectContaining({ action: 'main_session_recreated' })])
     await h.runtime.dispose()
-    mkdirSync('probes/closeout', { recursive: true })
-    writeFileSync('probes/closeout/c-faults-main-session.json', JSON.stringify({ case: 'deleted-persisted-main', recordedAt: new Date().toISOString(), boundary: 'Runtime startup with real SQLite and explicit fake Host SESSION_QUERY_SESSION_NOT_FOUND; no real session deletion or running-main failover claimed', priorBinding: 'gone-router', newBinding: binding, created: h.created, resumed: h.resumed, liveAgents: h.agents.size, realModelCalls: 0 }, null, 2) + '\n')
+    writeEvidence('c-faults-main-session', { case: 'deleted-persisted-main', recordedAt: new Date().toISOString(), boundary: 'Runtime startup with real SQLite and explicit fake Host SESSION_QUERY_SESSION_NOT_FOUND; no real session deletion or running-main failover claimed', priorBinding: 'gone-router', newBinding: binding, created: h.created, resumed: h.resumed, liveAgents: h.agents.size, realModelCalls: 0 })
     expect(h.agents.size).toBe(0)
   })
   it.each(['SESSION_QUERY_CORRUPT_SESSION', 'SESSION_QUERY_PERSISTENCE_FAILED'])('does not replace history on %s', async code => {

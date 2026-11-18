@@ -1,0 +1,170 @@
+{
+  "kind": "kanban-s0-installed-capability",
+  "startedAt": "2026-11-18T12:20:26.342Z",
+  "providerRequests": 0,
+  "cases": [
+    {
+      "label": "allowed-native",
+      "layer": "real-fs-provider",
+      "returned": true,
+      "exists": true
+    },
+    {
+      "label": "cross-ticket-native",
+      "layer": "real-fs-provider",
+      "returned": false,
+      "exists": false,
+      "errorCode": "FS_SANDBOX_DENIED"
+    },
+    {
+      "label": "L2-unlisted-native-counterexample",
+      "layer": "real-fs-provider",
+      "returned": true,
+      "exists": true
+    },
+    {
+      "label": "L2-deny-native-counterexample",
+      "layer": "real-fs-provider",
+      "returned": true,
+      "exists": true
+    },
+    {
+      "label": "symlink-native",
+      "layer": "real-fs-provider",
+      "returned": false,
+      "exists": false,
+      "errorCode": "FS_SANDBOX_DENIED"
+    },
+    {
+      "label": "allowed-shell",
+      "layer": "real-shell-provider",
+      "command": "printf 'fixture' > src/allowed-shell.txt",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true
+    },
+    {
+      "label": "cross-ticket-shell",
+      "layer": "real-shell-provider",
+      "command": "printf 'fixture' > ../ticket-b/cross-shell.txt",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "bash: ../ticket-b/cross-shell.txt: Operation not permitted\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false
+    },
+    {
+      "label": "L2-unlisted-shell-counterexample",
+      "layer": "real-shell-provider",
+      "command": "printf 'fixture' > private/unlisted-shell.txt",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true
+    },
+    {
+      "label": "L2-deny-shell-counterexample",
+      "layer": "real-shell-provider",
+      "command": "printf 'fixture' > src/deny-shell.txt",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true
+    },
+    {
+      "label": "cross-ticket-heredoc",
+      "layer": "real-shell-provider",
+      "command": "sh <<'FIXTURE'\nprintf 'fixture' > ../ticket-b/heredoc.txt\nFIXTURE",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "sh: line 1: ../ticket-b/heredoc.txt: Operation not permitted\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false
+    },
+    {
+      "label": "cross-ticket-background",
+      "layer": "real-shell-provider",
+      "command": "(printf 'fixture' > ../ticket-b/background.txt) & wait",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "bash: ../ticket-b/background.txt: Operation not permitted\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": false
+    }
+  ],
+  "presets": [
+    {
+      "id": "dsh-superagent-router",
+      "present": true,
+      "broken": null
+    },
+    {
+      "id": "dsh-superagent-worker",
+      "present": true,
+      "broken": null
+    },
+    {
+      "id": "dsh-superagent-watchdog",
+      "present": true,
+      "broken": null
+    }
+  ],
+  "permissionCatalog": [
+    {
+      "name": "read-only",
+      "sandbox": "read-only",
+      "approval": "ask"
+    },
+    {
+      "name": "workspace-write",
+      "sandbox": "workspace-write",
+      "approval": "ask"
+    },
+    {
+      "name": "danger-full-access",
+      "sandbox": "danger-full-access",
+      "approval": "never"
+    }
+  ],
+  "directAgentPolicy": {
+    "mode": "workspace-write",
+    "rootMatchesTicket": true,
+    "additionalWritableRoots": 0,
+    "fsSandboxMode": "workspace-write",
+    "shellSandboxMode": "workspace-write"
+  },
+  "state": "failed",
+  "error": {
+    "code": "subagent descriptor is not losslessly JSON-serializable"
+  },
+  "liveAgents": 0,
+  "finishedAt": "2026-11-18T12:20:26.618Z"
+}

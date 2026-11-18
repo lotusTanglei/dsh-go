@@ -1,5 +1,6 @@
 import type { Store } from '../store/index.js'
 import type { Policy } from '../domain/policy.js'
+import { queueCapacityUsed } from './capacity.js'
 import type { Trigger, TriggerDisposition } from '../domain/trigger.js'
 import { validateTrigger } from '../domain/trigger.js'
 import type { AssignmentId, TicketId, TriggerId } from '../domain/ids.js'
@@ -21,6 +22,8 @@ export interface IntakeOptions {
   readonly queueLimit?: number
   readonly paused?: boolean
   readonly now?: () => number
+  /** Trusted Host-only routing intent; never derived from message text. */
+  readonly targetTicketId?: TicketId
 }
 function finiteNow(now?: () => number): number {
   const value = now ? now() : Date.now()
@@ -45,6 +48,7 @@ function disposition(store: Store, trigger: Trigger, at: number, patch: Record<s
 export function ingestTrigger(store: Store, trigger: Trigger, options: IntakeOptions = {}): IntakeResult {
   if (!validateTrigger(trigger)) throw new Error('intake: invalid trigger')
   const at = finiteNow(options.now)
+  if (options.targetTicketId && !store.db.prepare("SELECT 1 FROM thread_subscription s JOIN ticket t ON t.id=s.ticket_id WHERE s.thread_key=? AND t.id=? AND t.thread_key=? AND t.state IN ('open','running','waiting_human') AND t.stopped_by_human=0").get(String(trigger.threadKey), options.targetTicketId, String(trigger.threadKey))) return { status: 'rejected', triggerId: trigger.id, threadKey: String(trigger.threadKey), reason: 'target-unavailable' }
   const policy = options.policy
   const sourceAllowed = !policy?.acceptedSources?.length || policy.acceptedSources.includes(trigger.source)
   const filteredReason = !sourceAllowed ? 'untrusted-source' : policy?.bots === 'deny' && trigger.actor.bot ? 'untrusted' : trigger.addressed === 'none' ? 'not-addressed' : undefined
@@ -60,6 +64,8 @@ export function ingestTrigger(store: Store, trigger: Trigger, options: IntakeOpt
   const queueLimit = options.queueLimit ?? policy?.budgets.queueLimit ?? Number.POSITIVE_INFINITY
   if (Number.isNaN(queueLimit) || queueLimit < 0) throw new Error('intake: queueLimit must be non-negative')
   return store.transaction(() => {
+    const target = options.targetTicketId ? store.db.prepare("SELECT s.ticket_id AS ticketId, t.current_assignment AS assignmentId FROM thread_subscription s JOIN ticket t ON t.id=s.ticket_id WHERE s.thread_key=? AND s.ticket_id=? AND t.thread_key=? AND t.state IN ('open','running','waiting_human') AND t.stopped_by_human=0").get(String(trigger.threadKey), options.targetTicketId, String(trigger.threadKey)) as { ticketId: TicketId; assignmentId?: AssignmentId } | undefined : undefined
+    if (options.targetTicketId && !target) return { status: 'rejected' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), reason: 'target-unavailable' }
     try {
       store.repos.trigger.insert({ id: trigger.id, source: trigger.source, external_id: trigger.externalId, thread_key: trigger.threadKey, actor_id: trigger.actor.id, actor_bot: trigger.actor.bot, text: trigger.text, trust: trigger.trust, addressed: trigger.addressed, at: trigger.at, raw: trigger.raw })
     } catch (error) {
@@ -72,18 +78,18 @@ export function ingestTrigger(store: Store, trigger: Trigger, options: IntakeOpt
     const thread = { key: trigger.threadKey, source: trigger.source, ref_json: existing?.ref_json ?? { source: trigger.source, kind: 'session', id: String(trigger.threadKey), address: {} }, created_at: Number(existing?.created_at ?? trigger.at), last_at: Math.max(Number(existing?.last_at ?? 0), trigger.at), seq, paused, evaluating: existing?.evaluating ?? null }
     if (existing) store.db.prepare('UPDATE thread SET last_at = ?, seq = ?, paused = ? WHERE key = ?').run(thread.last_at, seq, paused ? 1 : 0, trigger.threadKey)
     else store.repos.thread.insert(thread)
-    const subscription = activeSubscription(store, String(trigger.threadKey))
+    const subscription = target ?? activeSubscription(store, String(trigger.threadKey))
+    if (queueCapacityUsed(store, trigger.externalId) >= queueLimit) {
+      disposition(store, trigger, at, { filtered: 'queue-full' })
+      return { status: 'rejected' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), seq, reason: 'queue-full', position: queueLength(store) }
+    }
     if (!paused && subscription?.assignmentId) {
       store.repos.thread_trigger.insert({ thread_key: trigger.threadKey, trigger_id: trigger.id, seq, state: 'pending' })
       disposition(store, trigger, at, { ticket_id: subscription.ticketId })
       return { status: 'subscription' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), seq, ticketId: subscription.ticketId, assignmentId: subscription.assignmentId }
     }
-    if (!paused && !subscription && queueLength(store) >= queueLimit) {
-      disposition(store, trigger, at, { filtered: 'queue-full' })
-      return { status: 'rejected' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), seq, reason: 'queue-full', position: queueLength(store) }
-    }
     store.repos.thread_trigger.insert({ thread_key: trigger.threadKey, trigger_id: trigger.id, seq, state: 'pending' })
-    disposition(store, trigger, at, { ...(paused ? { filtered: 'paused' } : {}) })
+    disposition(store, trigger, at, { ...(subscription ? { ticket_id: subscription.ticketId } : {}), ...(paused ? { filtered: 'paused' } : {}) })
     return { status: 'accepted' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), seq, ...(subscription ? { ticketId: subscription.ticketId } : {}) }
   })
 }

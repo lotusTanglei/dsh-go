@@ -39,6 +39,7 @@ function harness(extra: Partial<Config> = {}) {
   let router: any
   let eventIndex = 0
   const ctx: any = {
+    sessions: { async flush() { return true } }, // Explicit fake durability participant.
     effect(factory: () => (() => void | Promise<void>)) { return factory() },
     on(name: string, callback: (...args: any[]) => unknown) { listeners.set(name, callback); return () => listeners.delete(name) },
     agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } },
@@ -62,7 +63,7 @@ function harness(extra: Partial<Config> = {}) {
     },
     sessionQuery: { async readSession() { return { events: [], session: { agentPreset: 'dsh-superagent-router' } } } },
   }
-  const runtime = createRuntime(ctx, store, config)
+  const runtime = createRuntime(ctx, store, config, undefined, { spawner: ctx.subagents, legacyInput: true })
   const emit = (id: string, text = id, at = Date.now()) => listeners.get('session/event')!({ id: router.id }, { type: 'user/message', time: at, data: { id, source: { kind: 'user' }, content: [{ type: 'text', text }] } })
   cleanups.push(async () => {
     // Settle every fake activation and steer before the real runtime drains its work.

@@ -1,0 +1,10 @@
+
+> dsh-superagent@0.1.0 build /Users/dundundebaba/sync/dsh-s-p/.probe/s1-staged-20261118-212700
+> tsc -p tsconfig.build.json && node scripts/build-client.mjs
+
+DSH client factory built: lib/client.js
+
+> dsh-superagent@0.1.0 build /Users/dundundebaba/sync/dsh-s-p/.probe/s1-staged-20261118-212700
+> tsc -p tsconfig.build.json && node scripts/build-client.mjs
+
+DSH client factory built: lib/client.js

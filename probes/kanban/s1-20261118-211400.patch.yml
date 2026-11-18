@@ -1,0 +1,11 @@
+# Exact visible synthetic planning scope; production execution remains closed.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s1-state-20261118-211400
+    confirm: always
+- insert:
+    - id: kanban-s1-20261118-211400
+      name: dsh-superagent/kanban-s1-probe
+      config:
+        fixtureRoot: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s1-20261118-211400
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s1-20261118-211400-result.json

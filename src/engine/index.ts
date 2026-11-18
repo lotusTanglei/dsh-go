@@ -24,8 +24,8 @@ export interface EnginePorts extends RecoveryPorts {
 export function createEngine(store: Store, config: EngineConfig, ports: EnginePorts = {}) {
   const now = config.outbox?.now
   return {
-    ingest(trigger: Trigger): IntakeResult {
-      return ingestTrigger(store, trigger, { policy: config.policy, queueLimit: config.queueLimit, now })
+    ingest(trigger: Trigger, scoped?: { targetTicketId: import('../domain/ids.js').TicketId }): IntakeResult {
+      return ingestTrigger(store, trigger, { policy: config.policy, queueLimit: config.queueLimit, now, ...scoped })
     },
     ackDelivery(triggerId: import('../domain/ids.js').TriggerId, assignmentId: import('../domain/ids.js').AssignmentId): boolean {
       return ackDelivery(store, triggerId, assignmentId, now ? now() : Date.now())

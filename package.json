@@ -17,6 +17,7 @@
     "./p4-live-probe": "./probes/p4-live.cjs",
     "./closeout-a-probe": "./probes/closeout/a-live.cjs",
     "./closeout-b-probe": "./probes/closeout/b-live.cjs",
+    "./kanban-s1-probe": "./probes/kanban/s1-host.cjs",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },

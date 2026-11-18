@@ -1,0 +1,305 @@
+{
+  "kind": "kanban-s1-real-host-local-adapter",
+  "startedAt": "2026-11-18T13:11:36.984Z",
+  "externalProviderRequests": 0,
+  "localAdapterCalls": 3,
+  "boundary": "Real Agent/inbox/admission/owner handler/flush. Router adapter synthetic; production Worker stays blocked by verified safety failure. Channel notice fixture is not a real Worker completion.",
+  "workspace": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "132d687f-a05b-4e4d-a2b9-2bba3c2d3dcf",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795007497047,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "admissions": [],
+        "pendingApprovals": 0
+      }
+    }
+  },
+  "originDenied": 403,
+  "input": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "messageId": "workspace:e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "epoch": "132d687f-a05b-4e4d-a2b9-2bba3c2d3dcf",
+        "stage": "claimed",
+        "accepted": true,
+        "seq": 3,
+        "at": 1795007497049,
+        "updatedAt": 1795007497084
+      }
+    }
+  },
+  "retry": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "messageId": "workspace:e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "epoch": "132d687f-a05b-4e4d-a2b9-2bba3c2d3dcf",
+        "stage": "processing",
+        "accepted": true,
+        "seq": 5,
+        "at": 1795007497049,
+        "updatedAt": 1795007497114
+      }
+    }
+  },
+  "conflict": {
+    "status": 409,
+    "body": {
+      "ok": false,
+      "code": "request_conflict",
+      "error": {
+        "code": "request_conflict",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "receipt": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "messageId": "workspace:e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "epoch": "132d687f-a05b-4e4d-a2b9-2bba3c2d3dcf",
+        "stage": "processing",
+        "accepted": true,
+        "seq": 5,
+        "at": 1795007497049,
+        "updatedAt": 1795007497114
+      }
+    }
+  },
+  "plan": {
+    "planId": "c246a963-6df9-4f74-81c7-a05e4003efe2",
+    "state": "pending",
+    "fingerprint": "198578de8e78063fba088c0f9b8f96d9b084735044eae4965a117d0acfc70985"
+  },
+  "admission": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "planId": "c246a963-6df9-4f74-81c7-a05e4003efe2",
+        "requestId": "e82d5521-d430-483c-b9bf-d43a589c3e26",
+        "epoch": "132d687f-a05b-4e4d-a2b9-2bba3c2d3dcf",
+        "fingerprint": "198578de8e78063fba088c0f9b8f96d9b084735044eae4965a117d0acfc70985",
+        "state": "consumed",
+        "createdAt": 1795007497422,
+        "expiresAt": 1795093897422,
+        "policyVersion": "2f5b1de6961dc46285a3ee6c3e8f464982034cccf8f48be04a4c019cfc2b2372",
+        "brief": {
+          "acceptance": [
+            {
+              "check": "Synthetic Host evidence only",
+              "id": "A1",
+              "kind": "assertion"
+            }
+          ],
+          "allowWrite": [
+            "src/**"
+          ],
+          "approvalsRequired": [],
+          "base": {
+            "ref": "fixture",
+            "requireCleanTree": false
+          },
+          "blockers": [],
+          "denyWrite": [
+            "src/deny/**"
+          ],
+          "firstAction": "Report boundary",
+          "goal": "Synthetic Host admission task",
+          "outOfScope": [
+            "real file execution"
+          ],
+          "runtime": "isolated zero-token fixture",
+          "scope": {
+            "repo": "/tmp/kanban-host-planning-only",
+            "subdirs": []
+          }
+        },
+        "scope": {
+          "repo": "/tmp/kanban-host-planning-only",
+          "subdirs": []
+        },
+        "acceptance": [
+          {
+            "check": "Synthetic Host evidence only",
+            "id": "A1",
+            "kind": "assertion"
+          }
+        ],
+        "risk": {
+          "blockers": [],
+          "approvalsRequired": [],
+          "outOfScope": [
+            "real file execution"
+          ]
+        },
+        "ticketId": "ticket:admission:c246a963-6df9-4f74-81c7-a05e4003efe2"
+      }
+    }
+  },
+  "executionGate": {
+    "ok": false,
+    "code": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+  },
+  "board": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "columns": {
+          "pending": {
+            "total": 1,
+            "items": [
+              {
+                "id": "ticket:admission:c246a963-6df9-4f74-81c7-a05e4003efe2",
+                "title": "Synthetic Host admission task",
+                "state": "open",
+                "column": "pending",
+                "createdAt": 1795007497587,
+                "updatedAt": 1795007497587,
+                "pendingApprovals": 0,
+                "attention": null,
+                "budget": {
+                  "steps": null,
+                  "usage": null
+                },
+                "acceptance": {
+                  "passed": null,
+                  "total": 1
+                },
+                "allowed": {
+                  "input": true,
+                  "stop": true,
+                  "resume": false
+                },
+                "disabledReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+              }
+            ],
+            "hasMore": false
+          },
+          "running": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "waiting": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "ended": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          }
+        },
+        "snapshotAt": 1795007497589,
+        "revision": "e42f43ce38f5ccfda14ca3ad38942e4bb4def2ee85e8a68f7b9311735d6dfdb9",
+        "filtered": false,
+        "pendingApprovals": 0
+      }
+    }
+  },
+  "conversation": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "items": [
+          {
+            "id": "workspace:e82d5521-d430-483c-b9bf-d43a589c3e26",
+            "seq": 4,
+            "lastSeq": 9,
+            "at": 1795007497050,
+            "kind": "user",
+            "text": "Create one synthetic fixture task. Do not execute files.",
+            "stage": "admitted"
+          },
+          {
+            "id": "d7957da7-cb28-4a76-8c57-3957f3c63a5f",
+            "seq": 21,
+            "lastSeq": 21,
+            "at": 1795007497438,
+            "kind": "assistant",
+            "text": "A specific plan is ready for your confirmation in this workspace."
+          }
+        ],
+        "nextAfter": "WzEsInh0ZkdkYjlGOVlVOC1pMjN5ZUFhdTVGT20tZkFnbnh1QlZ1SUFlRVBqcmsiLCJhZnRlciIsMjQsOTAwNzE5OTI1NDc0MDk5MSwyNF0",
+        "hasMore": false
+      }
+    }
+  },
+  "drain": {
+    "attempted": 1,
+    "sent": 1,
+    "retried": 0,
+    "dropped": 0,
+    "pending": 0
+  },
+  "afterNotice": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "items": [
+          {
+            "id": "workspace:e82d5521-d430-483c-b9bf-d43a589c3e26",
+            "seq": 4,
+            "lastSeq": 9,
+            "at": 1795007497050,
+            "kind": "user",
+            "text": "Create one synthetic fixture task. Do not execute files.",
+            "stage": "admitted"
+          },
+          {
+            "id": "d7957da7-cb28-4a76-8c57-3957f3c63a5f",
+            "seq": 21,
+            "lastSeq": 21,
+            "at": 1795007497438,
+            "kind": "assistant",
+            "text": "A specific plan is ready for your confirmation in this workspace."
+          },
+          {
+            "id": "kanban-host-notice:e82d5521-d430-483c-b9bf-d43a589c3e26",
+            "seq": 25,
+            "lastSeq": 25,
+            "at": 1795007497592,
+            "kind": "notice",
+            "text": "Synthetic result publication probe — not Worker execution.",
+            "stage": "queued"
+          }
+        ],
+        "nextAfter": "WzEsInh0ZkdkYjlGOVlVOC1pMjN5ZUFhdTVGT20tZkFnbnh1QlZ1SUFlRVBqcmsiLCJhZnRlciIsMjUsOTAwNzE5OTI1NDc0MDk5MSwyNV0",
+        "hasMore": false
+      }
+    }
+  },
+  "flush": true,
+  "messageEvents": 1,
+  "noticeInsertions": 1,
+  "state": "passed",
+  "liveAgents": 0,
+  "finishedAt": "2026-11-18T13:11:37.614Z"
+}

@@ -1,4 +1,9 @@
 import { statSync } from 'node:fs'
+import { readBoard, boardTicket, approvalFingerprint } from './board.js'
+import type { BoardColumn } from './board.js'
+import { WorkspaceError } from '../workspace/commands.js'
+import { ConversationError } from '../workspace/conversation.js'
+import { approvalImpact } from '../engine/approval-impact.js'
 import type { Config } from '../config.js'
 import { effectiveSettings, type EffectiveSetting } from './settings.js'
 import { transitionApproval, type Approval } from '../domain/approval.js'
@@ -37,6 +42,12 @@ export interface PanelConfig {
 
 /** Side effects that must be supplied by the owning runtime; routes never fake a successful action. */
 export interface PanelPorts {
+  readonly workspace?: () => Promise<unknown>
+  readonly conversation?: (input: any) => Promise<unknown>
+  readonly command?: (input: any) => Promise<unknown>
+  readonly commandStatus?: (input: any) => Promise<unknown>
+  readonly admission?: (input: any) => Promise<unknown>
+  readonly ownsTicketTransitions?: boolean
   readonly health?: () => unknown | Promise<unknown>
   readonly sources?: () => unknown | Promise<unknown>
   readonly settings?: () => readonly EffectiveSetting[] | Promise<readonly EffectiveSetting[]>
@@ -54,7 +65,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/admission', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -67,14 +78,15 @@ function fail(code: string, message: string, status: number): Response {
 }
 function ok(data: unknown): Response { return json({ ok: true, data: sanitize(data) }) }
 function sanitize(value: unknown, depth = 0): unknown {
-  if (depth > 5) return '[REDACTED]'
+  if (depth > 12) return '[REDACTED]'
   if (typeof value === 'string') return redact(value)
   if (Array.isArray(value)) return value.slice(0, 100).map(item => sanitize(item, depth + 1))
   if (isObject(value)) {
     const result: Record<string, unknown> = {}
     for (const [key, item] of Object.entries(value).slice(0, 100)) {
       if (/token|secret|password|credential|authorization|cookie|raw|payload|workdir|path|url/i.test(key)) continue
-      result[key] = sanitize(item, depth + 1)
+      // Host-generated cursors and SHA fingerprints are opaque metadata, not arbitrary text.
+      result[key] = ['cursor', 'nextBefore', 'nextAfter', 'fingerprint', 'revision'].includes(key) && typeof item === 'string' && /^[A-Za-z0-9_-]{1,1024}$/.test(item) ? item : sanitize(item, depth + 1)
     }
     return result
   }
@@ -93,7 +105,11 @@ function limitOf(value: unknown, configured: number | undefined): number {
 }
 async function body(request: Request, keys: readonly string[]): Promise<{ value?: Record<string, unknown>; error?: Response }> {
   let value: unknown
-  try { value = await request.json() } catch { return { error: fail('invalid_json', 'Request body must be JSON', 400) } }
+  try {
+    const raw = await request.text()
+    if (Buffer.byteLength(raw, 'utf8') > 24_576) return { error: fail('body_too_large', 'Request body is too large', 400) }
+    value = JSON.parse(raw)
+  } catch { return { error: fail('invalid_json', 'Request body must be JSON', 400) } }
   if (!isObject(value) || !only(value, keys)) return { error: fail('invalid_input', 'Request fields are not permitted', 400) }
   return { value }
 }
@@ -121,6 +137,7 @@ function publicTicket(row: Row, actions: { readonly stop: boolean; readonly resu
 }
 function publicApproval(row: Row, actions: { readonly approve: boolean; readonly deny: boolean } = { approve: false, deny: false }): Record<string, unknown> {
   const fields = isObject(row.payload_json) ? row.payload_json : {}
+  const review = approvalImpact(row.kind, row.payload_json)
   return {
     id: typeof row.id === 'string' ? row.id : '',
     ticketId: typeof row.ticket_id === 'string' ? row.ticket_id : undefined,
@@ -128,12 +145,13 @@ function publicApproval(row: Row, actions: { readonly approve: boolean; readonly
     summary: typeof row.summary === 'string' ? row.summary : '',
     requestedBy: typeof row.requested_by === 'string' ? row.requested_by : '',
     state: typeof row.state === 'string' ? row.state : 'unknown',
+    fingerprint: approvalFingerprint(row),
     createdAt: typeof row.created_at === 'number' ? row.created_at : undefined,
     decidedBy: typeof row.decided_by === 'string' ? row.decided_by : undefined,
     decidedAt: typeof row.decided_at === 'number' ? row.decided_at : undefined,
     reason: typeof row.reason === 'string' ? row.reason : undefined,
-    impact: { ticketId: row.ticket_id ?? null, kind: row.kind, description: row.summary, targets: ['repository', 'branch', 'ref', 'recipient', 'amount', 'currency'].flatMap(key => typeof fields[key] === 'string' || typeof fields[key] === 'number' ? [`${key}: ${String(fields[key]).slice(0, 240)}`] : []) },
-    allowed: row.state === 'pending' ? { approve: actions.approve, deny: actions.deny } : { approve: false, deny: false },
+    impact: { ticketId: row.ticket_id ?? null, kind: row.kind, description: row.summary, reviewable: review.reviewable, details: review.details, reason: review.reason, targets: ['repository', 'branch', 'ref', 'recipient', 'amount', 'currency'].flatMap(key => typeof fields[key] === 'string' || typeof fields[key] === 'number' ? [`${key}: ${String(fields[key]).slice(0, 240)}`] : []) },
+    allowed: row.state === 'pending' ? { approve: actions.approve && review.reviewable, deny: actions.deny } : { approve: false, deny: false },
   }
 }
 function publicThread(row: Row, store: Store): Record<string, unknown> {
@@ -190,7 +208,12 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
   const route = (path: typeof ROUTES[number], handler: (request: Request) => Promise<Response>) => {
     routes.push(context.connection.fetch.register({ path: `/api/superagent${path}`, methods: ['POST'], requestBody: 'buffered', fetch: async request => {
       if (!originAllowed(request, config)) return fail('origin_denied', 'Origin is not permitted', 403)
-      try { return await handler(request) } catch { return fail('internal_error', 'Panel request could not be completed', 500) }
+      try { return await handler(request) } catch (error) {
+        const code = (error as any)?.code, status = (error as any)?.status
+        const fixed = ['invalid_input', 'invalid_cursor', 'epoch_mismatch', 'epoch_not_found', 'board_resync_required', 'invalid_command', 'request_conflict', 'command_record_invalid', 'command_conflict', 'command_not_found', 'workspace_paused', 'queue_full', 'ticket_input_denied', 'model_unavailable', 'workspace_unavailable', 'history_unavailable', 'admission_conflict', 'plan_expired', 'plan_not_found', 'admission_invalid', 'admission_unavailable']
+        if (typeof code === 'string' && (fixed.includes(code) || error instanceof WorkspaceError || error instanceof ConversationError)) return fail(code, 'Workspace request could not be completed', [400, 404, 409, 429, 503].includes(status) ? status : code === 'epoch_mismatch' ? 409 : 400)
+        return fail('internal_error', 'Panel request could not be completed', 500)
+      }
     } }))
   }
 
@@ -220,6 +243,46 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     ticketId: typeof row.ticket_id === 'string' ? row.ticket_id : undefined,
     threadKey: typeof row.thread_key === 'string' ? row.thread_key : undefined,
   }))
+  route('/workspace', async request => {
+    const parsed = await body(request, []); if (parsed.error) return parsed.error
+    if (!ports.workspace) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    const data = await ports.workspace() as any
+    return ok({ ...data, admissions: Array.isArray(data?.admissions) ? data.admissions.map((plan: any) => ({ ...plan, reviewable: JSON.stringify(sanitize(plan.brief)) === JSON.stringify(plan.brief), ...(JSON.stringify(sanitize(plan.brief)) !== JSON.stringify(plan.brief) ? { blockedReason: 'admission_scope_redacted' } : {}) })) : [] })
+  })
+  route('/conversation', async request => {
+    const parsed = await body(request, ['epoch', 'after', 'before', 'limit']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!validId(input.epoch) || input.after !== undefined && typeof input.after !== 'string' || input.before !== undefined && typeof input.before !== 'string' || input.after !== undefined && input.before !== undefined || !limitOf(input.limit, 30)) return fail('invalid_input', 'Invalid conversation cursor', 400)
+    if (!ports.conversation) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    return ok(await ports.conversation(input))
+  })
+  route('/command', async request => {
+    const parsed = await body(request, ['epoch', 'requestId', 'intent', 'text', 'ticketId']); if (parsed.error) return parsed.error
+    if (!ports.command) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    return ok(await ports.command(parsed.value!))
+  })
+  route('/command-status', async request => {
+    const parsed = await body(request, ['epoch', 'requestId']); if (parsed.error) return parsed.error
+    if (!validId(parsed.value!.epoch) || !validId(parsed.value!.requestId)) return fail('invalid_input', 'Request identity required', 400)
+    if (!ports.commandStatus) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    return ok(await ports.commandStatus(parsed.value!))
+  })
+  route('/admission', async request => {
+    const parsed = await body(request, ['epoch', 'requestId', 'planId', 'fingerprint', 'decision']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!['epoch', 'requestId', 'planId'].every(key => validId(input[key])) || typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint) || !['approve', 'reject'].includes(String(input.decision))) return fail('invalid_input', 'Plan identity and decision required', 400)
+    if (!ports.admission) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    if (input.decision === 'approve') {
+      const workspace = await ports.workspace?.() as any
+      const plan = workspace?.admissions?.find((row: any) => row.planId === input.planId && row.requestId === input.requestId && row.epoch === input.epoch && row.fingerprint === input.fingerprint)
+      if (!plan || JSON.stringify(sanitize(plan.brief)) !== JSON.stringify(plan.brief)) return fail('admission_unreviewable', 'Exact plan scope is not fully visible; approval is blocked', 409)
+    }
+    return ok(await ports.admission(input))
+  })
+  route('/board', async request => {
+    const parsed = await body(request, ['column', 'cursor', 'limit', 'query', 'outcome']); if (parsed.error) return parsed.error
+    return ok(readBoard(store, parsed.value as { column?: BoardColumn }))
+  })
   route('/overview', async request => {
     const parsed = await body(request, [])
     if (parsed.error) return parsed.error
@@ -242,11 +305,19 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     return ok({ items, ...(cursor + limit < rows.length ? { next: String(cursor + limit) } : {}) })
   })
   route('/ticket', async request => {
-    const parsed = await body(request, ['id']); if (parsed.error) return parsed.error
+    const parsed = await body(request, ['id', 'timelineCursor', 'limit']); if (parsed.error) return parsed.error
     if (!validId(parsed.value!.id)) return fail('invalid_input', 'Invalid ticket id', 400)
     const row = store.repos.ticket.get(parsed.value!.id)
     if (!row) return fail('not_found', 'Ticket not found', 404)
-    return ok({ ticket: publicTicket(row, { stop: Boolean(ports.stopTicket || ports.ticketAction), resume: Boolean(ports.resumeTicket || ports.ticketAction) }), assignments: repoRows(store.repos.assignment).filter(item => item.ticket_id === row.id).map(item => ({ id: item.id, state: item.state, startedAt: item.started_at, endedAt: item.ended_at, endedReason: item.ended_reason, steps: item.steps, usage: item.tokens, lastProgressAt: item.last_progress_at })), approvals: repoRows(store.repos.approval).filter(item => item.ticket_id === row.id).map(item => publicApproval(item, { approve: false, deny: false })), timeline: activityRows().filter(item => item.ticketId === row.id) })
+    const input = parsed.value!, limit = limitOf(input.limit, 30)
+    if (!limit || input.timelineCursor !== undefined && (typeof input.timelineCursor !== 'string' || !/^\d{1,16}$/.test(input.timelineCursor))) return fail('invalid_input', 'Invalid timeline cursor', 400)
+    const timeline = store.db.prepare('SELECT id, at, actor, action FROM audit WHERE ticket_id = ? AND id < ? ORDER BY id DESC LIMIT ?').all(String(row.id), Number(input.timelineCursor ?? Number.MAX_SAFE_INTEGER), limit + 1)
+    const approvals = repoRows(store.repos.approval).filter(item => item.ticket_id === row.id).sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    return ok({ ticket: { ...publicTicket(row, { stop: Boolean(ports.stopTicket || ports.ticketAction), resume: Boolean(ports.resumeTicket || ports.ticketAction) }), ...boardTicket(store, row) }, brief: row.brief_json,
+      assignments: repoRows(store.repos.assignment).filter(item => item.ticket_id === row.id).map(item => ({ id: item.id, state: item.state, startedAt: item.started_at, endedAt: item.ended_at, endedReason: item.ended_reason, steps: item.steps, usage: item.tokens, lastProgressAt: item.last_progress_at, report: isObject(item.report_json) ? { ...item.report_json, changedFiles: item.report_json.changedPaths } : item.report_json })),
+      approvals: approvals.slice(0, 30).map(item => ({ ...publicApproval(item, { approve: true, deny: true }), expiresAt: Number(item.created_at) + Number(config.approvalTimeoutMs ?? 86_400_000) })), approvalsTotal: approvals.length, ...(approvals.length > 30 ? { approvalsNext: String(approvals[29]!.id) } : {}),
+      timeline: timeline.slice(0, limit), ...(timeline.length > limit ? { timelineCursor: String(timeline[limit - 1]!.id) } : {}),
+      delivery: store.repos.outbound.all().filter(item => item.ticket_id === row.id).map(item => ({ state: item.state, attempts: item.attempts, nextAt: item.next_at, error: item.last_error })) })
   })
   route('/threads', async request => {
     const parsed = await body(request, ['key', 'cursor', 'limit']); if (parsed.error) return parsed.error
@@ -257,20 +328,24 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     return ok({ items: rows.slice(cursor, cursor + limit).map(row => publicThread(row, store)), ...(cursor + limit < rows.length ? { next: String(cursor + limit) } : {}) })
   })
   route('/approvals', async request => {
-    const parsed = await body(request, ['state', 'limit']); if (parsed.error) return parsed.error
-    const input = parsed.value!; if (input.state !== undefined && typeof input.state !== 'string') return fail('invalid_input', 'Invalid state', 400)
+    const parsed = await body(request, ['state', 'ticketId', 'limit', 'cursor']); if (parsed.error) return parsed.error
+    const input = parsed.value!; if (input.state !== undefined && typeof input.state !== 'string' || input.cursor !== undefined && !validId(input.cursor) || input.ticketId !== undefined && !validId(input.ticketId)) return fail('invalid_input', 'Invalid state, ticket or cursor', 400)
     const limit = limitOf(input.limit, config.panelPageSize); if (!limit) return fail('invalid_input', 'Invalid limit', 400)
-    const rows = repoRows(store.repos.approval).filter(row => input.state === undefined || row.state === input.state).slice(0, limit).map(row => publicApproval(row, { approve: true, deny: true }))
-    return ok({ items: rows })
+    const all = repoRows(store.repos.approval).filter(row => (input.state === undefined || row.state === input.state) && (input.ticketId === undefined || row.ticket_id === input.ticketId)).sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    const start = input.cursor === undefined ? 0 : all.findIndex(row => row.id === input.cursor) + 1
+    if (input.cursor !== undefined && start === 0) return fail('conflict', 'Approvals changed; reload this list', 409)
+    const page = all.slice(start, start + limit)
+    return ok({ items: page.map(row => ({ ...publicApproval(row, { approve: true, deny: true }), expiresAt: Number(row.created_at) + Number(config.approvalTimeoutMs ?? 86_400_000) })), total: all.length, ...(start + page.length < all.length ? { next: String(page.at(-1)!.id) } : {}) })
   })
   route('/approval', async request => {
-    const parsed = await body(request, ['id', 'decision', 'action', 'reason', 'actor']); if (parsed.error) return parsed.error
+    const parsed = await body(request, ['id', 'decision', 'action', 'reason', 'actor', 'fingerprint']); if (parsed.error) return parsed.error
     const input = parsed.value!
     // `decision` is the published contract; `action` remains a narrow compatibility alias.
     if (input.decision !== undefined && input.action !== undefined) return fail('invalid_input', 'Use decision, not action', 400)
     const decision = input.decision ?? input.action
     if (!validId(input.id) || (decision !== 'approve' && decision !== 'deny') || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 2000) return fail('invalid_input', 'Approval id, decision and reason are required', 400)
     const existing = store.repos.approval.get(input.id); if (!existing) return fail('not_found', 'Approval not found', 404)
+    if (typeof input.fingerprint !== 'string' || input.fingerprint !== approvalFingerprint(existing)) return fail('conflict', 'Approval content changed; review it again', 409)
     const decidedAt = now(); const created = Number(existing.created_at); const timeout = Number(config.approvalTimeoutMs ?? 86_400_000)
     if (!Number.isFinite(created) || decidedAt - created >= timeout) {
       const expired = store.transaction(() => {
@@ -280,6 +355,7 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       })
       return fail(expired ? 'expired' : 'conflict', expired ? 'Approval has expired' : 'Approval is no longer pending', 409)
     }
+    if (decision === 'approve' && !approvalImpact(existing.kind, existing.payload_json).reviewable) return fail('approval_unreviewable', 'Approval action cannot be reviewed safely; request a new exact plan', 409)
     try {
       const event = decision === 'approve' ? { type: 'approve' as const, by: actorFrom(input.actor), at: decidedAt, reason: input.reason.trim() } : { type: 'deny' as const, by: actorFrom(input.actor), at: decidedAt, reason: input.reason.trim() }
       const next = transitionApproval(asApproval(existing), event)
@@ -340,6 +416,11 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       invoked = ports.ticketAction ? await ports.ticketAction(action, input.id, reason || undefined) : await effect!(input.id, reason)
     } catch { return fail('unavailable', 'Ticket action is unavailable', 503) }
     if (invoked === false) return fail('unavailable', 'Ticket action was not performed', 503)
+    if (ports.ownsTicketTransitions) {
+      const persisted = store.repos.ticket.get(input.id)
+      if (!persisted || persisted.state !== transitioned.state || action === 'stop' && !persisted.stopped_by_human) return fail('conflict', 'Ticket changed concurrently', 409)
+      return ok({ ...publicTicket(persisted), ...boardTicket(store, persisted) })
+    }
     const changed = store.transaction(() => {
       const cas = store.repos.ticket.updateByState(input.id, ticket.state, transitioned.state, action === 'stop'
         ? { stopped_by_human: true, ended_at: transitioned.ended?.at, ended_by: transitioned.ended?.by, outcome: transitioned.ended?.outcome, current_assignment: null, updated_at: transitioned.updatedAt }

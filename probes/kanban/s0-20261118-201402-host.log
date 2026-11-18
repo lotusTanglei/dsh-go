@@ -1,0 +1,19 @@
+node:fs:2482
+    return binding.writeFileUtf8(
+                   ^
+
+Error: EPERM: operation not permitted, open '/Users/dundundebaba/.dsh/profiles/superagent-dev/cordis.yml'
+    at writeFileSync (node:fs:2482:20)
+    at prepareProfile (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/profile-boot-QhDEDXsF.js:221:2)
+    at composeProfile (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/profile-boot-QhDEDXsF.js:238:46)
+    at runProfile (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/profile-boot-QhDEDXsF.js:283:26)
+    at async Module.runCli (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin-CwxESKe-.js:214:5)
+    at async runCli (file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js:21:2)
+    at async file:///Applications/DeepSeek%20Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js:25:33 {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'open',
+  path: '/Users/dundundebaba/.dsh/profiles/superagent-dev/cordis.yml'
+}
+
+Node.js v24.21.0

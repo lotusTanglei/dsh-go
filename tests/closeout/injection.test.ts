@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { writeEvidence } from '../evidence.js'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -35,6 +36,7 @@ function runtimeHarness() {
   let router: any, wakeups = 0, modelRequests = 0
   const workers: Array<{ resolve(value: any): void }> = []
   const ctx: any = {
+    sessions: { async flush() { return true } },
     effect(factory: any) { return factory() }, on() { return () => {} },
     agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } },
     agents: { get(id: string) { return agents.get(id) }, async create(input: any) {
@@ -50,7 +52,7 @@ function runtimeHarness() {
     }, interrupt() {} },
     sessionQuery: { async readSession(id: string) { return { events: events.get(id) ?? [], session: { agentPreset: 'dsh-superagent-router' } } } },
   }
-  const runtime = createRuntime(ctx, h.store, h.config)
+  const runtime = createRuntime(ctx, h.store, h.config, undefined, { spawner: ctx.subagents, legacyInput: true })
   cleanups.push(async () => { workers.forEach(worker => worker.resolve({ structured: fixtureReport })); await runtime.dispose() })
   return { ...h, runtime, injected, counters: () => ({ wakeups, modelRequests }), router: () => router, async ticket() {
     await runtime.ready
@@ -64,7 +66,7 @@ function runtimeHarness() {
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 afterAll(() => {
   const complete = cases.length === 6
-  writeFileSync(resolve('probes/closeout/c-injection-result.json'), JSON.stringify({ kind: 'closeout-c1-offline-injection-evidence', startedAt, finishedAt: new Date().toISOString(), state: complete ? 'completed-with-gaps' : 'incomplete', providerRequests: 0, modelImmunity: 'unavailable: no model was called; schema validation and source wrapping do not establish behavioral immunity', releaseBlockers: cases.filter(row => row.verdict === 'unblocked').map(row => row.id), cases }, null, 2) + '\n', { mode: 0o600 })
+  writeEvidence('c-injection-result', { kind: 'closeout-c1-offline-injection-evidence', startedAt, finishedAt: new Date().toISOString(), state: complete ? 'completed-with-gaps' : 'incomplete', providerRequests: 0, modelImmunity: 'unavailable: no model was called; schema validation and source wrapping do not establish behavioral immunity', releaseBlockers: cases.filter(row => row.verdict === 'unblocked').map(row => row.id), cases })
 })
 
 describe('C1 offline injection evidence (green evidence tests do not imply secure release)', () => {

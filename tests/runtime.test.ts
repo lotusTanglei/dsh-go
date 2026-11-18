@@ -29,13 +29,14 @@ describe('Host runtime wiring', () => {
     const effects: any[] = []
     let modelRequests = 0
     const ctx: any = {
+      sessions: { async flush() { return true } },
       effect(factory: any) { effects.push(factory()) }, on(event: string, listener: any) { listeners.set(event, listener); return () => listeners.delete(event) },
       agentPresets: { async mount() { return { id: 'dsh-superagent-router' } }, composedPreset() { return 'dsh-superagent-router' } },
       agents: { get(id: string) { return agents.get(id) }, async create(input: any) { const agent = { id: input.sessionId, ctx: {}, inject(m: any) { injected.push(m) }, steer() {}, followup() { modelRequests++ } }; agents.set(agent.id, agent); const commit = await input.setup({}); commit?.commit(); return { agent, async dispose() { agents.delete(agent.id) } } } },
       subagents: { async startActivation(input: any) { modelRequests++; const child = { id: input.childId, ctx: {} }; agents.set(child.id, child); return { childId: child.id, result: Promise.resolve({ structured: { state: 'ready', done: ['ok'], todo: [], changedPaths: [], acceptance: [{ id: 'A1', result: 'passed', evidence: 'fixture' }], risks: [], needHuman: [] } }), async dispose() { agents.delete(child.id) } } } },
       sessionQuery: { async readSession() { return { events: [] } } },
     }
-    const runtime = createRuntime(ctx, store, config)
+    const runtime = createRuntime(ctx, store, config, undefined, { spawner: ctx.subagents, legacyInput: true })
     await runtime.ready
     expect(modelRequests).toBe(0)
     expect(await runtime.panelPorts.health()).toMatchObject({ ok: true, runtime: { state: 'ready' } })

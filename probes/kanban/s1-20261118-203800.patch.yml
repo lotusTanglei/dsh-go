@@ -1,0 +1,11 @@
+# Real installed Host; deterministic local adapter, no network provider calls.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s1-state-20261118-203800
+    confirm: always
+- insert:
+    - id: kanban-s1-20261118-203800
+      name: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s1-host.cjs
+      config:
+        fixtureRoot: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s1-20261118-203800
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s1-20261118-203800-result.json

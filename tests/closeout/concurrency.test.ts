@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { writeEvidence } from '../evidence.js'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -21,8 +22,7 @@ function temporary() {
 }
 function store(): Store { const value = openStore({ dbPath: join(temporary(), 'state.sqlite') }); cleanup.push(() => value.close()); return value }
 function evidence(name: string, value: Record<string, unknown>) {
-  mkdirSync('probes/closeout', { recursive: true })
-  writeFileSync(`probes/closeout/c-concurrency-${name}.json`, JSON.stringify({ case: name, recordedAt: new Date().toISOString(), mode: 'offline-real-product-sqlite-explicit-test-doubles', ...value }, null, 2) + '\n')
+  writeEvidence(`c-concurrency-${name}`, { case: name, recordedAt: new Date().toISOString(), mode: 'offline-real-product-sqlite-explicit-test-doubles', ...value })
 }
 function policy() {
   return createPolicy({ acceptedSources: [sourceId('inbox:closeout')], acceptMode: defaults.acceptMode, confirm: 'never', bots: defaults.bots, paused: defaults.paused, evalTimeoutMs: defaults.evalTimeoutMs, budgets: { maxWorkers: defaults.maxWorkers, maxStepsPerTicket: defaults.maxStepsPerTicket, maxTokensPerTicket: defaults.maxTokensPerTicket, maxDurationMsPerTicket: defaults.maxDurationMsPerTicket, maxRetries: defaults.maxRetries, queueLimit: defaults.queueLimit, watchdog: { intervalMs: defaults.watchdogIntervalMs, stallMs: defaults.stallMs, repeatCallThreshold: defaults.repeatCallThreshold } } })
@@ -81,13 +81,14 @@ describe('CLOSE-OUT C2 offline concurrency and bounded capacity', () => {
     const workers: Array<{ id: string; settle(value: unknown): void; disposed: boolean }> = []
     let router: any, peakWorkers = 0, runtime: ReturnType<typeof createRuntime>
     const ctx: any = {
+      sessions: { async flush() { return true } },
       on(name: string, callback: (...args: any[]) => any) { listeners.set(name, callback); return () => listeners.delete(name) },
       agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } },
       agents: { get(id: string) { return agents.get(id) }, async create(input: any) { router = { id: input.sessionId, ctx: {}, async inject() {}, async followup() {}, async steer() {} }; agents.set(router.id, router); await input.setup?.({}); return { agent: router, async dispose() { agents.delete(router.id) } } } },
       subagents: { async startActivation(input: any) { let settle!: (value: unknown) => void; const result = new Promise(resolve => { settle = resolve }); const worker = { id: input.childId, settle, disposed: false }; workers.push(worker); const agent = { id: worker.id, ctx: {}, async steer() {} }; agents.set(worker.id, agent); peakWorkers = Math.max(peakWorkers, workers.filter(item => !item.disposed).length); return { childId: worker.id, sessionId: worker.id, agent, result, async dispose() { worker.disposed = true; agents.delete(worker.id); settle({ stopReason: 'aborted' }) } } }, interrupt() {} },
       sessionQuery: { async readSession(sessionId: string) { return { sessionId, events: [], session: { agentPreset: 'dsh-superagent-router' } } } },
     }
-    runtime = createRuntime(ctx, s, config)
+    runtime = createRuntime(ctx, s, config, undefined, { spawner: ctx.subagents, legacyInput: true })
     let disposed = false
     cleanup.push(async () => { if (!disposed) await runtime.dispose() })
     await runtime.ready

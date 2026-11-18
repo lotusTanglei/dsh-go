@@ -33,6 +33,14 @@ export class SessionSource implements Source {
     const text = (event.data.content ?? []).filter((block: any) => block.type === 'text' && typeof block.text === 'string').map((block: any) => block.text).join('\n')
     return createTrigger({ source: this.id, externalId: event.data.id, threadKey: threadKey(this.id), actor: { id: 'human', source: this.id, bot: false }, text, at: event.time, trust: 'human', addressed: 'direct', raw: null })
   }
+  /** Normalize one genuine durable human inbox insertion without fabricating user/message. */
+  async normalizeInbox(input: SessionEventInput, messageId: string): Promise<Trigger> {
+    if (input.session.id !== this.sessionId || input.event.type !== 'agent/inbox/spliced') throw new Error('session source: foreign inbox')
+    const message = input.event.data?.inserted?.find((item: any) => item.id === messageId && item.role === 'user' && item.source?.kind === 'user')
+    if (!message) throw new Error('session source: not a human inbox insertion')
+    const text = (message.content ?? []).filter((block: any) => block.type === 'text' && typeof block.text === 'string').map((block: any) => block.text).join('\n')
+    return createTrigger({ source: this.id, externalId: message.id, threadKey: threadKey(this.id), actor: { id: 'human', source: this.id, bot: false }, text, at: input.event.time, trust: 'human', addressed: 'direct', raw: null })
+  }
   async start(): Promise<void> {
     if (this.unsubscribe) return
     this.stopping = false

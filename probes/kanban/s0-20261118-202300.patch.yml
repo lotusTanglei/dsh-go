@@ -1,0 +1,10 @@
+# New independent attempt. Prior failed evidence remains unchanged.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-state-20261118-202300
+- insert:
+    - id: kanban-s0-20261118-202300
+      name: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s0-capability.cjs
+      config:
+        fixtureRoot: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-20261118-202300
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s0-20261118-202300-result.json

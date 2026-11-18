@@ -1,0 +1,13 @@
+{
+  "kind": "kanban-s1-real-host-local-adapter",
+  "startedAt": "2026-11-18T12:43:13.604Z",
+  "externalProviderRequests": 0,
+  "localAdapterCalls": 0,
+  "boundary": "Real Agent/inbox/admission/owner handler/flush. Router adapter synthetic; production Worker stays blocked by verified safety failure. Channel notice fixture is not a real Worker completion.",
+  "state": "failed",
+  "error": {
+    "code": "cannot get property \"agentDefaultModel\" without inject"
+  },
+  "liveAgents": 0,
+  "finishedAt": "2026-11-18T12:43:13.605Z"
+}

@@ -1,0 +1,4 @@
+
+> dsh-superagent@0.1.0 typecheck /Users/dundundebaba/sync/dsh-s-p/.probe/s1-staged-20261118-212700
+> tsc --noEmit -p tsconfig.json
+
