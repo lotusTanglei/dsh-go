@@ -48,7 +48,7 @@ export function measureWorker(assignment: WatchdogAssignment, events: readonly u
     if (event.type === 'step/start') steps++
     if (event.type === 'assistant/message' && event.data?.usage) {
       const usage = event.data.usage
-      tokens += ['uncachedInputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens'].reduce((sum, key) => sum + (Number(usage[key]) || 0), 0)
+      tokens += ['inputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens'].reduce((sum, key) => sum + (Number(usage[key]) || 0), 0)
     }
     if (event.type !== 'tool/call' || ['report_progress', 'report_result', 'structured_output'].includes(event.data?.name)) continue
     let args = event.data.arguments

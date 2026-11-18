@@ -29,6 +29,14 @@ describe('P4 cold-read watchdog', () => {
     for (let time = 120_000; time <= 1_200_000; time += 120_000) { Object.assign(f.assignment, { lastProgressAt: time }); await f.watchdog.tick(time) }
     expect(f.actions).toEqual([])
   })
+  it('counts DSH disjoint input/cache/output fields toward the token budget', async () => {
+    const events = [{ type: 'assistant/message', data: { usage: { inputTokens: 900, cacheReadTokens: 50, cacheWriteTokens: 20, outputTokens: 40 } } }]
+    expect(measureWorker(base, events, 1).tokens).toBe(1010)
+    const f = fixture({ ...base }, events)
+    await f.watchdog.tick(1)
+    expect(f.actions).toHaveLength(1)
+    expect(f.actions[0]).toContain('tokens=1010')
+  })
   it('orders budget escalation nudge → cancel → escalate exactly once', async () => {
     const f = fixture({ ...base, tokens: 1001 })
     for (let i = 0; i < 4; i++) await f.watchdog.tick(i * 100)
