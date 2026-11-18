@@ -1,0 +1,16 @@
+# Independent identity, not a claimed execution timestamp. Lead alone runs this patch.
+# Existing installed Host fs/shell providers; zero model requests; production Worker stays closed.
+# Existing superagent-dev profile only. No installation or permission-root modifications.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-state-20261118-213300
+    dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-state-20261118-213300/superagent.sqlite
+    lockPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-state-20261118-213300/superagent.sqlite.lock
+    workRoot: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-state-20261118-213300/work
+    confirm: always
+- insert:
+    - id: kanban-s0-indirect-20261118-213300
+      name: dsh-superagent/kanban-indirect-probe
+      config:
+        fixtureRoot: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s0-indirect-20261118-213300-result.json

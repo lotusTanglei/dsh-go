@@ -1,0 +1,238 @@
+{
+  "kind": "kanban-s4-real-host-single-workspace",
+  "startedAt": "2026-11-18T13:34:57.183Z",
+  "state": "passed",
+  "externalProviderRequests": 0,
+  "localAdapterCalls": 2,
+  "mainCalls": 1,
+  "titleCalls": 1,
+  "purposes": [
+    "main",
+    "session-title"
+  ],
+  "inputTokens": 0,
+  "outputTokens": 0,
+  "boundaries": {
+    "owner": "connection.browserPeer is the installed in-process owner Peer; not a real browser cookie/authentication proof.",
+    "nonOwner": "A real connection.createPeer with synthetic unknown principal tests only the exact-route principal fence, not HTTP credential admission.",
+    "client": "Actual current lib/client.js and Host manifest/bundle are read. A VM registers its factory and three slots without rendering; no DOM, browser, screenshots, visual/layout/interaction proof.",
+    "execution": "One message intent only. No ticket admission, assignment start, Worker, external provider, or alternative GUI/server.",
+    "cleanup": "Runtime disposal and probe-owned SQLite read-only checks precede receipt. Host-store closure, file-lock release and runner process cleanup remain for lead after runner exit."
+  },
+  "installedSourceContracts": {
+    "presets": "@deepseek-ai/dsh-agent-preset-registry/src/index.ts:193 list(): Promise<AgentPreset[]>; broken omitted when usable",
+    "modules": "@deepseek-ai/dsh-client-modules/src/index.ts:719 graph(), :728 clientPath(id), :745 fetchBundle(Request)",
+    "manifest": "@deepseek-ai/dsh-client-modules/src/client/manifest.ts:52 WebBootEntry { id, url, rev, inject?, immediately?, external? }; :94 WebBootGraph { rev, entries, batches }",
+    "connection": "@deepseek-ai/dsh-client-connection/src/rpc.ts:247 createPeer({principal, interactions}); src/rpc-host.ts:215-222 exact route rejects non-owner principal with 403"
+  },
+  "presets": {
+    "rosterCount": 7,
+    "rows": [
+      {
+        "id": "dsh-superagent-router",
+        "name": "Superagent Router",
+        "description": "Read-only task routing and human-facing coordination."
+      },
+      {
+        "id": "dsh-superagent-watchdog",
+        "name": "Superagent Watchdog",
+        "description": "Read-only assignment observation seam."
+      },
+      {
+        "id": "dsh-superagent-worker",
+        "name": "Superagent Worker",
+        "description": "Ticket-scoped execution and structured reporting."
+      }
+    ]
+  },
+  "client": {
+    "graphRev": "3c6a698ddfa6",
+    "entry": {
+      "id": "dsh-superagent",
+      "url": "plugins/??dsh-superagent/client.js&rev=26c5801bb580",
+      "rev": "26c5801bb580",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    },
+    "clientPath": "/Users/dundundebaba/sync/dsh-s-p/lib/client.js",
+    "expectedPath": "/Users/dundundebaba/sync/dsh-s-p/lib/client.js",
+    "bytes": 102770,
+    "sha256": "9531714da68acf0211f2de5263921aa8a04cd53e31a9cb259a602dad77458378",
+    "bundleUrl": "http://localhost/plugins/??dsh-superagent/client.js&rev=26c5801bb580",
+    "bundleStatus": 200,
+    "bundleSha256": "f9a2998a7e0c1338d1556a34eb560903c28615a62eae4ef0f977fd6665fe18e4",
+    "servedContainsExactArtifact": true,
+    "proof": "factory-and-slot registration only; no React render or DOM",
+    "workspaceSeams": {
+      "function WorkspacePage": true,
+      "saw-workspace": true,
+      "command-status": true,
+      "timelineCursor": true,
+      "RetrySameRequest": true,
+      "BoundaryTitle": true
+    },
+    "registration": {
+      "entries": 1,
+      "imports": [
+        "react"
+      ],
+      "owners": [
+        "conversation.chat.node",
+        "sidebar.panellist",
+        "main"
+      ],
+      "slots": [
+        {
+          "name": "conversation.chat.node",
+          "key": "superagent-channel-notice",
+          "locale": "superagent",
+          "componentName": "ChannelNotice",
+          "isFunction": true
+        },
+        {
+          "name": "sidebar.panellist",
+          "id": "superagent",
+          "order": 100,
+          "locale": "superagent",
+          "componentName": "Icon",
+          "isFunction": true
+        },
+        {
+          "name": "main",
+          "key": "superagent",
+          "locale": "superagent",
+          "componentName": "WorkspacePage",
+          "isFunction": true
+        }
+      ],
+      "definitions": [
+        "superagent-channel-notice"
+      ],
+      "rendered": false,
+      "browser": false
+    }
+  },
+  "nonOwnerDenied": {
+    "status": 403,
+    "body": {
+      "text": "forbidden"
+    }
+  },
+  "originDenied": {
+    "status": 403,
+    "body": {
+      "ok": false,
+      "code": "origin_denied",
+      "error": {
+        "code": "origin_denied",
+        "message": "Origin is not permitted"
+      },
+      "message": "Origin is not permitted"
+    }
+  },
+  "workspace": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "553f0608-e2e2-432d-8277-cc93aabfc4bc",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795008897291,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "admissions": [],
+        "pendingApprovals": 0
+      }
+    }
+  },
+  "command": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "3f6e383c-2086-42f4-bfc8-6255b8e7e457",
+        "messageId": "workspace:3f6e383c-2086-42f4-bfc8-6255b8e7e457",
+        "epoch": "553f0608-e2e2-432d-8277-cc93aabfc4bc",
+        "stage": "claimed",
+        "accepted": true,
+        "seq": 3,
+        "at": 1795008897292,
+        "updatedAt": 1795008897345
+      }
+    }
+  },
+  "flush": true,
+  "status": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "3f6e383c-2086-42f4-bfc8-6255b8e7e457",
+        "messageId": "workspace:3f6e383c-2086-42f4-bfc8-6255b8e7e457",
+        "epoch": "553f0608-e2e2-432d-8277-cc93aabfc4bc",
+        "stage": "published",
+        "accepted": true,
+        "seq": 6,
+        "at": 1795008897292,
+        "updatedAt": 1795008897564
+      }
+    }
+  },
+  "conversation": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "items": [
+          {
+            "id": "workspace:3f6e383c-2086-42f4-bfc8-6255b8e7e457",
+            "seq": 4,
+            "lastSeq": 9,
+            "at": 1795008897293,
+            "kind": "user",
+            "text": "S4 local conversation fixture. Reply once without tools or creating a task.",
+            "stage": "admitted"
+          },
+          {
+            "id": "b2b6fd3b-3367-453c-ac3c-4ffe7b06e34f",
+            "seq": 15,
+            "lastSeq": 15,
+            "at": 1795008897371,
+            "kind": "assistant",
+            "text": "S4 local adapter: one conversational reply; no ticket or Worker execution."
+          }
+        ],
+        "nextAfter": "WzEsIjM3SG9NaU4tV0dFZjNUMlVoQy1rZjVmLWFoa1FqRlRBdG9JX1NfTF9VWmMiLCJhZnRlciIsMTgsOTAwNzE5OTI1NDc0MDk5MSwxOF0",
+        "hasMore": false
+      }
+    }
+  },
+  "userMessageEvents": 1,
+  "conversationProof": {
+    "user": 1,
+    "assistant": 1
+  },
+  "liveAgents": 0,
+  "sqlite": {
+    "dbPath": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-214000/superagent.sqlite",
+    "readOnly": true,
+    "runningAssignments": 0,
+    "pendingOrEvaluatingTriggers": 0,
+    "runningEvals": 0,
+    "pendingOutbox": 0,
+    "outboxTotal": 0,
+    "tickets": 0,
+    "assignments": 0
+  },
+  "finishedAt": "2026-11-18T13:34:57.571Z"
+}

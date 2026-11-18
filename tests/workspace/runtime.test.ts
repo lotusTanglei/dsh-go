@@ -11,6 +11,7 @@ import type { Report } from '../../src/engine/report.js'
 import type { AdmissionPlanDTO } from '../../src/workspace/admission.js'
 import type { WorkspaceCommand } from '../../src/workspace/commands.js'
 import type { ActivationResult, Spawner, SpawnActivationInput } from '../../src/sessions/worker.js'
+import { installPanelRoutes } from '../../src/panel/routes.js'
 
 type Message = { id: string; role: string; content: Array<{ type: string; text: string }>; source: { kind: string; form?: string } }
 type Event = { type: string; seq: number; time: number; data: any }
@@ -485,6 +486,117 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect((await h.runtime.panelPorts.conversation({ epoch: messages[0]!.epoch })).items.map(item => item.id)).toEqual(messages.map(item => item.messageId))
     expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
   })
+
+  it('revises only the current exact owner plan without a new command or Trigger and approves only its replacement brief', async () => {
+    const h = fixture({ production: true }), input = await h.input('One task whose pending plan may be refined')
+    const receipt = await h.runtime.panelPorts.command(input); h.admit(receipt)
+    const original = await h.propose(), identity = { epoch: original.epoch, requestId: original.requestId, planId: original.planId, fingerprint: original.fingerprint }
+    h.endTurn()
+    const patch = { goal: 'Owner revised goal', firstAction: 'Inspect the revised allowed file', allowWrite: ['src/revised.ts'], denyWrite: ['secrets/**', 'dist/**'],
+      acceptance: [{ id: 'A2', kind: 'assertion' as const, check: 'Revised owner criterion passes' }], blockers: ['Require local fixture'], outOfScope: ['deploy', 'dependency upgrades'] }
+    const before = { calls: h.calls.followup.length, triggers: h.store.repos.trigger.all(), commands: h.store.repos.side_effect.all().filter(row => row.kind === 'workspace-command-v1') }
+    for (const forbidden of [{ scope: { repo: '/tmp/other', subdirs: [] } }, { actor: 'owner' }, { runtime: 'other' }, { base: { ref: 'other' } }]) {
+      await expect(h.runtime.panelPorts.reviseAdmission({ ...identity, patch: forbidden })).rejects.toMatchObject({ code: 'invalid_input', status: 400 })
+    }
+    const revised = await h.runtime.panelPorts.reviseAdmission({ ...identity, patch })
+    expect(revised).toMatchObject({ requestId: original.requestId, epoch: original.epoch, state: 'pending', brief: { ...original.brief, ...patch } })
+    expect(revised.planId).not.toBe(original.planId); expect(revised.fingerprint).not.toBe(original.fingerprint)
+    expect(revised.brief.scope).toEqual(original.brief.scope); expect(revised.brief.base).toEqual(original.brief.base); expect(revised.brief.runtime).toBe(original.brief.runtime)
+    expect(h.store.repos.side_effect.get(`admission:${original.planId}`)?.state).toBe('superseded')
+    expect(h.store.repos.trigger.all()).toEqual(before.triggers)
+    expect(h.store.repos.side_effect.all().filter(row => row.kind === 'workspace-command-v1')).toEqual(before.commands)
+    expect(h.calls.followup).toHaveLength(before.calls); expect(h.calls.inject).toEqual([])
+    expect(h.store.repos.ticket.all()).toEqual([]); expect(h.store.repos.eval.all()).toEqual([])
+    await expect(h.runtime.panelPorts.reviseAdmission({ ...identity, patch: { goal: 'Stale second tab' } })).rejects.toMatchObject({ code: 'admission_not_current', status: 409 })
+    await expect(h.runtime.panelPorts.admission(approve(original))).rejects.toMatchObject({ code: 'admission_not_current', status: 409 })
+    await expect(h.runtime.panelPorts.admission({ ...approve(revised), fingerprint: original.fingerprint })).rejects.toMatchObject({ code: 'admission_binding_mismatch', status: 409 })
+    const consumed = await h.runtime.panelPorts.admission(approve(revised))
+    expect(consumed).toMatchObject({ state: 'consumed', ticketId: `ticket:admission:${revised.planId}` })
+    expect(h.store.repos.ticket.all()).toEqual([expect.objectContaining({ id: consumed.ticketId, brief_json: { ...original.brief, ...patch } })])
+    expect(h.store.repos.trigger.all()).toHaveLength(1); expect(h.store.repos.decision.all()).toHaveLength(1)
+    expect(h.calls.followup).toHaveLength(1); expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+  it('expires a one-slot pending plan at its exact deadline and keeps the terminal release across tick and SQLite reopen', async () => {
+    const h = fixture({ production: true, config: { queueLimit: 1, approvalTimeoutMs: 1000 } })
+    const input = await h.input('Expire this one-slot confirmation'), receipt = await h.runtime.panelPorts.command(input)
+    h.admit(receipt); const plan = await h.propose(); h.endTurn()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(plan.expiresAt - 1)
+    await h.runtime.tick()
+    expect(h.store.repos.side_effect.get(`admission:${plan.planId}`)?.state).toBe('pending')
+    clock.mockReturnValue(plan.expiresAt)
+    await h.runtime.tick()
+    const assertExpired = async () => {
+      expect(h.store.repos.side_effect.get(`admission:${plan.planId}`)?.state).toBe('expired')
+      expect(await h.runtime.panelPorts.commandStatus({ epoch: input.epoch, requestId: input.requestId })).toMatchObject({ stage: 'rejected', accepted: true, code: 'admission_expired' })
+      expect(await h.runtime.panelPorts.command(input)).toMatchObject({ stage: 'rejected', messageId: receipt.messageId, code: 'admission_expired' })
+      expect(h.store.repos.thread_trigger.all()).toEqual([expect.objectContaining({ state: 'consumed' })])
+      expect(h.store.repos.trigger_disposition.all()).toEqual([expect.objectContaining({ filtered: 'expired-plan', ticket_id: null })])
+      await expect(h.runtime.panelPorts.admission(approve(plan))).rejects.toMatchObject({ code: 'admission_expired', status: 409 })
+      expect(h.store.repos.ticket.all()).toEqual([]); expect(h.store.repos.eval.all()).toEqual([]); expect(h.store.repos.decision.all()).toEqual([])
+    }
+    await assertExpired(); await h.runtime.tick(); await assertExpired()
+    await h.restart({ production: true }); await assertExpired()
+    expect((await h.runtime.panelPorts.workspace()).pendingPlans).toBe(0)
+    expect(h.calls.followup).toHaveLength(1)
+    const nextInput = await h.input('Fresh work fits the expired slot'), nextReceipt = await h.runtime.panelPorts.command(nextInput)
+    expect(nextReceipt).toMatchObject({ accepted: true, stage: 'queued' })
+    h.admit(nextReceipt); const archivedPending = await h.propose(); h.endTurn()
+    await h.restart({ production: true, missingRouter: true })
+    expect((await h.runtime.panelPorts.workspace()).epoch).not.toBe(nextInput.epoch)
+    expect(h.store.repos.side_effect.get(`admission:${archivedPending.planId}`)?.state).toBe('pending')
+    clock.mockReturnValue(archivedPending.expiresAt)
+    await h.runtime.tick()
+    expect(h.store.repos.side_effect.get(`admission:${archivedPending.planId}`)?.state).toBe('expired')
+    expect(await h.runtime.panelPorts.commandStatus({ epoch: nextInput.epoch, requestId: nextInput.requestId })).toMatchObject({ stage: 'rejected', code: 'admission_expired' })
+    expect(h.store.repos.thread_trigger.all().every(row => row.state === 'consumed')).toBe(true)
+    expect(h.store.repos.ticket.all()).toEqual([])
+    expect(await h.runtime.panelPorts.command(await h.input('Current epoch reuses slot released by archived expiry'))).toMatchObject({ accepted: true, stage: 'queued' })
+    expect(h.calls.followup).toHaveLength(3); expect(h.workers).toEqual([])
+  })
+
+  it('pages more than 100 active plans without loss and approves the off-page exact plan through the route filter', async () => {
+    const h = fixture({ production: true, config: { queueLimit: 200 } }), plans: AdmissionPlanDTO[] = []
+    for (let i = 0; i < 103; i++) {
+      const input = await h.input(`Pending plan ${i}`), receipt = await h.runtime.panelPorts.command(input)
+      h.admit(receipt); plans.push(await h.propose(brief(`Pending plan ${i}`))); h.endTurn()
+    }
+    const sorted = [...plans].sort((a, b) => a.planId.localeCompare(b.planId))
+    const first = await h.runtime.panelPorts.workspace({ limit: 100 })
+    expect(first).toMatchObject({ admissionsTotal: 103, pendingPlans: 103 })
+    expect(first.admissions.map(plan => plan.planId)).toEqual(sorted.slice(0, 100).map(plan => plan.planId))
+    expect(first.admissionsNext).toBe(sorted[99]!.planId)
+    const second = await h.runtime.panelPorts.workspace({ cursor: first.admissionsNext, limit: 100 })
+    expect(second).toMatchObject({ admissionsTotal: 103, pendingPlans: 103 })
+    expect(second.admissions.map(plan => plan.planId)).toEqual(sorted.slice(100).map(plan => plan.planId))
+    expect(second.admissionsNext).toBeUndefined()
+    const all = [...first.admissions, ...second.admissions]
+    expect(new Set(all.map(plan => plan.planId)).size).toBe(103)
+    expect(h.store.repos.ticket.all()).toEqual([]); expect(h.store.repos.trigger.all()).toHaveLength(103)
+    const offPage = sorted[100]!
+    const exact = await h.runtime.panelPorts.workspace({ planId: offPage.planId })
+    expect(exact.admissions).toEqual([offPage])
+
+    // Synthetic owner handler invocation only: this does not prove Host owner auth.
+    const handlers = new Map<string, (request: Request) => Promise<Response>>()
+    const reads: any[] = []
+    const installed = installPanelRoutes({ connection: { fetch: { register(route) { handlers.set(route.path, route.fetch); return () => { handlers.delete(route.path) } } } } }, h.store, {},
+      { ...h.runtime.panelPorts, async workspace(input) { reads.push(input); return h.runtime.panelPorts.workspace(input) } })
+    try {
+      const response = await handlers.get('/api/superagent/admission')!(new Request('http://owner.test/api/superagent/admission', {
+        method: 'POST', headers: { origin: 'http://owner.test', 'content-type': 'application/json' }, body: JSON.stringify(approve(offPage)),
+      }))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ ok: true, data: { state: 'consumed', ticketId: `ticket:admission:${offPage.planId}` } })
+      expect(reads).toEqual([{ planId: offPage.planId }])
+    } finally { await installed.dispose() }
+    const after = await h.runtime.panelPorts.workspace({ limit: 100 })
+    expect(after).toMatchObject({ admissionsTotal: 103, pendingPlans: 102 })
+    expect(h.store.repos.ticket.all()).toEqual([expect.objectContaining({ id: `ticket:admission:${offPage.planId}`, brief_json: offPage.brief })])
+    expect(h.store.repos.eval.all()).toHaveLength(1); expect(h.store.repos.decision.all()).toHaveLength(1)
+    expect(h.calls.followup).toHaveLength(103); expect(h.calls.inject).toEqual([])
+    expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
+  }, 30_000)
 
   it('never promotes synthetic fake-Spawner execution permission into the production runtime', async () => {
     const h = fixture({ production: true }), task = await h.task()

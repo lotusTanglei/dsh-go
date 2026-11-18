@@ -1,0 +1,11 @@
+# Final current-artifact Host resource/auth/cleanup proof; no browser or external LLM.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-215400
+    confirm: always
+- insert:
+    - id: kanban-s4-20261118-215400
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-215400/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-20261118-215400-result.json

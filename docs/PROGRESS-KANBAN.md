@@ -99,8 +99,25 @@
 - 正在独立S4 Host probe验证3preset、真实client bundle资源、owner/Origin与清理；先前6个自有Host SQLite均assignment/trigger/eval/outbox非终态0、lock不存在，无superagent-dev进程。
 - 私有scope可审阅问题与生产L1/L2阻断保持，不把UI完成写为工程闭环。
 
+## 2026-11-18T21:41:34+08:00 · 真实Host/间接shell证据与普通功能补洞
+
+- S2已独立提交`7d55411`，272tests/typecheck/build/pack绿，无push。
+- S4 Host第1回执failed保持：仅错误假设单次local adapter，实际安装版自动标题另调一次。已读`dsh-session-title-llm/src/index.ts:265–284`确认purpose=session-title，独立第2fixture按purpose分计，结果passed（`s4-20261118-214000-result.json`）：main1/title1/外部provider0，owner200/unknown realPeer403/Origin403，3preset无broken，当前client exact artifact bytes由Host200提供，3slot factory注册，agents0/SQLite各非终态0。
+- S0补齐24个真实native/Node/Python/heredoc/间接script/background case，全部allowed成功、crossTicket无文件、同票unlisted/deny均可写，full sandbox，provider0/agentsteps0/agents0，`s0-indirect-20261118-213300-result.json`为evidence-recorded。L2反证更完整，**不是执行安全通过**。
+- 自有9个Host SQLite只读核查Assignment/Trigger/Eval/Outbox非终态0、lock均不存在，未删除历史与sentinel。
+- 最后普通UX缺口未借安全阻断跳过：补pending计划expiry终态释放容量（跨epoch本地终态补偿）、计划>100分页、owner显式修改目标/第一步生成新指纹重新确认。准确项目身份可用Host owner home-relative完整后缀显示，不是hash别名；只隐藏home个人前缀，其他范围完整，secret/其他用户路径继续禁批。新功能仍在独立回归，未宣称通过。
+- 原始S4失败、查询错误/工具无效替换保留诊断；安装包路径误用复数包名ENOENT已改准确单数定位。无修改DSH核心/依赖/DDL/profile/额外可写根或生产provider调用。
+
+## 2026-11-18T21:53:20+08:00 · S3/S4最终回归与清理
+
+- 最后普通功能修订独立审查已冻结；focused145/145、完整37files/283tests、typecheck/build/pack全部exit0，原始日志`final-20261118-215400/`。新增owner-home-relative规范repo无损审阅、同计划显式修改新fingerprint/旧版409、过期真实SQLite重开与跨epoch容量释放、103plans分页/第101精准审批。
+- 最新产物再次真实Host：`s3-20261118-215400-result.json`passed（main2/title1/provider0）：精确home相对scope可审阅，owner改计划、旧指纹409、scope patch400，批准新brief只建一票、生产start仍SA_EXECUTION_BOUNDARY_UNVERIFIED、agents0。`s4-20261118-215400-result.json`passed（main1/title1/provider0）：3preset无broken、当前factory105920bytes/hash a2b74e2e…、Host资源200精确包含、owner/nonowner/Origin、单条user+assistant、dispose全0；不是浏览器/真实Worker证明。
+- `cleanup-20261118-215800.json` actual21:53:20只读检查11个自有Host SQLite：非终态Assignment/Trigger/Eval/Outbox均0、lock无、dev profile进程0、dev:web watcher0。CLI未新建GUI监听服务器；所有历史/脚本/反例sentinel/SQLite/pack产物保留，不删用户资料。
+- 最后保护检查脚本第1次exit1：全局把所有` 2 `替换为` 5 `作为期望误伤其他数字，不是原文被覆盖；改为逐文件准确原用户那一处阈值替换，再验证三文件字节一致exit0。无源码或用户稿修改。
+- 新增完整逐项矩阵`KANBAN-ACCEPTANCE.md`、人工步骤`KANBAN-MANUAL.md`；当前只可称部分完成/不可交付，首次项目选择、unknown人工处置、带来源一键重建等普通UX缺项也明确列出，不借安全阻断掩盖。下一步仅最新文档包三闸/pack和选择性提交，不再扩范围。
+
 ## 尚未通过的强制门禁
 
-- L1 首工具前 Ticket 边界与 L2 allowWrite/denyWrite shell 强制能力待实证；旧四反例不是本轮完整安全证明。
+- L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。
 - 无浏览器控制工具；当前连接 GUI 视觉/IME/主题/console 必须保留人工验收，不自造 DOM/截图。
 - 未开始真实产品模型调用、Desktop部署、迁移或权限提升。

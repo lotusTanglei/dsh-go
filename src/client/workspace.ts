@@ -80,6 +80,8 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const [systemError, setSystemError] = React.useState('')
     const [confirmation, setConfirmation] = React.useState(null as any)
     const [reason, setReason] = React.useState('')
+    const [revisionGoal, setRevisionGoal] = React.useState('')
+    const [revisionFirstAction, setRevisionFirstAction] = React.useState('')
     const [acting, setActing] = React.useState(false)
     const [actionError, setActionError] = React.useState('')
     const [stopping, setStopping] = React.useState({} as any)
@@ -259,6 +261,17 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         clearTimeout(timer); inFlight = true
         try {
           const data = await call('workspace')
+          let planCursor = data.admissionsNext
+          const plans = array(data.admissions)
+          const planCursors = new Set<string>()
+          while (planCursor) {
+            if (planCursors.has(planCursor)) throw new Error('admission_resync_required')
+            planCursors.add(planCursor)
+            const page = await call('workspace', { cursor: planCursor, limit: 100 })
+            if (page.epoch !== data.epoch) throw new Error('epoch_mismatch')
+            plans.push(...array(page.admissions)); planCursor = page.admissionsNext
+          }
+          data.admissions = [...new Map(plans.map(plan => [plan.planId, plan])).values()]
           if (!alive.current) return
           const epoch = typeof data.epoch === 'string' ? data.epoch : ''
           if (!epoch) throw new Error('invalid_workspace')
@@ -412,18 +425,19 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       systemRef.current = tab; setSystem(tab); setSystemError(''); void readSystem()
     }
     const closeSystem = () => { systemRef.current = ''; setSystem('') }
-    const askConfirm = (kind: string, item: any, decision: string) => { setActionError(''); setReason(''); setConfirmation({ kind, item, decision, epoch: epochRef.current }) }
+    const askConfirm = (kind: string, item: any, decision: string) => { setActionError(''); setReason(''); setRevisionGoal(item.brief?.goal || ''); setRevisionFirstAction(item.brief?.firstAction || ''); setConfirmation({ kind, item, decision, epoch: epochRef.current }) }
     const closeConfirm = () => { if (actionBusy.current) return; dialogRef.current?.close(); setConfirmation(null); setActionError(''); setReason('') }
     const perform = async () => {
       const value = confirmation
-      if (!value || actionBusy.current || (value.kind !== 'admission' && !reason.trim())) return
+      if (!value || actionBusy.current || (!['admission', 'revision'].includes(value.kind) && !reason.trim())) return
+      if (value.kind === 'revision' && (!revisionGoal.trim() || !revisionFirstAction.trim())) return
       if (value.epoch !== epochRef.current) { setActionError(tr('EpochChanged')); return }
       if (value.kind === 'admission' && value.decision === 'approve' && !completeBrief(value.item)) { setActionError(tr('ScopeHidden')); return }
       actionBusy.current = true; setActing(true); setActionError('')
       if (value.kind === 'stop') setStopping((old: any) => ({ ...old, [value.item.id]: true }))
       try {
-        const route = value.kind === 'admission' ? 'admission' : value.kind === 'approval' ? 'approval' : 'ticket-action'
-        const body = value.kind === 'admission' ? { epoch: value.epoch, requestId: value.item.requestId, planId: value.item.planId, fingerprint: value.item.fingerprint, decision: value.decision } : value.kind === 'approval' ? { id: value.item.id, fingerprint: value.item.fingerprint, decision: value.decision, reason: reason.trim() } : { id: value.item.id, action: 'stop', reason: reason.trim() }
+        const route = value.kind === 'revision' ? 'admission-revise' : value.kind === 'admission' ? 'admission' : value.kind === 'approval' ? 'approval' : 'ticket-action'
+        const body = value.kind === 'revision' ? { epoch: value.epoch, requestId: value.item.requestId, planId: value.item.planId, fingerprint: value.item.fingerprint, patch: { goal: revisionGoal.trim(), firstAction: revisionFirstAction.trim() } } : value.kind === 'admission' ? { epoch: value.epoch, requestId: value.item.requestId, planId: value.item.planId, fingerprint: value.item.fingerprint, decision: value.decision } : value.kind === 'approval' ? { id: value.item.id, fingerprint: value.item.fingerprint, decision: value.decision, reason: reason.trim() } : { id: value.item.id, action: 'stop', reason: reason.trim() }
         const result = await call(route, body)
         if (!alive.current) return
         if (value.kind === 'stop' && result.state === 'ended') setStopping((old: any) => { const next = { ...old }; delete next[value.item.id]; return next })
@@ -455,8 +469,8 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     }
     const admissionView = (plan: any, confirm = false) => h('article', { className: 'saw-box', key: plan.planId }, h('h3', null, tr('Admission')), h('p', { className: 'saw-meta' }, tr('AdmissionHint')), fields([
       ['State', stateName(plan.state)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(plan.fingerprint))], ['Expiry', time(plan.expiresAt)], ['PolicyVersion', text(plan.policyVersion)],
-    ]), briefView(plan.brief), !completeBrief(plan) ? h('p', { className: 'saw-error' }, tr('ScopeHidden')) : null, plan.blockedReason ? h('p', { className: 'saw-error' }, plan.blockedReason) : null,
-    !confirm && plan.state === 'pending' ? h('div', { className: 'saw-row' }, button(tr('ApprovePlan'), () => askConfirm('admission', plan, 'approve'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint || !completeBrief(plan)), button(tr('RejectPlan'), () => askConfirm('admission', plan, 'reject'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint)) : null)
+    ]), briefView(plan.brief), plan.scopeIdentity === 'host-owner-home-relative' ? h('p', { className: 'saw-meta' }, tr('HomeRelativeScope')) : null, !completeBrief(plan) ? h('p', { className: 'saw-error' }, tr('ScopeHidden')) : null, plan.blockedReason ? h('p', { className: 'saw-error' }, plan.blockedReason) : null,
+    !confirm && plan.state === 'pending' ? h('div', { className: 'saw-row' }, button(tr('ApprovePlan'), () => askConfirm('admission', plan, 'approve'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint || !completeBrief(plan)), button(tr('RejectPlan'), () => askConfirm('admission', plan, 'reject'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint), button(tr('RevisePlan'), () => askConfirm('revision', plan, 'revise'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint || !completeBrief(plan))) : null)
     const chooseDraftEpoch = (epoch: string) => {
       if (sendBusy.current) return
       draftEpochRef.current = epoch; setDraftEpoch(epoch)
@@ -543,6 +557,6 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
                 detailTab === 'results' ? h(React.Fragment, null, h('p', { className: 'saw-meta' }, tr('ResultsHint')), ...array(detail.assignments).map((assignment: any, index: number) => h('article', { className: 'saw-box', key: assignment.id || index }, h('h3', null, `${tr('Attempt')} ${index + 1}`), fields([['State', stateName(assignment.state)], ['Started', time(assignment.startedAt)], ['EndedAt', time(assignment.endedAt)], ['LastProgress', time(assignment.lastProgressAt)], ['Steps', text(assignment.steps)], ['Tokens', text(assignment.usage)]]), assignment.report ? valueView(assignment.report) : h('p', null, tr('NoReport')))), h('h3', null, tr('Delivery')), valueView(detail.delivery), h('p', { className: 'saw-meta' }, tr('NoReadAck'))) : null),
               h('footer', { className: 'saw-detail-actions' }, item.allowed?.input === true ? button(tr('Supplement'), () => supplement(item), !!pendingRequest) : null, item.allowed?.stop === true ? button(stopping[item.id] ? tr('Stopping') : tr('StopTask'), () => askConfirm('stop', item, 'stop'), !!stopping[item.id]) : null))) : null)),
       system ? h('aside', { className: 'saw-system', role: 'dialog', 'aria-modal': false, 'aria-label': tr('System'), onKeyDown: (e: any) => { if (e.key === 'Escape' && !confirmation) { e.stopPropagation(); closeSystem() } } }, h('header', { className: 'saw-detail-head' }, h('h2', null, tr(system === 'todo' ? 'Todo' : 'System')), button('×', closeSystem, false, { ref: systemCloseRef, 'aria-label': tr('CloseSystem') })), h('nav', { className: 'saw-detail-tabs', 'aria-label': tr('SystemSections') }, ...['todo', 'health', 'sources', 'settings'].map(tab => button(tr(({ todo: 'Todo', health: 'Health', sources: 'Sources', settings: 'Settings' } as any)[tab]), () => openSystem(tab), false, { key: tab, 'aria-pressed': system === tab }))), systemError ? h('div', { className: 'saw-error saw-banner' }, systemError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readSystem() })) : null, h('div', { className: 'saw-system-scroll' }, systemContent())) : null,
-      confirmation ? h('dialog', { ref: dialogRef, className: 'saw-confirm', 'aria-labelledby': 'saw-confirm-title', onCancel: (e: any) => { e.preventDefault(); closeConfirm() } }, h('h2', { id: 'saw-confirm-title' }, tr('ConfirmAction')), h('p', null, tr(confirmation.kind === 'stop' ? 'StopConfirm' : confirmation.decision === 'approve' ? 'ApproveConfirm' : 'RejectConfirm')), h('div', { className: 'saw-confirm-body' }, confirmation.kind === 'admission' ? admissionView(confirmation.item, true) : confirmation.kind === 'approval' ? h(React.Fragment, null, h('h3', null, confirmation.item.summary || tr('Approval')), fields([['Kind', text(confirmation.item.kind)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(confirmation.item.fingerprint))], ['Expiry', time(confirmation.item.expiresAt)]]), valueView(confirmation.item.impact?.details)) : h('p', null, confirmation.item.title)), confirmation.kind !== 'admission' ? h('label', { className: 'saw-reason' }, tr('ReasonRequired'), h('textarea', { rows: 3, value: reason, required: true, maxLength: 2000, onChange: (e: any) => setReason(e.target.value), 'aria-required': true })) : null, actionError ? h('p', { className: 'saw-error', role: 'alert' }, actionError) : null, h('div', { className: 'saw-row' }, button(tr('Cancel'), closeConfirm, acting), button(acting ? tr('Saving') : tr('Confirm'), () => { void perform() }, acting || confirmation.kind !== 'admission' && !reason.trim()))) : null)
+      confirmation ? h('dialog', { ref: dialogRef, className: 'saw-confirm', 'aria-labelledby': 'saw-confirm-title', onCancel: (e: any) => { e.preventDefault(); closeConfirm() } }, h('h2', { id: 'saw-confirm-title' }, tr('ConfirmAction')), h('p', null, tr(confirmation.kind === 'revision' ? 'RevisePlan' : confirmation.kind === 'stop' ? 'StopConfirm' : confirmation.decision === 'approve' ? 'ApproveConfirm' : 'RejectConfirm')), h('div', { className: 'saw-confirm-body' }, confirmation.kind === 'revision' ? h(React.Fragment, null, h('p', null, tr('RevisionHint')), h('label', null, tr('Goal'), h('textarea', { value: revisionGoal, required: true, maxLength: 8000, onChange: (e: any) => setRevisionGoal(e.target.value) })), h('label', null, tr('FirstAction'), h('textarea', { value: revisionFirstAction, required: true, maxLength: 4000, onChange: (e: any) => setRevisionFirstAction(e.target.value) }))) : confirmation.kind === 'admission' ? admissionView(confirmation.item, true) : confirmation.kind === 'approval' ? h(React.Fragment, null, h('h3', null, confirmation.item.summary || tr('Approval')), fields([['Kind', text(confirmation.item.kind)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(confirmation.item.fingerprint))], ['Expiry', time(confirmation.item.expiresAt)]]), valueView(confirmation.item.impact?.details)) : h('p', null, confirmation.item.title)), !['admission', 'revision'].includes(confirmation.kind) ? h('label', { className: 'saw-reason' }, tr('ReasonRequired'), h('textarea', { rows: 3, value: reason, required: true, maxLength: 2000, onChange: (e: any) => setReason(e.target.value), 'aria-required': true })) : null, actionError ? h('p', { className: 'saw-error', role: 'alert' }, actionError) : null, h('div', { className: 'saw-row' }, button(tr('Cancel'), closeConfirm, acting), button(acting ? tr('Saving') : tr('Confirm'), () => { void perform() }, acting || (confirmation.kind === 'revision' ? !revisionGoal.trim() || !revisionFirstAction.trim() : confirmation.kind !== 'admission' && !reason.trim())))) : null)
   }
 }

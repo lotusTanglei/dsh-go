@@ -11,7 +11,7 @@ import { getEval, startEval, settleEval } from '../engine/eval.js'
 import { isPaused } from '../engine/pause.js'
 import { commandError, createCommandJournal, WorkspaceError, type CommandRecord } from './commands.js'
 
-export type AdmissionState = 'pending' | 'approved' | 'rejected' | 'superseded' | 'consumed'
+export type AdmissionState = 'pending' | 'approved' | 'rejected' | 'expired' | 'superseded' | 'consumed'
 export interface AdmissionDecision {
   readonly epoch: string
   readonly requestId: string
@@ -60,7 +60,7 @@ interface Pointer { version: 1; requestId: string; planId: string }
 const PLAN_KEY = 'admission-plan:v1:'
 const CURRENT_KEY = 'admission-current:v1:'
 const KIND = 'workspace-admission-v1'
-const states: readonly string[] = ['pending', 'approved', 'rejected', 'superseded', 'consumed']
+const states: readonly string[] = ['pending', 'approved', 'rejected', 'expired', 'superseded', 'consumed']
 const bindingFields = ['requestId', 'epoch', 'intent', 'digest', 'messageId', 'threadKey'] as const
 
 /** Strict JSON: sorted object keys, ordered arrays, no lossy undefined/NaN/toJSON conversion. */
@@ -168,6 +168,12 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
   function metadata(plan: Plan) {
     return { version: 1, planId: plan.planId, requestId: plan.command.requestId, epoch: plan.command.epoch, fingerprint: plan.fingerprint, expiresAt: plan.expiresAt }
   }
+  /** Caller owns the transaction. Expiry closes only pending confirmation, never an approval. */
+  function expirePending(plan: Plan, state: AdmissionState, now: number): AdmissionState {
+    if (state !== 'pending' || plan.expiresAt > now) return state
+    if (!store.repos.side_effect.updateByState(effectKey(plan.planId), 'pending', 'expired')) return commandError('admission_conflict')
+    return 'expired'
+  }
   function markConsumed(plan: Plan): AdmissionPlanDTO {
     return store.transaction(() => {
       if (current(plan.command.requestId) !== plan.planId) return commandError('admission_not_current')
@@ -232,12 +238,14 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
     if (savedCommand.intent !== 'new-task' || savedCommand.targetTicket) return commandError('admission_new_task_required')
     if (!savedCommand.durable || !['admitted', 'processing', 'published'].includes(savedCommand.stage)) return commandError('admission_command_not_admitted')
     const digest = fingerprint(savedCommand.requestId, checked, policy)
-    return store.transaction(() => {
+    const result = store.transaction(() => {
       const previousId = current(savedCommand.requestId)
       if (previousId) {
         const previous = read(previousId)
-        if (previous.plan.fingerprint === digest) return dto(previous.plan, previous.state)
-        if (previous.state !== 'pending') return commandError('admission_plan_locked')
+        const state = expirePending(previous.plan, previous.state, Date.now())
+        if (previous.plan.fingerprint === digest) return dto(previous.plan, state)
+        // Commit a newly observed expiry before reporting the locked plan to the caller.
+        if (state !== 'pending') return { locked: true as const }
         if (!store.repos.side_effect.updateByState(effectKey(previousId), 'pending', 'superseded')) return commandError('admission_conflict')
       }
       const trigger = sourceTrigger(savedCommand)
@@ -257,6 +265,8 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
       if (previousId) store.db.prepare('UPDATE kv SET v = ? WHERE k = ?').run(encodeJson(pointer, false), CURRENT_KEY + savedCommand.requestId)
       return dto(freeze(plan), 'pending')
     })
+    if ('locked' in result) return commandError('admission_plan_locked')
+    return result
   }
   function decide(input: AdmissionDecision): AdmissionPlanDTO {
     if (!input || !['approve', 'reject'].includes(input.decision) || ['epoch', 'requestId', 'planId', 'fingerprint'].some(key => typeof input[key as keyof AdmissionDecision] !== 'string' || !input[key as keyof AdmissionDecision])) return commandError('admission_decision_invalid', 400)
@@ -265,17 +275,21 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
       if (plan.command.requestId !== input.requestId || plan.command.epoch !== input.epoch || plan.fingerprint !== input.fingerprint) return commandError('admission_binding_mismatch')
       if (current(input.requestId) !== input.planId) return commandError('admission_not_current')
       if (input.decision === 'reject' && state === 'rejected') return { plan, state }
+      // A terminal replay may arrive after the Host has finalized the command journal.
+      if (state === 'expired') return { expired: true as const }
       commandFor(plan)
       if (state !== 'pending') {
         if (input.decision === 'approve' && ['approved', 'consumed'].includes(state) || input.decision === 'reject' && state === 'rejected') return { plan, state }
         return commandError('admission_not_pending')
       }
-      if (Date.now() >= plan.expiresAt) return commandError('admission_expired')
+      if (expirePending(plan, state, Date.now()) === 'expired') return { expired: true as const }
       if (canonical(policy) !== canonical(plan.policy)) return commandError('admission_policy_changed')
       const next = input.decision === 'approve' ? 'approved' : 'rejected'
       if (!store.repos.side_effect.updateByState(effectKey(plan.planId), 'pending', next, { detail: { ...metadata(plan), decidedAt: Date.now() } })) return commandError('admission_conflict')
       return { plan, state: next as AdmissionState }
     })
+    // Throw only after COMMIT: throwing inside the callback would roll back the expiry CAS.
+    if ('expired' in approved) return commandError('admission_expired')
     return approved.state === 'approved' ? consume(approved.plan) : dto(approved.plan, approved.state)
   }
   function list(epoch?: string): AdmissionPlanDTO[] {
@@ -285,8 +299,18 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
       .map(({ plan, state }) => dto(plan, state))
   }
   function recover(): AdmissionPlanDTO[] {
+    const now = Date.now()
+    const expired = store.transaction(() => {
+      const pending = store.db.prepare("SELECT key FROM side_effect WHERE kind = ? AND state = 'pending' ORDER BY at, key").all(KIND)
+      const records: AdmissionPlanDTO[] = []
+      for (const row of pending) {
+        const { plan, state } = read(String(row.key).slice('admission:'.length))
+        if (state === 'pending' && expirePending(plan, state, now) === 'expired') records.push(dto(plan, 'expired'))
+      }
+      return records
+    })
     const approved = store.db.prepare("SELECT key FROM side_effect WHERE kind = ? AND state = 'approved' ORDER BY at, key").all(KIND)
-    return approved.map(row => {
+    return [...expired, ...approved.map(row => {
       const { plan } = read(String(row.key).slice('admission:'.length))
       // An archived binding must never start fresh work after a canonical Session change.
       const binding = store.repos.kv.get('workspace-bindings-v1')?.v as { current?: { epoch?: string } } | undefined
@@ -295,7 +319,7 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
         if (!(error instanceof WorkspaceError)) throw error
         return dto(plan, 'approved', error.code)
       }
-    })
+    })]
   }
   return { propose, decide, list, recover }
 }

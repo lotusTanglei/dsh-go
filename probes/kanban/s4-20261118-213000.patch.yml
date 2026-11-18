@@ -1,0 +1,16 @@
+# Isolated S4 fixture; label is an identity, not a claimed execution timestamp.
+# Authorized profile: superagent-dev. Lead runs the existing timeout/cleanup runner.
+# Production Worker remains closed; browser/visual verification is explicitly absent.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-213000
+    dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-213000/superagent.sqlite
+    lockPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-213000/superagent.sqlite.lock
+    workRoot: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-213000/work
+    confirm: always
+- insert:
+    - id: kanban-s4-20261118-213000
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-213000/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-20261118-213000-result.json

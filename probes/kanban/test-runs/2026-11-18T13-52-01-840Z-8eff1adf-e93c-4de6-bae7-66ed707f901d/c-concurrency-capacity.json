@@ -1,0 +1,40 @@
+{
+  "case": "capacity",
+  "recordedAt": "2026-11-18T13:52:02.067Z",
+  "mode": "offline-real-product-sqlite-explicit-test-doubles",
+  "maxWorkers": 3,
+  "requested": 5,
+  "starts": [
+    {
+      "ok": true,
+      "code": "SA_STARTED",
+      "assignmentId": "99b08332-cab3-4066-a9b9-1ef59d5dde1d"
+    },
+    {
+      "ok": true,
+      "code": "SA_STARTED",
+      "assignmentId": "8a7c3845-8642-409f-b94a-3ee4a2b8709f"
+    },
+    {
+      "ok": true,
+      "code": "SA_STARTED",
+      "assignmentId": "ae4be742-e5f5-4eaa-9117-e804e68ee1d3"
+    },
+    {
+      "ok": true,
+      "code": "SA_QUEUED"
+    },
+    {
+      "ok": true,
+      "code": "SA_QUEUED"
+    }
+  ],
+  "activeAfterStart": 3,
+  "peakFakeWorkers": 3,
+  "totalFakeWorkers": 5,
+  "finishedTickets": 5,
+  "liveAgentsAfterDispose": 0,
+  "durationMs": 10.200625000000002,
+  "realModelCalls": 0,
+  "explicitBoundary": "real product runtime + SQLite, fake DSH Router/Worker activation handles only"
+}

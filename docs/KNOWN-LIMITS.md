@@ -1,5 +1,12 @@
 # 已知限制（诚实清单）
 
+## 首要发布阻断（看板工作区本轮）
+
+- **L1/L2未通过，真实Worker关闭**：安装版真实spawn仍用父Session sandbox根；正确Ticket根下native/shell对同票未列/deny路径均写入成功。证据见[能力边界](<KANBAN-CAPABILITY.md>)与[本轮进度](<PROGRESS-KANBAN.md>)。生产新启动、旧live恢复、工具guard均fail-closed；不能把fake Spawner测试或看板流转当成真实工作完成。
+- **授权范围不可完整审阅时禁批准**：当前Host owner主目录内、无敏感后缀的规范repo可用`~/完整项目后缀`无损审阅（UI明确`~`定义），不改变执行契约、不以opaque hash代替授权；其他用户/非规范/含秘密路径或action仍被脱敏时只能拒绝。首次安全项目选择、跨机器路径映射仍未闭合。
+- **UI已实现但未部署/视觉验收**：单一对话+四列工作区源码/构建/真实Host资源已验证，未部署当前GUI；静态factory不代表浏览器实显。旧七页证据按原版本保留。
+- **产品UX仍有未闭合项**：首次安全项目选择仍需补；未知dispatch保留同ID不盲重发，但缺owner显式终态处置；人工停止后禁止原地resume，尚缺带来源关联的一键“以此需求新建任务”（目前只能重新输入新任务）。同一pending计划已可显式修改目标/第一步并重新确认，API另支持allow/deny/验收等受限patch；范围/runtime/base不可借修订改变。过期计划已终态释放容量（含跨epoch），103计划分页/第101审批有回归。不能以执行安全阻断掩盖其余普通功能缺项。
+
 ## 交付限制
 
 - **视觉验收未做**：当前连接 GUI 未安装/挂载此 bundle；侧栏点击、React/DOM渲染、console slot crash、焦点、浅/深主题对比度、浏览器通知实际显示均未验证。见[P5-VISUAL-CHECKLIST](P5-VISUAL-CHECKLIST.md)。

@@ -1,4 +1,6 @@
 import { statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { relative, resolve, isAbsolute } from 'node:path'
 import { readBoard, boardTicket, approvalFingerprint } from './board.js'
 import type { BoardColumn } from './board.js'
 import { WorkspaceError } from '../workspace/commands.js'
@@ -42,11 +44,12 @@ export interface PanelConfig {
 
 /** Side effects that must be supplied by the owning runtime; routes never fake a successful action. */
 export interface PanelPorts {
-  readonly workspace?: () => Promise<unknown>
+  readonly workspace?: (input?: { cursor?: string; limit?: number; planId?: string }) => Promise<unknown>
   readonly conversation?: (input: any) => Promise<unknown>
   readonly command?: (input: any) => Promise<unknown>
   readonly commandStatus?: (input: any) => Promise<unknown>
   readonly admission?: (input: any) => Promise<unknown>
+  readonly reviseAdmission?: (input: any) => Promise<unknown>
   readonly ownsTicketTransitions?: boolean
   readonly health?: () => unknown | Promise<unknown>
   readonly sources?: () => unknown | Promise<unknown>
@@ -65,7 +68,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/admission', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -77,6 +80,17 @@ function fail(code: string, message: string, status: number): Response {
   return json({ ok: false, code, error: { code, message }, message }, status)
 }
 function ok(data: unknown): Response { return json({ ok: true, data: sanitize(data) }) }
+/** Lossless owner-relative project identity, not an opaque alias standing in for unseen scope. */
+function reviewPlan(plan: any) {
+  const repo = plan?.brief?.scope?.repo
+  let brief = plan?.brief
+  if (typeof repo === 'string' && isAbsolute(repo) && resolve(repo) === repo) {
+    const suffix = relative(homedir(), repo)
+    if (suffix && !suffix.startsWith('..') && !isAbsolute(suffix) && String(redact(suffix)) === suffix) brief = { ...brief, scope: { ...brief.scope, repo: `~/${suffix}` } }
+  }
+  const reviewable = JSON.stringify(sanitize(brief)) === JSON.stringify(brief)
+  return { ...plan, brief, scope: brief?.scope, reviewable, ...(brief !== plan?.brief ? { scopeIdentity: 'host-owner-home-relative' } : {}), ...(!reviewable ? { blockedReason: 'admission_scope_redacted' } : {}) }
+}
 function sanitize(value: unknown, depth = 0): unknown {
   if (depth > 12) return '[REDACTED]'
   if (typeof value === 'string') return redact(value)
@@ -244,10 +258,12 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     threadKey: typeof row.thread_key === 'string' ? row.thread_key : undefined,
   }))
   route('/workspace', async request => {
-    const parsed = await body(request, []); if (parsed.error) return parsed.error
+    const parsed = await body(request, ['cursor', 'limit']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (input.cursor !== undefined && !validId(input.cursor) || !limitOf(input.limit, 100)) return fail('invalid_input', 'Invalid plan cursor or limit', 400)
     if (!ports.workspace) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
-    const data = await ports.workspace() as any
-    return ok({ ...data, admissions: Array.isArray(data?.admissions) ? data.admissions.map((plan: any) => ({ ...plan, reviewable: JSON.stringify(sanitize(plan.brief)) === JSON.stringify(plan.brief), ...(JSON.stringify(sanitize(plan.brief)) !== JSON.stringify(plan.brief) ? { blockedReason: 'admission_scope_redacted' } : {}) })) : [] })
+    const data = await ports.workspace(input) as any
+    return ok({ ...data, admissions: Array.isArray(data?.admissions) ? data.admissions.map(reviewPlan) : [] })
   })
   route('/conversation', async request => {
     const parsed = await body(request, ['epoch', 'after', 'before', 'limit']); if (parsed.error) return parsed.error
@@ -273,11 +289,18 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     if (!['epoch', 'requestId', 'planId'].every(key => validId(input[key])) || typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint) || !['approve', 'reject'].includes(String(input.decision))) return fail('invalid_input', 'Plan identity and decision required', 400)
     if (!ports.admission) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
     if (input.decision === 'approve') {
-      const workspace = await ports.workspace?.() as any
+      const workspace = await ports.workspace?.({ planId: String(input.planId) }) as any
       const plan = workspace?.admissions?.find((row: any) => row.planId === input.planId && row.requestId === input.requestId && row.epoch === input.epoch && row.fingerprint === input.fingerprint)
-      if (!plan || JSON.stringify(sanitize(plan.brief)) !== JSON.stringify(plan.brief)) return fail('admission_unreviewable', 'Exact plan scope is not fully visible; approval is blocked', 409)
+      if (!plan || !reviewPlan(plan).reviewable) return fail('admission_unreviewable', 'Exact plan scope is not fully visible; approval is blocked', 409)
     }
-    return ok(await ports.admission(input))
+    return ok(reviewPlan(await ports.admission(input)))
+  })
+  route('/admission-revise', async request => {
+    const parsed = await body(request, ['epoch', 'requestId', 'planId', 'fingerprint', 'patch']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!['epoch', 'requestId', 'planId'].every(key => validId(input[key])) || typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint) || !isObject(input.patch)) return fail('invalid_input', 'Exact plan identity and revision patch required', 400)
+    if (!ports.reviseAdmission) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    return ok(reviewPlan(await ports.reviseAdmission(input)))
   })
   route('/board', async request => {
     const parsed = await body(request, ['column', 'cursor', 'limit', 'query', 'outcome']); if (parsed.error) return parsed.error

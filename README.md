@@ -2,9 +2,11 @@
 
 在 DeepSeek Harness 上实现的一个 Super-agent bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
-**当前状态：A/B 自动验收完成，整体仍是部分交付，不可宣称生产上线。** 最新 typecheck／**165 项测试**／build 通过；A四页真实数据/静态证据完成，B受控单Worker stall→nudge→cancel→escalate真实链完成，C离线并发/故障/注入证据完成。
+**当前状态：看板工作区开发中，部分完成／不可交付，非生产就绪。** 本轮真实安装版探针证明 L1 spawn 继承父根、L2 同票未授权/deny 路径仍可被 native/shell 写入；生产 Worker 启动与恢复执行现已 fail-closed。历史 A/B/C 证据保留，不代表当前安全门禁已通过。
 
-仍未完成：实际浏览器视觉、10-ticket真实成本曲线，以及 Ticket `allowWrite/denyWrite` 的执行级文件/命令隔离。C1-2已实测 write/bash 越界工具体可达，属于 **RELEASE BLOCKER**；不要把 prompt标记、workspace sandbox 或局部角色guard冒称为逐文件安全边界。desktop 未改。
+已实现后端：持久命令与幂等回执、显式任务定向、当前可信输入建单确认、分页对话/看板/任务时间线、结构化结果确定性 Outbox 摘要。最新完整门禁 **283 tests／typecheck／build／pack** 通过；真实 Host 本地确定性适配器验证发送、精确计划批准、建票、唯一通知及 Worker 阻断，**外部 provider 请求 0，不是真实 Worker 完成证明**。同一对话四列 UI 已实现并通过真实Host资源/factory合同检查，尚未挂载当前GUI；实际视觉/交互未验。完整逐项结论见[本轮验收](<docs/KANBAN-ACCEPTANCE.md>)，人工步骤见[工作区人工清单](<docs/KANBAN-MANUAL.md>)。
+
+仍未完成：L1/L2 执行级隔离、真实产品端到端和浏览器视觉/IME/键盘验收、真实成本曲线。owner主目录内规范项目可显示`~/完整项目后缀`，不改变实际执行路径；其他范围/动作若被脱敏而无法完整审阅仍禁批。首次项目选择、未知请求人工终态处置和带来源关联的一键重建任务仍未闭合。不得用 prompt、删 bash、目录沙箱或 stub 冒充逐文件安全。Desktop 未改。
 
 证据与下一步见 [最终验收2](docs/FINAL-VERIFY-2.md)、[收口A](docs/CLOSEOUT-A.md)／[B](docs/CLOSEOUT-B.md)／[C](docs/CLOSEOUT-C.md)、[已知限制](docs/KNOWN-LIMITS.md)、[发布](docs/RELEASE.md)与[运维](docs/OPERATIONS.md)。旧证据保留于[最终验收记录](docs/FINAL-VERIFY.md)、[P3](docs/P3-report.md)／[P4](docs/P4-report.md)／[P5](docs/P5-report.md) 报告。旧 P2/A3 计数与注入证明的问题已在 [诊断更正](docs/P2-DIAGNOSIS.md) 披露。
 
@@ -42,7 +44,7 @@ pnpm typecheck && pnpm test && pnpm build
 node --test tests/domain-bare.test.mjs
 ```
 
-DSH 自带 Node 在 macOS 上拒绝加载 Rollup 原生模块（签名 Team ID 不同）；开发测试使用本机普通 Node 22.23.1，真实插件/SQLite 用 Electron Node 24.21.0 另验。未改签名或关闭系统保护。
+本轮已验证安装版 Electron Node 24.21.0 可运行 typecheck／Vitest／build／pack 与 `node:sqlite`；系统 PATH Node 22.23.1 不满足 manifest engine。本轮使用独立 Node shim 指向安装版运行时，未改签名或关闭系统保护；具体命令和原始输出见 [本轮进度](<docs/PROGRESS-KANBAN.md>) 与 [能力边界](<docs/KANBAN-CAPABILITY.md>)。
 
 Desktop profile 由应用管理，CLI 的 plugin add / dump-config 均拒绝。安装使用桌面 Plugin Manager 的本地目录入口。P1 验收安装后已卸载，不残留活跃插件。`cordis.patch.yml` 配置数据目录；`host-runtime.json` 仅为安装版 Schemastery 引导路径，迁移到其他机器时须设置新路径（或由 DSH_INSTALL_DIR 提供）。没有把 DSH 包复制到项目或改写安装包。
 

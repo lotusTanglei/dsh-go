@@ -82,12 +82,18 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
   }
   return {
     current, ingress, admission, modelAvailable, requireEpoch,
-    async workspace() {
+    async workspace(input: { cursor?: string; limit?: number; planId?: string } = {}) {
       const available = await modelAvailable()
+      const limit = input.limit ?? 100
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return commandError('invalid_input', 400)
+      const plans = admission.list(current.epoch).filter(row => !input.planId || row.planId === input.planId).sort((a, b) => a.planId.localeCompare(b.planId))
+      const offset = input.cursor ? plans.findIndex(row => row.planId === input.cursor) + 1 : 0
+      if (input.cursor && offset === 0) return commandError('admission_resync_required')
+      const page = plans.slice(offset, offset + limit)
       return { epoch: current.epoch, archiveEpochs: bindings.archives.map(row => ({ epoch: row.epoch, createdAt: row.createdAt })),
         state: active() ? 'ready' : 'unavailable', model: { available, ...(available ? {} : { code: 'model_unavailable' }) }, serverTime: Date.now(),
         capabilities: { conversation: true, send: available && !config.paused && !engine.paused(), workerExecution: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' },
-        admissions: admission.list(current.epoch), pendingApprovals: Number(store.db.prepare("SELECT COUNT(*) n FROM approval WHERE state='pending'").get()?.n ?? 0) }
+        admissions: page, admissionsTotal: plans.length, pendingPlans: plans.filter(row => row.state === 'pending').length, ...(offset + page.length < plans.length ? { admissionsNext: page.at(-1)!.planId } : {}), pendingApprovals: Number(store.db.prepare("SELECT COUNT(*) n FROM approval WHERE state='pending'").get()?.n ?? 0) }
     },
     async conversation(input: { epoch: string; after?: string; before?: string; limit?: number }) {
       const binding = [current, ...bindings.archives].find(row => row.epoch === input.epoch)
@@ -114,6 +120,15 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
       }
       return result
     },
+    async reviseAdmission(input: { epoch: string; requestId: string; planId: string; fingerprint: string; patch: Record<string, unknown> }) {
+      requireEpoch(input.epoch)
+      const plan = admission.list(current.epoch).find(row => row.planId === input.planId && row.requestId === input.requestId && row.fingerprint === input.fingerprint)
+      const record = ingress.journal.read(input.requestId)
+      if (!plan || !record || plan.state !== 'pending' || plan.expiresAt <= Date.now()) return commandError('admission_not_current')
+      const allowed = ['goal', 'firstAction', 'allowWrite', 'denyWrite', 'acceptance', 'blockers', 'outOfScope']
+      if (!input.patch || typeof input.patch !== 'object' || Array.isArray(input.patch) || !Object.keys(input.patch).length || Object.keys(input.patch).some(key => !allowed.includes(key))) return commandError('invalid_input', 400)
+      return admission.propose(record, { ...plan.brief, ...input.patch })
+    },
     async propose(brief: any) {
       const record = await currentCommand()
       return admission.propose(record, brief)
@@ -126,14 +141,15 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
     },
     async recover() {
       await ingress.recover(); admission.recover()
-      for (const plan of admission.list(current.epoch).filter(row => row.state === 'rejected')) {
+      // Terminal plan cleanup is local bookkeeping across all owned epochs, never old work execution.
+      for (const plan of admission.list().filter(row => ['rejected', 'expired'].includes(row.state))) {
         const record = ingress.journal.read(plan.requestId)
         if (!record || record.stage === 'rejected') continue
         store.transaction(() => {
           store.db.prepare("UPDATE thread_trigger SET state='consumed' WHERE thread_key=? AND state='pending'").run(record.threadKey)
-          store.db.prepare("UPDATE trigger_disposition SET filtered=? WHERE trigger_id IN (SELECT id FROM trigger WHERE thread_key=?) AND decision_id IS NULL").run('human-rejected-plan', record.threadKey)
+          store.db.prepare("UPDATE trigger_disposition SET filtered=? WHERE trigger_id IN (SELECT id FROM trigger WHERE thread_key=?) AND decision_id IS NULL").run(plan.state === 'expired' ? 'expired-plan' : 'human-rejected-plan', record.threadKey)
         })
-        ingress.journal.update(record.requestId, { stage: 'rejected' })
+        ingress.journal.update(record.requestId, { stage: 'rejected', ...(plan.state === 'expired' ? { error: 'admission_expired' } : {}) })
       }
       const snapshot = await ctx.sessionQuery.readSession(mainId)
       let batch: string[] = []

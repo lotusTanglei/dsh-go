@@ -2,7 +2,7 @@
 
 ## 发布判定（2026-11-18）
 
-当前版本是**部分交付，不可宣称生产上线**：A/B 自动证据完成，C 自动证据完成，但 C1-2 证明 `allowWrite/denyWrite` 尚未成为 Worker 的执行级隔离；真实 GUI 视觉验收也未做。发布前必须解决该安全阻断并完成人工清单。
+当前版本是**部分完成／不可交付，非生产就绪**：本轮安装版真实native/shell探针确认L1 spawn父根与L2逐路径授权缺口，生产Worker启动/恢复/工具执行均已关闭。后端工作区命令/特定计划/持久通知已用真实Host本地适配器验证，外部provider0；不是实际Worker完成。看板UI源码/构建/Host资源合同已通过，但真实GUI验收仍未做；owner主目录内无敏感后缀的规范repo以`~/完整项目后缀`可审阅，不改变实际路径；其他范围被隐私脱敏无法完整审阅时仍禁止批准。发布前必须解决执行安全与知情授权阻断并完成人工清单，历史A/B/C证据不外推本轮。最终全量283tests/typecheck/build/pack通过，真实Host最新bundle、显式计划修改与旧指纹拒绝、owner/Origin合同及清理已复测；不代表真实Worker或浏览器验收通过。详见[逐项验收](<KANBAN-ACCEPTANCE.md>)、[人工清单](<KANBAN-MANUAL.md>)、[能力边界](<KANBAN-CAPABILITY.md>)与[本轮进度](<PROGRESS-KANBAN.md>)。
 
 ## 安装
 
@@ -16,8 +16,8 @@ Desktop profile **只能使用应用内 Plugins 管理界面**：
 2. 打开 DeepSeek Harness → Plugins。截图位 A：侧栏 Plugins 入口和 Add plugin 按钮。
 3. 选择 Add plugin / 本地目录，选择准备好的 bundle 目录并确认 manifest/图标/说明。截图位 B：本地目录选择与确认框（隐藏用户路径）。
 4. 在 Plugins 列表确认 `dsh-superagent` 已启用，确认配置为包外持久目录。截图位 C：启用状态及脱敏的配置检查。
-5. 新建会话后检查三个 preset 无 broken，并在 Health 页检查 DB/version/runtime。截图位 D：preset roster 与 Health 真实数据。
-6. 用本项目[P5视觉清单](P5-VISUAL-CHECKLIST.md)逐项人工验收。上述截图位仅为采集说明，没有伪造截图。
+5. 新建会话后检查三个 preset 无 broken，并在超管工作区的系统→健康检查 DB/version/runtime。截图位 D：preset roster 与健康真实数据。
+6. 用本轮[工作区人工清单](<KANBAN-MANUAL.md>)逐项验收；[旧P5视觉清单](<P5-VISUAL-CHECKLIST.md>)仅作历史对照。上述截图位仅为采集说明，没有伪造截图。
 
 本项目禁止通过 CLI 改 Desktop profile；不要手写 `~/.dsh/profiles/desktop/package.json` 或 `cordis.patch.yml`。
 

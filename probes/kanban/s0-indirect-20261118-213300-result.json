@@ -1,0 +1,708 @@
+{
+  "kind": "kanban-s0-installed-indirect-capability",
+  "identity": "20261118-213300",
+  "state": "evidence-recorded",
+  "startedAt": "2026-11-18T13:36:17.434Z",
+  "fixtureRoot": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300",
+  "providerRequests": 0,
+  "cases": [
+    {
+      "label": "native-allowed",
+      "layer": "native",
+      "kind": "allowed",
+      "provider": "real-fs-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/native-allowed.txt",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": true,
+      "attempted": true,
+      "returned": true,
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "native-crossTicket",
+      "layer": "native",
+      "kind": "crossTicket",
+      "provider": "real-fs-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/native-crossTicket.txt",
+      "expectedDirectoryAccess": false,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": false,
+      "error": {
+        "code": "FS_SANDBOX_DENIED",
+        "message": "cannot write \"/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/native-crossTicket.txt\": file access denied under workspace-write mode"
+      },
+      "exists": false,
+      "contentsMatch": false
+    },
+    {
+      "label": "native-unlisted",
+      "layer": "native",
+      "kind": "unlisted",
+      "provider": "real-fs-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/native-unlisted.txt",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "native-deny",
+      "layer": "native",
+      "kind": "deny",
+      "provider": "real-fs-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/native-deny.txt",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "realNode-allowed",
+      "layer": "realNode",
+      "kind": "allowed",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/realNode-allowed.txt",
+      "command": "ELECTRON_RUN_AS_NODE=1 '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-allowed.cjs'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": true,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "realNode-crossTicket",
+      "layer": "realNode",
+      "kind": "crossTicket",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/realNode-crossTicket.txt",
+      "command": "ELECTRON_RUN_AS_NODE=1 '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-crossTicket.cjs'",
+      "expectedDirectoryAccess": false,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "node:fs:621\n  return binding.open(\n                 ^\n\nError: EPERM: operation not permitted, open '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/realNode-crossTicket.txt'\n    at Object.openSync (node:fs:621:18)\n    at Object.func [as openSync] (node:electron/js2c/node_init:1:3581)\n    at Object.writeFileSync (node:fs:2496:35)\n    at Object.<anonymous> (/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-crossTicket.cjs:2:20)\n    at Module._compile (node:internal/modules/cjs/loader:1937:14)\n    at Object..js (node:internal/modules/cjs/loader:2070:10)\n    at Module.load (node:internal/modules/cjs/loader:1658:32)\n    at Module._load (node:internal/modules/cjs/loader:1450:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:268:19)\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5) {\n  errno: -1,\n  code: 'EPERM',\n  syscall: 'open',\n  path: '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/realNode-crossTicket.txt'\n}\n\nNode.js v24.21.0\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false,
+      "contentsMatch": false
+    },
+    {
+      "label": "realNode-unlisted",
+      "layer": "realNode",
+      "kind": "unlisted",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/realNode-unlisted.txt",
+      "command": "ELECTRON_RUN_AS_NODE=1 '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-unlisted.cjs'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "realNode-deny",
+      "layer": "realNode",
+      "kind": "deny",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/realNode-deny.txt",
+      "command": "ELECTRON_RUN_AS_NODE=1 '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-deny.cjs'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "heredoc-allowed",
+      "layer": "heredoc",
+      "kind": "allowed",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/heredoc-allowed.txt",
+      "command": "/bin/sh <<'KANBAN_SYNTHETIC_FIXTURE'\nprintf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/heredoc-allowed.txt'\nKANBAN_SYNTHETIC_FIXTURE",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": true,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "heredoc-crossTicket",
+      "layer": "heredoc",
+      "kind": "crossTicket",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/heredoc-crossTicket.txt",
+      "command": "/bin/sh <<'KANBAN_SYNTHETIC_FIXTURE'\nprintf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/heredoc-crossTicket.txt'\nKANBAN_SYNTHETIC_FIXTURE",
+      "expectedDirectoryAccess": false,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "/bin/sh: line 1: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/heredoc-crossTicket.txt: Operation not permitted\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false,
+      "contentsMatch": false
+    },
+    {
+      "label": "heredoc-unlisted",
+      "layer": "heredoc",
+      "kind": "unlisted",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/heredoc-unlisted.txt",
+      "command": "/bin/sh <<'KANBAN_SYNTHETIC_FIXTURE'\nprintf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/heredoc-unlisted.txt'\nKANBAN_SYNTHETIC_FIXTURE",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "heredoc-deny",
+      "layer": "heredoc",
+      "kind": "deny",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/heredoc-deny.txt",
+      "command": "/bin/sh <<'KANBAN_SYNTHETIC_FIXTURE'\nprintf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/heredoc-deny.txt'\nKANBAN_SYNTHETIC_FIXTURE",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "indirectScript-allowed",
+      "layer": "indirectScript",
+      "kind": "allowed",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/indirectScript-allowed.txt",
+      "command": "/bin/sh '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-allowed.sh'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": true,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "indirectScript-crossTicket",
+      "layer": "indirectScript",
+      "kind": "crossTicket",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/indirectScript-crossTicket.txt",
+      "command": "/bin/sh '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-crossTicket.sh'",
+      "expectedDirectoryAccess": false,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "node:fs:621\n  return binding.open(\n                 ^\n\nError: EPERM: operation not permitted, open '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/indirectScript-crossTicket.txt'\n    at Object.openSync (node:fs:621:18)\n    at Object.func [as openSync] (node:electron/js2c/node_init:1:3581)\n    at Object.writeFileSync (node:fs:2496:35)\n    at Object.<anonymous> (/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-crossTicket.cjs:2:20)\n    at Module._compile (node:internal/modules/cjs/loader:1937:14)\n    at Object..js (node:internal/modules/cjs/loader:2070:10)\n    at Module.load (node:internal/modules/cjs/loader:1658:32)\n    at Module._load (node:internal/modules/cjs/loader:1450:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:268:19)\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5) {\n  errno: -1,\n  code: 'EPERM',\n  syscall: 'open',\n  path: '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/indirectScript-crossTicket.txt'\n}\n\nNode.js v24.21.0\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false,
+      "contentsMatch": false
+    },
+    {
+      "label": "indirectScript-unlisted",
+      "layer": "indirectScript",
+      "kind": "unlisted",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/indirectScript-unlisted.txt",
+      "command": "/bin/sh '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-unlisted.sh'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "indirectScript-deny",
+      "layer": "indirectScript",
+      "kind": "deny",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/indirectScript-deny.txt",
+      "command": "/bin/sh '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-deny.sh'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "background-allowed",
+      "layer": "background",
+      "kind": "allowed",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/background-allowed.txt",
+      "command": "(printf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/background-allowed.txt') & fixture_pid=$!; wait \"$fixture_pid\"",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": true,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "background-crossTicket",
+      "layer": "background",
+      "kind": "crossTicket",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/background-crossTicket.txt",
+      "command": "(printf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/background-crossTicket.txt') & fixture_pid=$!; wait \"$fixture_pid\"",
+      "expectedDirectoryAccess": false,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "bash: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/background-crossTicket.txt: Operation not permitted\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false,
+      "contentsMatch": false
+    },
+    {
+      "label": "background-unlisted",
+      "layer": "background",
+      "kind": "unlisted",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/background-unlisted.txt",
+      "command": "(printf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/background-unlisted.txt') & fixture_pid=$!; wait \"$fixture_pid\"",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "background-deny",
+      "layer": "background",
+      "kind": "deny",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/background-deny.txt",
+      "command": "(printf 'synthetic fixture\\n' > '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/background-deny.txt') & fixture_pid=$!; wait \"$fixture_pid\"",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "python-allowed",
+      "layer": "python",
+      "kind": "allowed",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/python-allowed.txt",
+      "command": "'/usr/bin/python3' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-allowed.py'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": true,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "python-crossTicket",
+      "layer": "python",
+      "kind": "crossTicket",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/python-crossTicket.txt",
+      "command": "'/usr/bin/python3' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-crossTicket.py'",
+      "expectedDirectoryAccess": false,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-crossTicket.py\", line 2, in <module>\n    with open(\"/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/python-crossTicket.txt\", 'x', encoding='utf-8') as output:\nPermissionError: [Errno 1] Operation not permitted: '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b/python-crossTicket.txt'\n",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": true,
+        "enforcement": "full"
+      },
+      "exists": false,
+      "contentsMatch": false
+    },
+    {
+      "label": "python-unlisted",
+      "layer": "python",
+      "kind": "unlisted",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/python-unlisted.txt",
+      "command": "'/usr/bin/python3' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-unlisted.py'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    },
+    {
+      "label": "python-deny",
+      "layer": "python",
+      "kind": "deny",
+      "provider": "real-shell-provider",
+      "target": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/python-deny.txt",
+      "command": "'/usr/bin/python3' '/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-deny.py'",
+      "expectedDirectoryAccess": true,
+      "expectedTicketContractAccess": false,
+      "attempted": true,
+      "returned": true,
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "sandbox": {
+        "mode": "workspace-write",
+        "denied": false,
+        "enforcement": "full"
+      },
+      "exists": true,
+      "contentsMatch": true
+    }
+  ],
+  "setupFiles": [
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-allowed.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-allowed.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-allowed.sh",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-allowed.py",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-crossTicket.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-crossTicket.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-crossTicket.sh",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-crossTicket.py",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-unlisted.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-unlisted.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-unlisted.sh",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-unlisted.py",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/node-deny.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-deny.cjs",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/indirect-deny.sh",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/python-deny.py",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    },
+    {
+      "path": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/scripts/ticket-contract.json",
+      "layer": "real-fs-provider",
+      "exists": true,
+      "exactContents": true
+    }
+  ],
+  "retained": true,
+  "scope": "Direct agents.create synthetic fixture only; no production Worker, spawn-root repair, or file allow/deny enforcement is claimed.",
+  "previousEvidence": "s0-20261118-202300-result.json; three non-broken presets and production spawn header behavior are not re-tested.",
+  "executables": {
+    "node": "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness",
+    "nodeEnvironment": {
+      "ELECTRON_RUN_AS_NODE": "1"
+    },
+    "python": {
+      "path": "/usr/bin/python3",
+      "status": "available",
+      "check": {
+        "command": "'/usr/bin/python3' --version",
+        "available": true,
+        "exitCode": 0,
+        "stdout": "Python 3.9.6\n",
+        "stderr": "",
+        "sandbox": {
+          "mode": "workspace-write",
+          "denied": false,
+          "enforcement": "full"
+        }
+      }
+    }
+  },
+  "directAgentPolicy": {
+    "preset": "workspace-write",
+    "approval": "never",
+    "headerMatchesTicket": true,
+    "mode": "workspace-write",
+    "rootMatchesTicket": true,
+    "additionalWritableRoots": 0,
+    "fsSandboxMode": "workspace-write",
+    "shellSandboxMode": "workspace-write"
+  },
+  "syntheticTicket": {
+    "root": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a",
+    "allowedFiles": [
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/native-allowed.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/realNode-allowed.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/heredoc-allowed.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/indirectScript-allowed.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/background-allowed.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/python-allowed.txt"
+    ],
+    "denyPaths": [
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/native-deny.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/realNode-deny.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/heredoc-deny.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/indirectScript-deny.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/background-deny.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/src/python-deny.txt"
+    ],
+    "unlistedPaths": [
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/native-unlisted.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/realNode-unlisted.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/heredoc-unlisted.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/indirectScript-unlisted.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/background-unlisted.txt",
+      "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-a/private/python-unlisted.txt"
+    ],
+    "crossTicketRoot": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s0-indirect-20261118-213300/ticket-b",
+    "contractEnforcedByHost": false
+  },
+  "assessment": {
+    "allCasesRecorded": true,
+    "allowedWritesObserved": true,
+    "crossTicketWritesAbsent": true,
+    "insideTicketCounterexamples": [
+      "native-unlisted",
+      "native-deny",
+      "realNode-unlisted",
+      "realNode-deny",
+      "heredoc-unlisted",
+      "heredoc-deny",
+      "indirectScript-unlisted",
+      "indirectScript-deny",
+      "background-unlisted",
+      "background-deny",
+      "python-unlisted",
+      "python-deny"
+    ],
+    "insideTicketCounterexamplesComplete": true,
+    "shellResultsHaveFullSandbox": true,
+    "pythonAvailable": true
+  },
+  "L1": "Direct-agent synthetic directory boundary observed for recorded available executors only; not a production Worker/spawn guarantee.",
+  "L2": "Unsupported file-level Ticket enforcement: declared unlisted/deny files were writable inside the Ticket; see exact case counterexamples.",
+  "cleanup": {
+    "handlesDisposed": 1,
+    "runtimeDisposed": true,
+    "errors": []
+  },
+  "liveAgents": 0,
+  "unexpectedAgentSteps": 0,
+  "cleanupComplete": true,
+  "fixtureCreated": true,
+  "finishedAt": "2026-11-18T13:36:19.650Z"
+}

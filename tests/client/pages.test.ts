@@ -146,8 +146,15 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(section('approvalView')).not.toMatch(/\.slice\(|\.substring\(/)
     contains(section('completeBrief'), ["typeof brief.goal === 'string'", "typeof brief.scope?.repo === 'string'", 'Array.isArray(brief.scope?.subdirs)', "['allowWrite', 'denyWrite', 'acceptance', 'blockers', 'outOfScope']", "!JSON.stringify(brief).includes('[REDACTED')"])
     contains(section('admissionView'), ['briefView(plan.brief)', '!completeBrief(plan)', 'plan.expiresAt <= Date.now()', '!plan.fingerprint', 'plan.epoch !== epochRef.current'])
-    contains(section('perform'), ["value.kind !== 'admission' && !reason.trim()", 'value.epoch !== epochRef.current', '!completeBrief(value.item)', 'fingerprint: value.item.fingerprint', 'reason: reason.trim()', "e?.status === 409 ? tr('DecisionConflict')", 'poke.current()'])
+    contains(section('perform'), ["!['admission', 'revision'].includes(value.kind) && !reason.trim()", 'value.epoch !== epochRef.current', '!completeBrief(value.item)', 'fingerprint: value.item.fingerprint', 'reason: reason.trim()', "e?.status === 409 ? tr('DecisionConflict')", 'poke.current()'])
     contains(workspace, ['valueView(confirmation.item.impact?.details)', "tr('ReasonRequired')", 'required: true', "'aria-required': true", 'dialogRef.current.showModal()', 'confirmationFocus.current.focus()'])
+  })
+
+  it('loads every plan page and exposes explicit non-executing revisions with lossless owner-relative scope labels', () => {
+    contains(workspace, ['while (planCursor)', "call('workspace', { cursor: planCursor, limit: 100 })", 'planCursors.has(planCursor)', 'page.epoch !== data.epoch', 'new Map(plans.map(plan => [plan.planId, plan]))'])
+    contains(section('admissionView'), ["scopeIdentity === 'host-owner-home-relative'", "tr('HomeRelativeScope')", "askConfirm('revision', plan, 'revise')"])
+    contains(section('perform'), ["value.kind === 'revision' ? 'admission-revise'", 'requestId: value.item.requestId', 'fingerprint: value.item.fingerprint', 'patch: { goal: revisionGoal.trim(), firstAction: revisionFirstAction.trim() }'])
+    contains(workspace, ["tr('RevisionHint')", 'setRevisionGoal(e.target.value)', 'setRevisionFirstAction(e.target.value)'])
   })
 
   it('always presents the production boundary, never synthesizes Worker execution or task success', () => {

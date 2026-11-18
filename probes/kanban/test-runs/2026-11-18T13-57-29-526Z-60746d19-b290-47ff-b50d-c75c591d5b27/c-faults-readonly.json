@@ -1,0 +1,13 @@
+{
+  "case": "readonly",
+  "recordedAt": "2026-11-18T13:57:29.606Z",
+  "mode": "offline-real-sqlite-fake-host",
+  "fileMode": 292,
+  "directWriteFailure": {
+    "message": "attempt to write a readonly database",
+    "code": "ERR_SQLITE_ERROR"
+  },
+  "activationError": "Superagent store could not open; check configured paths, lock ownership and migration compatibility",
+  "logs": [],
+  "lockExists": false
+}

@@ -479,10 +479,11 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       return { ok: false, code: 'SA_TOOL_UNWIRED' }
     },
     panelPorts: {
-      async workspace() { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.workspace() },
+      async workspace(input?: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.workspace(input) },
       async conversation(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.conversation(input) },
       async command(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.command(input) },
       async commandStatus(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.commandStatus(input) },
+      async reviseAdmission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.reviseAdmission(input) },
       async admission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.decideAdmission(input) },
       async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'durable-chat-notice', modelWakeup: false, visualVerification: 'pending-human' }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
       async sources() { return Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, paused: config.paused || engine.paused(), ...await source.health() }))) },
