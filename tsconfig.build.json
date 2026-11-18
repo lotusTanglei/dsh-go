@@ -2,5 +2,5 @@
   "extends": "./tsconfig.json",
   "compilerOptions": { "rootDir": "src", "outDir": "lib", "types": ["node"] },
   "include": ["src/**/*.ts"],
-  "exclude": ["tests", "vitest.config.ts"]
+  "exclude": ["tests", "vitest.config.ts", "src/sources/fake.ts"]
 }
