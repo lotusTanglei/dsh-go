@@ -9,6 +9,18 @@ import { createRuntime, readWorkerSnapshot } from '../src/runtime.js'
 const dirs: string[] = []
 afterEach(() => { for (const path of dirs.splice(0)) rmSync(path, { recursive: true, force: true }) })
 describe('Host runtime wiring', () => {
+  it('reports initialization failure without leaking the underlying error', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'superagent-runtime-')); dirs.push(dir)
+    const config = resolveConfig({ ...defaults, stateDir: dir, sources: [], roleTools: defaults.roleTools } as any)
+    const store = openStore({ dbPath: config.dbPath })
+    const runtime = createRuntime({ agents: { get() {}, async create() { throw new Error('/private/failure secret') } }, agentPresets: { async mount() {}, composedPreset() { return undefined } }, subagents: { async startActivation() {} }, sessionQuery: { async readSession() { return { events: [] } } }, effect() {}, on() { return () => {} } }, store, config)
+    try {
+      await expect(runtime.ready).rejects.toThrow('/private/failure secret')
+      const health = await runtime.panelPorts.health()
+      expect(health).toMatchObject({ ok: false, runtime: { state: 'failed', code: 'SA_RUNTIME_INITIALIZATION_FAILED' } })
+      expect(JSON.stringify(health)).not.toContain('/private/failure')
+    } finally { await runtime.dispose(); store.close() }
+  })
   it('starts a cold Router without a model request, ingests only human input, creates a ticket and returns a Worker report to Router', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'superagent-runtime-')); dirs.push(dir)
     const config = resolveConfig({ ...defaults, stateDir: dir, confirm: 'never', sources: [], roleTools: defaults.roleTools } as any)
@@ -18,14 +30,15 @@ describe('Host runtime wiring', () => {
     let modelRequests = 0
     const ctx: any = {
       effect(factory: any) { effects.push(factory()) }, on(event: string, listener: any) { listeners.set(event, listener); return () => listeners.delete(event) },
-      agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } },
-      agents: { get(id: string) { return agents.get(id) }, async create(input: any) { const agent = { id: input.sessionId, ctx: {}, inject(m: any) { injected.push(m) }, steer() {}, followup() { modelRequests++ } }; agents.set(agent.id, agent); await input.setup({}); return { agent, async dispose() { agents.delete(agent.id) } } } },
+      agentPresets: { async mount() { return { id: 'dsh-superagent-router' } }, composedPreset() { return 'dsh-superagent-router' } },
+      agents: { get(id: string) { return agents.get(id) }, async create(input: any) { const agent = { id: input.sessionId, ctx: {}, inject(m: any) { injected.push(m) }, steer() {}, followup() { modelRequests++ } }; agents.set(agent.id, agent); const commit = await input.setup({}); commit?.commit(); return { agent, async dispose() { agents.delete(agent.id) } } } },
       subagents: { async startActivation(input: any) { modelRequests++; const child = { id: input.childId, ctx: {} }; agents.set(child.id, child); return { childId: child.id, result: Promise.resolve({ structured: { state: 'ready', done: ['ok'], todo: [], changedPaths: [], acceptance: [{ id: 'A1', result: 'passed', evidence: 'fixture' }], risks: [], needHuman: [] } }), async dispose() { agents.delete(child.id) } } } },
       sessionQuery: { async readSession() { return { events: [] } } },
     }
     const runtime = createRuntime(ctx, store, config)
     await runtime.ready
     expect(modelRequests).toBe(0)
+    expect(await runtime.panelPorts.health()).toMatchObject({ ok: true, runtime: { state: 'ready' } })
     const main = [...agents.values()][0]
     listeners.get('session/event')({ id: main.id }, { type: 'user/message', time: Date.now(), data: { id: 'm1', source: { kind: 'user' }, content: [{ type: 'text', text: 'do fixture' }] } })
     await new Promise(resolve => setImmediate(resolve))

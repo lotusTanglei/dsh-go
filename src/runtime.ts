@@ -47,6 +47,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   const controller = new AbortController()
   let mainId: string | undefined
   let disposed = false
+  let initialization: 'starting' | 'ready' | 'failed' = 'starting'
   let heartbeat: number | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   const audit = (action: string, detail: unknown, ticket?: string) => store.repos.audit.insert({ at: Date.now(), actor: 'superagent', action, ticket_id: ticket ?? null, thread_key: null, detail })
@@ -276,7 +277,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       mainId = candidate
     }
     else {
-      const setup = (scope: any) => ctx.agentPresets.mount(scope, 'dsh-superagent-router')
+      const setup = async (scope: any): Promise<void> => { await ctx.agentPresets.mount(scope, 'dsh-superagent-router') }
       let handle: any
       if (candidate && ctx.agents.resume) {
         const persisted = await ctx.sessionQuery.readSession(candidate)
@@ -324,7 +325,8 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     }, config.watchdogIntervalMs)
     timer.unref?.()
     // Runtime owns the timer; Host disposal awaits this runtime before closing SQLite.
-  })
+    initialization = 'ready'
+  }).catch(error => { initialization = 'failed'; throw error })
 
   return {
     ready, engine, sources, startAssignment, stopTicket,
@@ -401,7 +403,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       return { ok: false, code: 'SA_TOOL_UNWIRED' }
     },
     panelPorts: {
-      async health() { return { db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'deferred-until-next-admitted-step', immediateHumanReply: false }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
+      async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'deferred-until-next-admitted-step', immediateHumanReply: false }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
       async sources() { return Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, ...await source.health() }))) },
       // Panel owns the domain transition; this port only quiesces the active Worker.
       async stopTicket(id: string) { const row = ticketFor(id); const assignment = row.current_assignment ? store.repos.assignment.get(row.current_assignment) : undefined; if (assignment) { ctx.subagents.interrupt?.(String(assignment.session_id), { kind: 'user' }); store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'human-stop' }); await workers.get(String(assignment.id))?.dispose() } },
