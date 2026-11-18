@@ -87,6 +87,11 @@ export function createWatchdog(ports: WatchdogPorts, options: WatchdogOptions) {
           const state = { ...ports.state?.(assignment.assignmentId), ...states.get(assignment.assignmentId) }
           const snapshot = await ports.sessionQuery.readSession(assignment.sessionId)
           const metrics = measureWorker(assignment, snapshot?.events ?? [], now)
+          // Human waiting is not Worker execution time; reminder-only always precedes budgets.
+          if (assignment.waitingSince !== undefined) {
+            if (metrics.waitingMs > options.waitingHumanMs && (state.waitingAt === undefined || now - state.waitingAt > options.waitingHumanMs)) await act(assignment, metrics, { ...state, waitingAt: now }, 'escalate', 'waiting-human', 'Worker is waiting for human input; please review the pending question or approval.')
+            continue
+          }
           const over = metrics.steps > options.maxSteps || metrics.tokens > options.maxTokens || metrics.durationMs > options.maxDurationMs
           if (over || (state.budgetStage ?? 0) > 0) {
             const stage = state.budgetStage ?? 0
@@ -96,10 +101,6 @@ export function createWatchdog(ports: WatchdogPorts, options: WatchdogOptions) {
             continue
           }
           if (assignment.state === 'ended') continue
-          if (assignment.waitingSince !== undefined) {
-            if (metrics.waitingMs > options.waitingHumanMs && (state.waitingAt === undefined || now - state.waitingAt > options.waitingHumanMs)) await act(assignment, metrics, { ...state, waitingAt: now }, 'escalate', 'waiting-human', 'Worker is waiting for human input; please review the pending question or approval.')
-            continue
-          }
           if (now - assignment.lastProgressAt > options.stallMs) {
             if (state.stallAt === undefined || assignment.lastProgressAt > state.stallAt) await act(assignment, metrics, { ...state, stallAt: now }, 'nudge', 'stall', 'No recorded progress. Report completed work or a specific blocker; do not repeat ineffective actions.')
             else if (now - state.stallAt > options.stallMs) await act(assignment, metrics, state, 'cancel', 'stall', 'Still no progress after nudge; stopping the Assignment.')

@@ -1,10 +1,13 @@
 import { createRequire } from 'node:module'
-import type { ParameterSchema, ToolDescriptor } from '../tools/descriptor.js'
+import { validateParameters, type ParameterSchema, type ToolDescriptor } from '../tools/descriptor.js'
 
 export interface RoleToolsContext {
   readonly tools: {
     register(tool: unknown): unknown
   }
+  readonly superagentRuntime?: { invoke(name: string, args: unknown, execution: unknown): Promise<unknown> }
+  /** Late lookup avoids a Host → owned Router → Host required-service cycle. */
+  get?(name: string): unknown
 }
 
 export interface ToolHandlerMap {
@@ -47,13 +50,18 @@ export function registerRoleTools(context: RoleToolsContext, descriptors: readon
       description: descriptor.description,
       parameters: descriptorParameters(descriptor.parameters),
       output: {
-        schema: { type: 'object', properties: { ok: { type: 'boolean', required: true }, code: { type: 'string', required: true } }, additionalProperties: false },
+        schema: { type: 'object', properties: { ok: { type: 'boolean', required: true }, code: { type: 'string', required: true } }, additionalProperties: true },
         render: (_args: unknown, value: unknown) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      async execute(args: unknown) {
+      async execute(args: unknown, execution: unknown) {
+        const validation = validateParameters(descriptor, args)
+        if (!validation.ok) return validation
         const handler = handlers[descriptor.name]
-        if (!handler) return { ok: false, code: 'SA_P2_ENGINE_UNWIRED' }
-        return handler(args)
+        if (handler) return handler(validation.value)
+        const runtime = (context.get ? context.get('superagentRuntime') : context.superagentRuntime) as RoleToolsContext['superagentRuntime']
+        if (!runtime) return { ok: false, code: 'SA_RUNTIME_UNAVAILABLE' }
+        try { return await runtime.invoke(descriptor.name, validation.value, execution) }
+        catch { return { ok: false, code: 'SA_COMMAND_FAILED' } }
       },
     }))
     if (typeof registration === 'function') disposers.push(registration as () => void)

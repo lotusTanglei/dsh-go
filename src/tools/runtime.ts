@@ -8,6 +8,8 @@ export interface RuntimeRoleConfig {
   readonly routerPreset?: string
   readonly workerPreset?: string
   readonly watchdogPreset?: string
+  /** Production bindings are resolved freshly on every call; never supplied by tool args. */
+  readonly resolveWorker?: (agent: object) => WorkerGuardSnapshot | undefined
 }
 
 export interface ToolExecutionContext {
@@ -41,7 +43,7 @@ export function installRoleGuard(context: ToolGuardContext, config: RuntimeRoleC
   const bindings = new WeakMap<object, WorkerGuardSnapshot>()
   const guardDisposer = context.tools.guard(execution => {
     const composedPreset = execution.agent?.ctx ? context.agentPresets!.composedPreset(execution.agent.ctx) : undefined
-    const snapshot = execution.agent ? bindings.get(execution.agent) : undefined
+    const snapshot = execution.agent ? (config.resolveWorker ? config.resolveWorker(execution.agent) : bindings.get(execution.agent)) : undefined
     const input: ToolGuardInput = {
       composedPreset,
       toolName: execution.name,

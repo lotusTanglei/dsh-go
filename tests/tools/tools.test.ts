@@ -24,6 +24,8 @@ describe('P2 role guard', () => {
     expect(guardToolCall({ composedPreset: 'dsh-superagent-worker', toolName: 'report_progress', roleTools, sessionId: 's1', ticket, assignment, binding: { assignmentId: assignmentId('old'), ticketId: ticket.id } })?.info.code).toBe('SA_ASSIGNMENT_STALE')
     expect(guardToolCall({ composedPreset: 'dsh-superagent-worker', toolName: 'report_progress', roleTools, sessionId: 's1', ticket: { ...ticket, state: 'ended' }, assignment, binding: { assignmentId: assignment.id, ticketId: ticket.id } })?.info.code).toBe('SA_ASSIGNMENT_ENDED')
     expect(guardToolCall({ composedPreset: 'dsh-superagent-worker', toolName: 'report_progress', roleTools, sessionId: 's1', ticket, assignment, binding: { assignmentId: assignment.id, ticketId: ticket.id } })).toBeUndefined()
+    expect(guardToolCall({ composedPreset: 'dsh-superagent-worker', toolName: 'bash', roleTools, sessionId: 's1', ticket: { ...ticket, state: 'waiting_human' }, assignment, binding: { assignmentId: assignment.id, ticketId: ticket.id } })?.info.code).toBe('SA_ASSIGNMENT_WAITING')
+    expect(guardToolCall({ composedPreset: 'dsh-superagent-worker', toolName: 'report_result', roleTools, sessionId: 's1', ticket: { ...ticket, state: 'waiting_human' }, assignment, binding: { assignmentId: assignment.id, ticketId: ticket.id } })).toBeUndefined()
   })
 })
 

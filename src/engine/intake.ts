@@ -84,7 +84,7 @@ export function ingestTrigger(store: Store, trigger: Trigger, options: IntakeOpt
     }
     store.repos.thread_trigger.insert({ thread_key: trigger.threadKey, trigger_id: trigger.id, seq, state: 'pending' })
     disposition(store, trigger, at, { ...(paused ? { filtered: 'paused' } : {}) })
-    return { status: 'accepted' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), seq }
+    return { status: 'accepted' as const, triggerId: trigger.id, threadKey: String(trigger.threadKey), seq, ...(subscription ? { ticketId: subscription.ticketId } : {}) }
   })
 }
 export const intakeTrigger = ingestTrigger

@@ -14,9 +14,11 @@ describe('P1 package boundaries', () => {
       expect(text, file).not.toMatch(/(?:from\s*|import\s*\()['"](?:vitest|cordis|schemastery)/)
     }
   })
-  it('P1 entry does not start sessions, models, external Sources or schedulers', () => {
+  it('Host entry delegates DSH session effects and scheduling to its owned runtime', () => {
     const text = readFileSync('src/index.ts', 'utf8')
     expect(text).not.toMatch(/startActivation|followup\(|steer\(|setInterval|fetch\(|\.sessions\.|\.subagents\./)
+    expect(text).toContain('createRuntime(')
+    expect(text).toContain('runtime?.dispose()')
     expect(text).toContain('[superagent] loaded')
   })
   it('manifest declares bundle/client/version and external core packages are not installed by project', () => {

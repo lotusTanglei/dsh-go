@@ -35,7 +35,7 @@ describe('P4 cold-read watchdog', () => {
     expect(f.actions.map(row => row.split(':')[0])).toEqual(['nudge', 'cancel', 'escalate'])
   })
   it('only reminds waiting humans and uses low-frequency deviation steering', async () => {
-    const waiting = fixture({ ...base, waitingSince: 0 })
+    const waiting = fixture({ ...base, state: 'ended', waitingSince: 0, tokens: 1001, steps: 90 })
     await waiting.watchdog.tick(1_800_001)
     expect(waiting.actions).toEqual(['escalate'])
     const deviation = fixture({ ...base, lastProgressAt: 600_001 }, [], async () => 'Return to the brief goal')

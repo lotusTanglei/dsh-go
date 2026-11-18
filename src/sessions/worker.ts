@@ -71,6 +71,7 @@ export interface WorkerInput {
   readonly parent?: { readonly id: string; readonly [key: string]: unknown }
   readonly signal?: AbortSignal
   readonly agentOptions?: Record<string, unknown>
+  readonly correction?: string
 }
 
 export interface WorkerHandle {
@@ -116,6 +117,7 @@ function reportPrompt(input: WorkerInput): readonly Record<string, unknown>[] {
       assignmentId: input.assignment.id,
       title: input.ticket.title,
       brief: input.brief,
+      ...(input.correction ? { correction: input.correction } : {}),
       instruction: 'Execute the ticket in the supplied cwd. When complete, you MUST call the structured_output tool with one complete report matching the output schema. Do not answer with prose; only the structured_output tool call counts as the final report.',
     }),
   }]
@@ -151,16 +153,16 @@ export async function startWorker(input: WorkerInput, spawner: Spawner): Promise
     assignment: { id: input.assignment.id, ticketId: input.assignment.ticketId, sessionId: activation.sessionId ?? activation.childSessionId ?? activation.childId ?? input.assignment.sessionId, state: 'running' },
   }
   spawner.bindWorker?.(activation, guardSnapshot)
+  let disposing: Promise<void> | undefined
   return {
     activation,
     sessionId: activation.sessionId ?? activation.childSessionId ?? input.assignment.sessionId,
     result: activation.result,
-    async dispose() {
-      try {
-        await activation.dispose?.()
-      } finally {
-        spawner.unbindWorker?.(activation)
-      }
+    dispose() {
+      return disposing ??= (async () => {
+        try { await activation.dispose?.() }
+        finally { spawner.unbindWorker?.(activation) }
+      })()
     },
   }
 }

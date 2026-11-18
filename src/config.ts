@@ -78,7 +78,7 @@ export const defaults = Object.freeze({
   roleTools: Object.freeze({
     router: ['read', 'glob', 'grep', 'ticket_create', 'ticket_list', 'ticket_status', 'ticket_cancel', 'ticket_resume', 'assignment_start', 'assignment_stop', 'human_ask', 'channel_reply'],
     worker: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'job_list', 'job_output', 'job_kill', 'report_progress', 'report_result', 'request_approval', 'ask_router', 'structured_output'],
-    watchdog: ['read', 'watchdog_nudge', 'watchdog_steer', 'watchdog_cancel', 'watchdog_escalate'],
+    watchdog: ['read', 'watchdog_nudge', 'watchdog_steer', 'watchdog_cancel', 'watchdog_escalate', 'structured_output'],
   }),
 })
 
@@ -127,8 +127,8 @@ export function resolveConfig(config: Config): Config {
   if (config.outboxBackoffMaxMs < config.outboxBackoffMs) throw new Error('outbox backoff maximum is below base')
   const routerDenied = ['bash', 'write', 'edit', 'apply_patch', 'job_kill', 'job_output', 'job_list', 'git', 'merge_pr']
   if (config.roleTools.router.some(name => routerDenied.includes(name))) throw new Error('Router execution tools are forbidden')
-  if (config.roleTools.worker.some(name => ['channel_reply', 'human_ask'].includes(name))) throw new Error('Worker channel tools are forbidden')
-  if (config.roleTools.watchdog.some(name => !name.startsWith('watchdog_') && name !== 'read')) throw new Error('Watchdog execution tools are forbidden')
+  if (config.roleTools.worker.some(name => ['channel_reply', 'human_ask', 'ticket_create', 'ticket_list', 'ticket_status', 'ticket_cancel', 'ticket_resume', 'assignment_start', 'assignment_stop'].includes(name))) throw new Error('Worker channel tools are forbidden')
+  if (config.roleTools.watchdog.some(name => !name.startsWith('watchdog_') && !['read', 'structured_output'].includes(name))) throw new Error('Watchdog execution tools are forbidden')
   if (new Set(config.sources.map(source => source.id)).size !== config.sources.length) throw new Error('duplicate source instance id')
   return { ...config, stateDir: resolve(config.stateDir), dbPath: resolve(dbPath), lockPath: resolve(lockPath), workRoot: resolve(workRoot) }
 }

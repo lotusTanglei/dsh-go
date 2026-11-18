@@ -22,7 +22,7 @@ export interface ToolGuardInput {
   readonly assignment?: Pick<Assignment, 'id' | 'ticketId' | 'sessionId' | 'state'>
 }
 
-export type GuardDenialCode = 'SA_ROLE_TOOL_DENIED' | 'SA_ASSIGNMENT_UNBOUND' | 'SA_ASSIGNMENT_ENDED' | 'SA_ASSIGNMENT_STALE'
+export type GuardDenialCode = 'SA_ROLE_TOOL_DENIED' | 'SA_ASSIGNMENT_UNBOUND' | 'SA_ASSIGNMENT_ENDED' | 'SA_ASSIGNMENT_STALE' | 'SA_ASSIGNMENT_WAITING'
 export interface GuardDenial {
   readonly reason: string
   readonly info: { readonly name: 'SuperagentToolGuardError'; readonly code: GuardDenialCode }
@@ -59,6 +59,9 @@ export function guardToolCall(input: ToolGuardInput): GuardDenial | undefined {
     // Lifecycle refusal precedes the allowlist, so even native/global tools are denied.
     if (ticket.state === 'ended' || assignment.state === 'ended') {
       return deny('SA_ASSIGNMENT_ENDED', 'The Worker Ticket or Assignment has ended.')
+    }
+    if (ticket.state === 'waiting_human' && !['report_progress', 'report_result', 'structured_output', 'ask_router'].includes(input.toolName)) {
+      return deny('SA_ASSIGNMENT_WAITING', 'Worker execution is suspended while human input or approval is pending.')
     }
     if (ticket.id !== binding.ticketId || assignment.ticketId !== ticket.id || assignment.sessionId !== sessionId ||
         !canInvokeAssignmentTool(ticket, assignment, binding.assignmentId)) {
