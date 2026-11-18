@@ -1,11 +1,281 @@
 {
-  "state": "idle",
+  "state": "passed",
   "kind": "production-runtime-e2e",
-  "modelsStarted": false,
-  "ready": false,
-  "startupError": {
-    "name": "TypeError",
-    "code": "",
-    "reason": "setupCommit?.commit is not a function"
-  }
+  "modelsStarted": true,
+  "ready": true,
+  "before": {
+    "mainSessionId": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+    "triggers": [],
+    "tickets": [],
+    "assignments": [],
+    "audit": [
+      {
+        "at": 1794982230349,
+        "action": "approval.approve",
+        "detail": {
+          "approvalId": "verify-p5-approval-20261118",
+          "reason": "Controlled HTTP acceptance"
+        }
+      }
+    ],
+    "liveAgents": 1
+  },
+  "triggerIds": [
+    "9cecf397-dc87-4e82-9da8-2d71835c42de",
+    "63b0f7e7-d6a6-41c6-bd77-492aa197db8d",
+    "b1641bd5-a44c-4285-a199-94ac13f1bd8b"
+  ],
+  "triggerTurns": [
+    {
+      "externalId": "9cecf397-dc87-4e82-9da8-2d71835c42de",
+      "turns": 1,
+      "steps": 3
+    },
+    {
+      "externalId": "63b0f7e7-d6a6-41c6-bd77-492aa197db8d",
+      "turns": 1,
+      "steps": 1
+    },
+    {
+      "externalId": "b1641bd5-a44c-4285-a199-94ac13f1bd8b",
+      "turns": 1,
+      "steps": 3
+    }
+  ],
+  "after": {
+    "mainSessionId": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+    "triggers": [
+      {
+        "id": "session:234b9575-5261-4d99-a4a3-32ac5367eff4:9cecf397-dc87-4e82-9da8-2d71835c42de",
+        "externalId": "9cecf397-dc87-4e82-9da8-2d71835c42de",
+        "threadKey": "session:234b9575-5261-4d99-a4a3-32ac5367eff4"
+      },
+      {
+        "id": "session:234b9575-5261-4d99-a4a3-32ac5367eff4:63b0f7e7-d6a6-41c6-bd77-492aa197db8d",
+        "externalId": "63b0f7e7-d6a6-41c6-bd77-492aa197db8d",
+        "threadKey": "session:234b9575-5261-4d99-a4a3-32ac5367eff4"
+      },
+      {
+        "id": "session:234b9575-5261-4d99-a4a3-32ac5367eff4:b1641bd5-a44c-4285-a199-94ac13f1bd8b",
+        "externalId": "b1641bd5-a44c-4285-a199-94ac13f1bd8b",
+        "threadKey": "session:234b9575-5261-4d99-a4a3-32ac5367eff4"
+      }
+    ],
+    "tickets": [
+      {
+        "id": "a72838ef-ae05-46a8-8cb4-f8f9c9f039ab",
+        "state": "ended",
+        "outcome": "completed"
+      },
+      {
+        "id": "0adecae1-c728-48f6-8b10-0b04ff15053a",
+        "state": "ended",
+        "outcome": "completed"
+      }
+    ],
+    "assignments": [
+      {
+        "id": "a126064d-97cf-4692-985d-6959ba7a4ef5",
+        "ticketId": "a72838ef-ae05-46a8-8cb4-f8f9c9f039ab",
+        "sessionId": "2586bbd4-4eb8-4b1c-b6b8-8e2c018e194c",
+        "state": "ended",
+        "report": {
+          "state": "ready",
+          "done": [
+            "fixture completed"
+          ],
+          "todo": [],
+          "acceptance": [
+            {
+              "id": "A1",
+              "result": "passed",
+              "evidence": "fixture"
+            }
+          ],
+          "risks": [],
+          "needHuman": []
+        }
+      },
+      {
+        "id": "e42b2c1f-bdc2-455e-8b6b-d45f6a27230e",
+        "ticketId": "0adecae1-c728-48f6-8b10-0b04ff15053a",
+        "sessionId": "c7468c88-0e9b-4059-a09f-131af348659d",
+        "state": "ended",
+        "report": {
+          "state": "ready",
+          "done": [
+            "fixture completed"
+          ],
+          "todo": [],
+          "acceptance": [
+            {
+              "id": "A1",
+              "result": "passed",
+              "evidence": "fixture"
+            }
+          ],
+          "risks": [],
+          "needHuman": []
+        }
+      }
+    ],
+    "audit": [
+      {
+        "at": 1794982230349,
+        "action": "approval.approve",
+        "detail": {
+          "approvalId": "verify-p5-approval-20261118",
+          "reason": "Controlled HTTP acceptance"
+        }
+      },
+      {
+        "at": 1794982409900,
+        "action": "report_delivery_completed",
+        "detail": {
+          "assignmentId": "a126064d-97cf-4692-985d-6959ba7a4ef5"
+        }
+      },
+      {
+        "at": 1794982415474,
+        "action": "report_delivery_completed",
+        "detail": {
+          "assignmentId": "e42b2c1f-bdc2-455e-8b6b-d45f6a27230e"
+        }
+      }
+    ],
+    "liveAgents": 1
+  },
+  "observed": {
+    "triggers": 3,
+    "tickets": 2,
+    "assignments": 2,
+    "validReports": 2,
+    "completedTickets": 2
+  },
+  "sessions": [
+    {
+      "id": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+      "turns": 3,
+      "steps": 7,
+      "usage": {
+        "inputTokens": 3916,
+        "cacheReadTokens": 22016,
+        "cacheWriteTokens": 0,
+        "outputTokens": 925
+      },
+      "toolCalls": [
+        "ticket_create",
+        "assignment_start",
+        "ticket_create",
+        "assignment_start"
+      ],
+      "injectedReportMessages": [
+        {
+          "id": "superagent-report:a126064d-97cf-4692-985d-6959ba7a4ef5",
+          "sourceKind": "superagent"
+        },
+        {
+          "id": "superagent-report:e42b2c1f-bdc2-455e-8b6b-d45f6a27230e",
+          "sourceKind": "superagent"
+        }
+      ],
+      "toolResultEvidence": [
+        {
+          "name": "ticket_create",
+          "nameCorrelation": "ordered persisted tool calls and results",
+          "callId": "call_00_MRVYwoHATqC27eq5xveY7011",
+          "isError": false,
+          "ok": true,
+          "code": "SA_CREATED",
+          "ticketId": "a72838ef-ae05-46a8-8cb4-f8f9c9f039ab"
+        },
+        {
+          "name": "assignment_start",
+          "nameCorrelation": "ordered persisted tool calls and results",
+          "callId": "call_00_ET_oZF8A5PVPEIJMgi5HZU94334",
+          "isError": false,
+          "ok": true,
+          "code": "SA_STARTED",
+          "assignmentId": "a126064d-97cf-4692-985d-6959ba7a4ef5"
+        },
+        {
+          "name": "ticket_create",
+          "nameCorrelation": "ordered persisted tool calls and results",
+          "callId": "call_00_Jr2VnHjTRqH8yaMS0J508750",
+          "isError": false,
+          "ok": true,
+          "code": "SA_CREATED",
+          "ticketId": "0adecae1-c728-48f6-8b10-0b04ff15053a"
+        },
+        {
+          "name": "assignment_start",
+          "nameCorrelation": "ordered persisted tool calls and results",
+          "callId": "call_00_ET_hwtAyrm58QqTKm8P6nqn8073",
+          "isError": false,
+          "ok": true,
+          "code": "SA_STARTED",
+          "assignmentId": "e42b2c1f-bdc2-455e-8b6b-d45f6a27230e"
+        }
+      ],
+      "admittedReportIds": [
+        "superagent-report:a126064d-97cf-4692-985d-6959ba7a4ef5"
+      ]
+    },
+    {
+      "id": "2586bbd4-4eb8-4b1c-b6b8-8e2c018e194c",
+      "turns": 1,
+      "steps": 1,
+      "usage": {
+        "inputTokens": 919,
+        "cacheReadTokens": 3840,
+        "cacheWriteTokens": 0,
+        "outputTokens": 200
+      },
+      "toolCalls": [
+        "structured_output"
+      ],
+      "injectedReportMessages": [],
+      "toolResultEvidence": [
+        {
+          "name": "structured_output",
+          "nameCorrelation": "ordered persisted tool calls and results",
+          "callId": "call_00_z64zcAi8dJuOqziwGXDc2465",
+          "isError": false
+        }
+      ],
+      "admittedReportIds": []
+    },
+    {
+      "id": "c7468c88-0e9b-4059-a09f-131af348659d",
+      "turns": 1,
+      "steps": 1,
+      "usage": {
+        "inputTokens": 922,
+        "cacheReadTokens": 3840,
+        "cacheWriteTokens": 0,
+        "outputTokens": 187
+      },
+      "toolCalls": [
+        "structured_output"
+      ],
+      "injectedReportMessages": [],
+      "toolResultEvidence": [
+        {
+          "name": "structured_output",
+          "nameCorrelation": "ordered persisted tool calls and results",
+          "callId": "call_00_TkMoHCfWvBTPEfo3FRGl4225",
+          "isError": false
+        }
+      ],
+      "admittedReportIds": []
+    }
+  ],
+  "usageRecalculatedFromColdEvents": true,
+  "usageTotals": {
+    "inputTokens": 5757,
+    "cacheReadTokens": 29696,
+    "cacheWriteTokens": 0,
+    "outputTokens": 1312
+  },
+  "routerStartResultsMatchedPersistedAssignments": true
 }

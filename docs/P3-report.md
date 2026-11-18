@@ -32,7 +32,8 @@
 
 - 外部 GitHub/飞书源仍属 v2；新增源只需实现接口和注册实例。
 - 本地唯一索引不能单独保证外部 exactly-once；外部下游必须真正接受 idempotencyKey，测试使用 durable ledger 证明这一条件。
-- Host 自动派活/恢复与真实 profile 尚需最终门禁，模块测试不冒充运行验收。真实 Router setup 启动失败两次，已按硬停止条件停止，未执行最终真机 e2e。
+- Router setup两次失败后按计划停止，用户允许修复继续；`a3a5f5a`修复提交契约，真实runtime启动和原Router id重启恢复通过。
+- [真实e2e结果](../probes/final-runtime-result.json)：产品Router真实调用工具，3Trigger→2Ticket→2Worker→2有效report，两个Ticket completed。两次assignment_start成功结果与DB Assignment匹配；两个汇报入inbox，但仅第一份进入后续模型上下文，不宣称两份均已消费。
 - [运行链路回归](../tests/runtime-integration.test.ts) 11 项通过：多审批阻断/恢复、最多一次报告 correction、maxRetries、只读诊断、seq 串行投递和失败不 ack。它们使用真实 SQLite + 可控 DSH 替身，不是 live Host 证明。
 - Session Channel 的 inbox 注入只能等待下一次 step admit；未进入可渲染日志时保留 Outbox pending，不能当即时人可见回复。
 
@@ -41,4 +42,4 @@
 - `05192bd feat(p3): persist and recover trigger processing`
 - `531cbee fix(p3): trust host clocks and drain source work`
 
-最终逐条证据见 [FINAL-VERIFY](FINAL-VERIFY.md)（最终收口时生成/更新）。
+最终逐条证据见 [FINAL-VERIFY](FINAL-VERIFY.md)。阶段结论：部分完成（事件管线/恢复/派活汇报通过，Session Channel延迟限制未闭合）。

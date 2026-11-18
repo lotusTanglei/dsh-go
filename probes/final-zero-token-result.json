@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-11-18T14:11:00+08:00",
+  "profile": "superagent-dev",
+  "modelsStarted": false,
+  "presetHealth": {
+    "dsh-superagent-router": { "broken": null },
+    "dsh-superagent-worker": { "broken": null },
+    "dsh-superagent-watchdog": { "broken": null }
+  },
+  "http": { "anonymous": 401, "foreignOrigin": 403, "ownerHealth": 200, "overview": 200, "tickets": 200, "approvals": 200, "clientAsset": 200 },
+  "servedClient": { "bytes": 19334, "moduleLoaderFactory": true },
+  "runtime": { "state": "ready", "sourceCount": 1 },
+  "approval": { "fixtureId": "verify-p5-approval-20261118", "approve": 200, "replay": 409, "payloadSecretLeaked": false, "stateBeforeRestart": "approved", "stateAfterRestart": "approved", "decidedBy": "panel-owner" },
+  "routerSessionBeforeRestart": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+  "routerSessionAfterRestart": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+  "visual": { "status": "pending-human", "waiver": "User explicitly allowed continuing e2e with visual verification pending" }
+}

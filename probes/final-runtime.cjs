@@ -1,12 +1,43 @@
 // Explicitly started, isolated-profile acceptance adapter. Never auto-runs a model.
 const { randomUUID } = require('node:crypto')
-const { mkdirSync, writeFileSync } = require('node:fs')
+const { mkdirSync, writeFileSync, readFileSync } = require('node:fs')
 const { resolve, dirname } = require('node:path')
 exports.inject = ['agents', 'sessionQuery', 'superagentRuntime', 'connection']
 exports.apply = function apply(ctx, config) {
   let running, timer, releaseWait, disposed = false
   const result = { state: 'idle', kind: 'production-runtime-e2e', modelsStarted: false }
   const output = resolve(config.resultPath)
+  if (config.cleanupOnly) {
+    ctx.effect(() => ctx.connection.fetch.register({ path: '/api/superagent-dev/probe-cleanup', methods: ['POST'], requestBody: 'buffered', fetch: async request => {
+      if (request.headers.get('origin') && request.headers.get('origin') !== new URL(request.url).origin) return new Response('Origin denied', { status: 403 })
+      await ctx.superagentRuntime.ready
+      if (config.remeasureResult) {
+        const path = resolve(config.remeasureResult)
+        const previous = JSON.parse(readFileSync(path, 'utf8'))
+        for (const session of previous.sessions) {
+          const snapshot = await ctx.sessionQuery.readSession(session.id)
+          const rows = snapshot.events.filter(event => event.type === 'assistant/message' && event.data.usage).map(event => event.data.usage)
+          session.usage = rows.length ? rows.reduce((sum, row) => { for (const key of ['inputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens']) sum[key] = (sum[key] || 0) + (row[key] || 0); return sum }, {}) : null
+          session.toolResultEvidence = snapshot.events.filter(event => event.type === 'tool/result').map(event => {
+            const value = event.data.message
+            const call = snapshot.events.find(item => item.type === 'tool/call' && item.data.callId === value.toolCallId)
+            let output
+            try { output = JSON.parse(value.content.filter(block => block.type === 'text').map(block => block.text).join('')) } catch {}
+            return { name: call?.data.name, callId: value.toolCallId, isError: value.isError === true, ok: output?.ok === true, ...(typeof output?.code === 'string' ? { code: output.code } : {}), ...(typeof output?.assignmentId === 'string' ? { assignmentId: output.assignmentId } : {}) }
+          })
+          session.admittedReportIds = snapshot.events.filter(event => event.type === 'user/message' && String(event.data?.id).startsWith('superagent-report:')).map(event => event.data.id)
+        }
+        previous.usageRecalculatedFromColdEvents = true
+        writeFileSync(path, JSON.stringify(previous, null, 2) + '\n', { mode: 0o600 })
+      }
+      await ctx.superagentRuntime.dispose()
+      const liveIds = ctx.agents.list().map(agent => agent.id)
+      const receipt = { kind: 'production-runtime-cleanup', liveAgents: liveIds.length, liveSessionIds: liveIds, at: Date.now() }
+      mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n', { mode: 0o600 })
+      return new Response(JSON.stringify(receipt), { headers: { 'content-type': 'application/json' } })
+    } }))
+    return
+  }
   const save = () => { mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify(result, null, 2) + '\n', { mode: 0o600 }) }
   const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
   const current = () => ctx.superagentRuntime.diagnostics()
@@ -25,7 +56,7 @@ exports.apply = function apply(ctx, config) {
     const messages = events.filter(event => event.type === 'assistant/message')
     const usageRows = messages.map(event => event.data.usage).filter(Boolean)
     const usage = usageRows.length ? usageRows.reduce((sum, row) => {
-      for (const key of ['uncachedInputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens']) sum[key] = (sum[key] || 0) + (row[key] || 0)
+      for (const key of ['inputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens']) sum[key] = (sum[key] || 0) + (row[key] || 0)
       return sum
     }, {}) : null
     return { id, turns: events.filter(event => event.type === 'turn/start').length, steps: events.filter(event => event.type === 'step/start').length, usage, toolCalls: events.filter(event => event.type === 'tool/call').map(event => event.data.name), injectedReportMessages: events.filter(event => event.type === 'agent/inbox/spliced').flatMap(event => event.data.inserted || []).filter(message => message.source?.kind !== 'user' && message.content?.some(block => typeof block.text === 'string' && block.text.includes('assignmentId') && block.text.includes('report'))).map(message => ({ id: message.id, sourceKind: message.source.kind })) }

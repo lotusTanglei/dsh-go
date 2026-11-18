@@ -1,0 +1,8 @@
+# Explicit zero-model cleanup check, never reruns the real e2e.
+- insert:
+    - id: superagent-final-runtime-cleanup
+      name: dsh-superagent/final-runtime-probe
+      config:
+        cleanupOnly: true
+        remeasureResult: /Users/dundundebaba/sync/dsh-s-p/probes/final-runtime-result.json
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/final-cleanup-result.json

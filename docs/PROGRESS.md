@@ -20,3 +20,10 @@ T+03:40 | 真实门禁停止 | 全量109 passed/typecheck/build通过；264ed2c�
 未做: live Router/Worker e2e、live P4、侧栏与主题视觉；Sources/Health占位，其他两页只读简版。
 清理: 两个隔离进程均停止，两个端口无listener，activeAssignments=0，owner lock不存在；空recovery sentinel保留。
 更正: 起点行的P2/A3通过为历史说法，现以P2-DIAGNOSIS顶部审计更正为准。
+T+03:53 | 用户解除停止 | 用户选择修复后继续；a3a5f5a修setup返回契约并补失败health回归 | 下一步:三闸重跑与隔离启动 | 卡点:无 | 测试 110 passed/typecheck/build
+T+03:54 | 隔离零token | Router ready、1 source健康、三preset无broken；HTTP匿名401/跨Origin403；client资源200/19334bytes | 下一步:P3/P4场景与P5审批重启 | 卡点:浏览器视觉不可用 | 测试 P3 15 passed/P4 8 passed
+T+03:54 | P5 HTTP验收 | 真实审批approve200、replay409、payload无泄密、SQLite落库 | 下一步:重启一致性；视觉门禁需用户确认如何处理 | 卡点:无浏览器控制不能验证侧栏/主题 | 测试 110 passed
+T+03:55 | P5重启通过 | Router原id恢复、approval仍approved；用户明确允许视觉待人工继续e2e | 下一步:真实模型3Trigger/2Ticket/2Worker/2report | 卡点:视觉待人工，不算通过 | 测试 110 passed
+T+03:57 | 真机e2e通过 | DB实测3Trigger/2Ticket/2Assignment/2有效report；ticket均completed；Router每条1轮，Worker各仅structured_output | 下一步:完整liveAgents=0/owner锁/报告/clean tree | 卡点:视觉待人工与Channel即时回复限制 | 测试 110 passed；token output1312/cacheRead29696
+T+04:01 | 证据复核修复 | inputTokens字段修正并补预算回归；从原3session冷读重算，不重跑模型 | 下一步:整理报告/补冷读工具成功证据/清理 | 卡点:Channel即时通知与P4模型实证保留 | 测试 111 passed/typecheck/build；input5757/cacheRead29696/output1312
+T+04:10 | 收尾继续 | 实测liveAgents=0、activeAssignments=0、pendingTriggers=0、owner锁不存在；隔离进程与端口均释放 | 下一步:提交证据/确认clean tree；保留项不冒称完成 | 卡点:视觉待人工、Channel即时回复、P4模型实证 | 测试 111 passed（当前代码全量）

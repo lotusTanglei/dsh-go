@@ -35,7 +35,9 @@ Owner-only 身份由 DSH connection carrier 保证，路由额外校验 Origin�
 - 专门 UI/UX 只读审查完成，已修固定路径、超时/非JSON、详情/影响范围、resume理由、对话框与接口差异。
 - **无浏览器控制工具**：尚不能证明实际侧栏出现、点击、控制台无 slot crash、深浅主题正确；不会用自制截图/DOM 模拟代替。
 
-- 隔离 `superagent-dev` 已实测三个预设无 broken；未认证 API 401，owner cookie 下健康路由 200。但 Router 初始化失败，健康返回 sources=[]，不是运行健康通过。
-- 未执行实际审批/重启 UI 流程、资源/侧栏点击验证；真实 e2e 未启动。
+- 修复 Router setup 后，隔离 `superagent-dev` 三个预设无 broken，runtime ready/1 source健康；未认证 API 401，跨Origin403，owner健康与列表200。
+- Host 页面包含插件资源引用，真实客户端脚本200、19334bytes、module-loader factory正确；未执行DOM/React模拟。
+- 受控审批fixture经HTTP approve200、replay409；payload secret未泄漏，SQLite持久approved。重启后HTTP仍approved，Router恢复原session id。
+- 仍无视觉点击/主题证据。用户明确选择“继续e2e，视觉待人工”，只豁免阻塞顺序，不把视觉标为通过。
 
 最终真实 profile/HTTP/资源加载及视觉限制见 [FINAL-VERIFY](FINAL-VERIFY.md)。
