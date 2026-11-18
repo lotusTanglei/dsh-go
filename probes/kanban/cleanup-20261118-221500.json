@@ -1,0 +1,129 @@
+{
+  "kind": "kanban-final-supplement-cleanup",
+  "recordedAt": "2026-11-18T14:12:56.800Z",
+  "state": "passed",
+  "fixtures": [
+    {
+      "fixture": "kanban-s0-indirect-state-20261118-213300",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s0-state-20261118-201402",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s0-state-20261118-202300",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s1-state-20261118-203800",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s1-state-20261118-204300",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s1-state-20261118-205000",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s1-state-20261118-211400",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s3-state-20261118-215400",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s3-state-20261118-221200",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s4-state-20261118-213000",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s4-state-20261118-214000",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s4-state-20261118-215400",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    },
+    {
+      "fixture": "kanban-s4-state-20261118-221200",
+      "readOnly": true,
+      "nonterminalAssignments": 0,
+      "pendingTriggers": 0,
+      "runningEvals": 0,
+      "pendingOutbox": 0,
+      "lockPresent": false
+    }
+  ],
+  "ownedDevProcesses": [],
+  "devWebWatchers": [],
+  "currentArtifactBytes": 109484,
+  "currentArtifactSha256": "d822109f38840ce82cf3b355f5c54c1890a7ad03096135b15bab5384ab9972f8",
+  "boundary": "Only owned isolated kanban SQLite inspected read-only. Historical evidence, sentinel files, SQLite and tarballs retained. No Desktop/profile/permission edits, provider network or replacement GUI server. Does not prove browser visuals or production Worker safety."
+}

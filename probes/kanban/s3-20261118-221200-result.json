@@ -1,0 +1,471 @@
+{
+  "kind": "kanban-s3-real-host-owner-plan-revision",
+  "startedAt": "2026-11-18T14:11:56.247Z",
+  "externalProviderRequests": 0,
+  "mainCalls": 4,
+  "titleCalls": 1,
+  "boundary": "Real Agent/inbox/owner handler/flush; local synthetic adapter, synthetic planning-only repo not created or executed. In-process owner Peer, not browser cookie proof. Worker execution stays blocked.",
+  "command": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "messageId": "workspace:e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "epoch": "6b77cabd-1a1a-40c7-a3ed-cb89589ba2b4",
+        "stage": "claimed",
+        "accepted": true,
+        "seq": 3,
+        "at": 1795011116324,
+        "updatedAt": 1795011116362
+      }
+    }
+  },
+  "review": {
+    "project": "~/kanban-host-planning-only",
+    "scopeIdentity": "host-owner-home-relative",
+    "reviewable": true,
+    "fingerprint": "314724da5c8eb4bd50793b841c9074ce341f4d68e4c0de10bfe8f40eb645d7db"
+  },
+  "revision": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "planId": "d47071e9-240b-4681-872d-1991eee64ca2",
+        "requestId": "e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "epoch": "6b77cabd-1a1a-40c7-a3ed-cb89589ba2b4",
+        "fingerprint": "3b01d7bfa4ab02605d639e8b07eb2c0442041d04b425a280d44024cccc1d4bd7",
+        "state": "pending",
+        "createdAt": 1795011116797,
+        "expiresAt": 1795097516797,
+        "policyVersion": "2f5b1de6961dc46285a3ee6c3e8f464982034cccf8f48be04a4c019cfc2b2372",
+        "brief": {
+          "acceptance": [
+            {
+              "check": "Synthetic scope is fully reviewable",
+              "id": "A1",
+              "kind": "assertion"
+            }
+          ],
+          "allowWrite": [
+            "src/**"
+          ],
+          "approvalsRequired": [],
+          "base": {
+            "ref": "fixture",
+            "requireCleanTree": false
+          },
+          "blockers": [],
+          "denyWrite": [
+            "src/deny/**"
+          ],
+          "firstAction": "Inspect allowed source only",
+          "goal": "Owner revised exact goal",
+          "outOfScope": [
+            "real file execution"
+          ],
+          "runtime": "isolated zero-token fixture",
+          "scope": {
+            "repo": "~/kanban-host-planning-only",
+            "subdirs": [
+              "src"
+            ]
+          }
+        },
+        "scope": {
+          "repo": "~/kanban-host-planning-only",
+          "subdirs": [
+            "src"
+          ]
+        },
+        "acceptance": [
+          {
+            "check": "Synthetic scope is fully reviewable",
+            "id": "A1",
+            "kind": "assertion"
+          }
+        ],
+        "risk": {
+          "blockers": [],
+          "approvalsRequired": [],
+          "outOfScope": [
+            "real file execution"
+          ]
+        },
+        "reviewable": true,
+        "scopeIdentity": "host-owner-home-relative"
+      }
+    }
+  },
+  "stale": {
+    "status": 409,
+    "body": {
+      "ok": false,
+      "code": "admission_not_current",
+      "error": {
+        "code": "admission_not_current",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "forbiddenScope": {
+    "status": 400,
+    "body": {
+      "ok": false,
+      "code": "invalid_input",
+      "error": {
+        "code": "invalid_input",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "admission": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "planId": "d47071e9-240b-4681-872d-1991eee64ca2",
+        "requestId": "e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "epoch": "6b77cabd-1a1a-40c7-a3ed-cb89589ba2b4",
+        "fingerprint": "3b01d7bfa4ab02605d639e8b07eb2c0442041d04b425a280d44024cccc1d4bd7",
+        "state": "consumed",
+        "createdAt": 1795011116797,
+        "expiresAt": 1795097516797,
+        "policyVersion": "2f5b1de6961dc46285a3ee6c3e8f464982034cccf8f48be04a4c019cfc2b2372",
+        "brief": {
+          "acceptance": [
+            {
+              "check": "Synthetic scope is fully reviewable",
+              "id": "A1",
+              "kind": "assertion"
+            }
+          ],
+          "allowWrite": [
+            "src/**"
+          ],
+          "approvalsRequired": [],
+          "base": {
+            "ref": "fixture",
+            "requireCleanTree": false
+          },
+          "blockers": [],
+          "denyWrite": [
+            "src/deny/**"
+          ],
+          "firstAction": "Inspect allowed source only",
+          "goal": "Owner revised exact goal",
+          "outOfScope": [
+            "real file execution"
+          ],
+          "runtime": "isolated zero-token fixture",
+          "scope": {
+            "repo": "~/kanban-host-planning-only",
+            "subdirs": [
+              "src"
+            ]
+          }
+        },
+        "scope": {
+          "repo": "~/kanban-host-planning-only",
+          "subdirs": [
+            "src"
+          ]
+        },
+        "acceptance": [
+          {
+            "check": "Synthetic scope is fully reviewable",
+            "id": "A1",
+            "kind": "assertion"
+          }
+        ],
+        "risk": {
+          "blockers": [],
+          "approvalsRequired": [],
+          "outOfScope": [
+            "real file execution"
+          ]
+        },
+        "ticketId": "ticket:admission:d47071e9-240b-4681-872d-1991eee64ca2",
+        "reviewable": true,
+        "scopeIdentity": "host-owner-home-relative"
+      }
+    }
+  },
+  "executionGate": {
+    "ok": false,
+    "code": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+  },
+  "board": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "columns": {
+          "pending": {
+            "total": 1,
+            "items": [
+              {
+                "id": "ticket:admission:d47071e9-240b-4681-872d-1991eee64ca2",
+                "title": "Owner revised exact goal",
+                "state": "open",
+                "column": "pending",
+                "stoppedByHuman": false,
+                "createdAt": 1795011116801,
+                "updatedAt": 1795011116801,
+                "pendingApprovals": 0,
+                "attention": null,
+                "budget": {
+                  "steps": null,
+                  "usage": null
+                },
+                "acceptance": {
+                  "passed": null,
+                  "total": 1
+                },
+                "allowed": {
+                  "input": true,
+                  "stop": true,
+                  "resume": false
+                },
+                "disabledReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+              }
+            ],
+            "hasMore": false
+          },
+          "running": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "waiting": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "ended": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          }
+        },
+        "snapshotAt": 1795011116805,
+        "revision": "e7c03c7b65a33bdfd249a7c04e240cebeef32216389dd8ddc7c48e868c0f8093",
+        "filtered": false,
+        "pendingApprovals": 0
+      }
+    }
+  },
+  "status": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "messageId": "workspace:e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "epoch": "6b77cabd-1a1a-40c7-a3ed-cb89589ba2b4",
+        "stage": "published",
+        "accepted": true,
+        "seq": 6,
+        "at": 1795011116324,
+        "updatedAt": 1795011116804
+      }
+    }
+  },
+  "userMessageEvents": 1,
+  "acceptedCancelDenied": {
+    "status": 409,
+    "body": {
+      "ok": false,
+      "code": "command_cancel_denied",
+      "error": {
+        "code": "command_cancel_denied",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "stop": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "id": "ticket:admission:d47071e9-240b-4681-872d-1991eee64ca2",
+        "threadKey": "workspace:e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+        "title": "Owner revised exact goal",
+        "state": "ended",
+        "createdAt": 1795011116801,
+        "updatedAt": 1795011116807,
+        "stoppedByHuman": true,
+        "allowed": {
+          "input": false,
+          "stop": false,
+          "resume": false
+        },
+        "column": "ended",
+        "outcome": "stopped",
+        "pendingApprovals": 0,
+        "attention": null,
+        "budget": {
+          "steps": null,
+          "usage": null
+        },
+        "acceptance": {
+          "passed": null,
+          "total": 1
+        }
+      }
+    }
+  },
+  "recreatedCommand": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "99285460-8f96-4fdb-a5be-223f4f743472",
+        "messageId": "workspace:99285460-8f96-4fdb-a5be-223f4f743472",
+        "epoch": "6b77cabd-1a1a-40c7-a3ed-cb89589ba2b4",
+        "stage": "claimed",
+        "accepted": true,
+        "seq": 3,
+        "at": 1795011116807,
+        "updatedAt": 1795011116818
+      }
+    }
+  },
+  "recreatedAdmission": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "planId": "a1241a25-a88b-42b3-b69a-074750a2052f",
+        "requestId": "99285460-8f96-4fdb-a5be-223f4f743472",
+        "epoch": "6b77cabd-1a1a-40c7-a3ed-cb89589ba2b4",
+        "fingerprint": "bfde99c0b267af47ba6efc917be61aa442006ce64bab67570115456b14014f63",
+        "state": "consumed",
+        "createdAt": 1795011116903,
+        "expiresAt": 1795097516903,
+        "policyVersion": "2f5b1de6961dc46285a3ee6c3e8f464982034cccf8f48be04a4c019cfc2b2372",
+        "brief": {
+          "acceptance": [
+            {
+              "check": "Synthetic scope is fully reviewable",
+              "id": "A1",
+              "kind": "assertion"
+            }
+          ],
+          "allowWrite": [
+            "src/**"
+          ],
+          "approvalsRequired": [],
+          "base": {
+            "ref": "fixture",
+            "requireCleanTree": false
+          },
+          "blockers": [],
+          "denyWrite": [
+            "src/deny/**"
+          ],
+          "firstAction": "Report boundary",
+          "goal": "Synthetic revision task",
+          "outOfScope": [
+            "real file execution"
+          ],
+          "runtime": "isolated zero-token fixture",
+          "scope": {
+            "repo": "~/kanban-host-planning-only",
+            "subdirs": [
+              "src"
+            ]
+          }
+        },
+        "scope": {
+          "repo": "~/kanban-host-planning-only",
+          "subdirs": [
+            "src"
+          ]
+        },
+        "acceptance": [
+          {
+            "check": "Synthetic scope is fully reviewable",
+            "id": "A1",
+            "kind": "assertion"
+          }
+        ],
+        "risk": {
+          "blockers": [],
+          "approvalsRequired": [],
+          "outOfScope": [
+            "real file execution"
+          ]
+        },
+        "originTicket": "ticket:admission:d47071e9-240b-4681-872d-1991eee64ca2",
+        "ticketId": "ticket:admission:a1241a25-a88b-42b3-b69a-074750a2052f",
+        "reviewable": true,
+        "scopeIdentity": "host-owner-home-relative"
+      }
+    }
+  },
+  "recreationProof": {
+    "original": {
+      "id": "ticket:admission:d47071e9-240b-4681-872d-1991eee64ca2",
+      "threadKey": "workspace:e5aca57a-7eb2-47c5-b12d-eb9a83ee5c42",
+      "title": "Owner revised exact goal",
+      "state": "ended",
+      "createdAt": 1795011116801,
+      "updatedAt": 1795011116807,
+      "stoppedByHuman": true,
+      "allowed": {
+        "input": false,
+        "stop": false,
+        "resume": false
+      },
+      "column": "ended",
+      "outcome": "stopped",
+      "pendingApprovals": 0,
+      "attention": null,
+      "budget": {
+        "steps": null,
+        "usage": null
+      },
+      "acceptance": {
+        "passed": null,
+        "total": 1
+      }
+    },
+    "recreated": {
+      "id": "ticket:admission:a1241a25-a88b-42b3-b69a-074750a2052f",
+      "threadKey": "workspace:99285460-8f96-4fdb-a5be-223f4f743472",
+      "title": "Synthetic revision task",
+      "state": "open",
+      "createdAt": 1795011117015,
+      "updatedAt": 1795011117015,
+      "stoppedByHuman": false,
+      "allowed": {
+        "input": true,
+        "stop": true,
+        "resume": false
+      },
+      "column": "pending",
+      "originTicket": "ticket:admission:d47071e9-240b-4681-872d-1991eee64ca2",
+      "pendingApprovals": 0,
+      "attention": null,
+      "budget": {
+        "steps": null,
+        "usage": null
+      },
+      "acceptance": {
+        "passed": null,
+        "total": 1
+      },
+      "disabledReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+    },
+    "oldApprovals": 0,
+    "newApprovals": 0
+  },
+  "state": "passed",
+  "liveAgents": 0,
+  "finishedAt": "2026-11-18T14:11:57.023Z"
+}

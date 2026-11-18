@@ -2,10 +2,10 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { Store } from '../store/index.js'
 
 export type CommandIntent = 'message' | 'new-task' | 'ticket-input'
-export interface WorkspaceCommand { epoch: string; requestId: string; intent: CommandIntent; text: string; ticketId?: string }
+export interface WorkspaceCommand { epoch: string; requestId: string; intent: CommandIntent; text: string; ticketId?: string; recreateFrom?: string }
 export interface CommandRecord {
   version: 1; requestId: string; epoch: string; intent: CommandIntent; digest: string; messageId: string
-  threadKey: string; targetTicket?: string; stage: 'received' | 'queued' | 'claimed' | 'admitted' | 'processing' | 'published' | 'canceled' | 'rejected' | 'unknown'
+  threadKey: string; targetTicket?: string; originTicket?: string; stage: 'received' | 'queued' | 'claimed' | 'admitted' | 'processing' | 'published' | 'canceled' | 'rejected' | 'unknown'
   seq: number; at: number; updatedAt: number; durable: boolean; error?: string
 }
 export class WorkspaceError extends Error {
@@ -16,11 +16,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export function validateCommand(value: WorkspaceCommand): void {
   if (!value || !UUID.test(value.requestId) || typeof value.epoch !== 'string' || !value.epoch || !['message', 'new-task', 'ticket-input'].includes(value.intent)
     || typeof value.text !== 'string' || !value.text.trim() || Buffer.byteLength(value.text, 'utf8') > 16_384 || value.text.includes('\0')
-    || (value.intent === 'ticket-input' ? typeof value.ticketId !== 'string' || !value.ticketId : value.ticketId !== undefined)) commandError('invalid_command', 400)
+    || (value.intent === 'ticket-input' ? typeof value.ticketId !== 'string' || !value.ticketId : value.ticketId !== undefined)
+    || (value.recreateFrom !== undefined && (value.intent !== 'new-task' || typeof value.recreateFrom !== 'string' || !value.recreateFrom || value.recreateFrom.length > 200))) commandError('invalid_command', 400)
 }
 export function commandDigest(value: WorkspaceCommand): string {
   // Preserve exact Unicode/newlines. No lossy normalization or redacted replay copy.
-  return createHash('sha256').update(JSON.stringify([value.epoch, value.intent, value.text, value.ticketId ?? null])).digest('hex')
+  return createHash('sha256').update(JSON.stringify([value.epoch, value.intent, value.text, value.ticketId ?? null, ...(value.recreateFrom === undefined ? [] : [value.recreateFrom])])).digest('hex')
 }
 export function createCommandJournal(store: Store) {
   const key = (id: string) => `workspace-command:v1:${id}`
@@ -43,7 +44,7 @@ export function createCommandJournal(store: Store) {
         const at = Date.now()
         const record: CommandRecord = { version: 1, requestId: input.requestId, epoch: input.epoch, intent: input.intent, digest,
           messageId: `workspace:${input.requestId}`, threadKey: thread, ...(input.ticketId ? { targetTicket: input.ticketId } : {}),
-          stage: 'received', seq: 1, at, updatedAt: at, durable: false }
+          ...(input.recreateFrom ? { originTicket: input.recreateFrom } : {}), stage: 'received', seq: 1, at, updatedAt: at, durable: false }
         store.repos.side_effect.insert({ key: key(input.requestId), kind: 'workspace-command-v1', ticket_id: input.ticketId ?? null, at, state: 'v1:1', detail: record })
         return record
       })

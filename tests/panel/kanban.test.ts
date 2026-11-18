@@ -73,11 +73,12 @@ describe('kanban panel handler contract with real SQLite', () => {
     const seen: unknown[] = [], epoch = randomUUID(), requestId = randomUUID(), planId = randomUUID()
     const port = async (input?: unknown) => { seen.push(input); return { accepted: true } }
     const workspace = async () => { seen.push(undefined); return { epoch, admissions: [{ epoch, requestId, planId, fingerprint: 'a'.repeat(64), brief: { scope: { repo: '/tmp/planning-only' }, acceptance: [] } }] } }
-    const h = fixture({ workspace, conversation: port, command: port, commandStatus: port, admission: port, reviseAdmission: port })
+    const h = fixture({ workspace, conversation: port, command: port, commandStatus: port, admission: port, reviseAdmission: port, cancelCommand: port })
     const valid = {
       '/workspace': {}, '/conversation': { epoch, limit: 10 },
       '/command': { epoch, requestId, intent: 'new-task', text: 'Scoped request' },
       '/command-status': { epoch, requestId },
+      '/command-cancel': { epoch, requestId, seq: 2 },
       '/admission': { epoch, requestId, planId, fingerprint: 'a'.repeat(64), decision: 'approve' },
       '/admission-revise': { epoch, requestId, planId, fingerprint: 'a'.repeat(64), patch: { goal: 'Explicit revision' } },
     }
@@ -90,7 +91,7 @@ describe('kanban panel handler contract with real SQLite', () => {
     }
     expect(seen).toEqual([])
     for (const [path, input] of Object.entries(valid)) expect((await h.post(path, input)).status).toBe(200)
-    expect(seen).toHaveLength(7)
+    expect(seen).toHaveLength(8)
   })
 
   it('blocks approval of a scope hidden by privacy projection, while allowing a precise safe plan and rejection', async () => {

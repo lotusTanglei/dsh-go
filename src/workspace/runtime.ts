@@ -4,7 +4,7 @@ import { threadKey } from '../domain/ids.js'
 import type { Policy } from '../domain/policy.js'
 import type { SessionSource } from '../sources/session.js'
 import { createTrigger } from '../domain/trigger.js'
-import { bindWorkspace, commandError, type CommandRecord, type WorkspaceCommand } from './commands.js'
+import { bindWorkspace, commandError, validateCommand, type CommandRecord, type WorkspaceCommand } from './commands.js'
 import { createWorkspaceIngress } from './ingress.js'
 import { conversationPage } from './conversation.js'
 import { createAdmissionService } from './admission.js'
@@ -102,7 +102,17 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
       try { snapshot = await ctx.sessionQuery.readSession(binding.sessionId) } catch { return commandError('history_unavailable', 503) }
       return conversationPage(snapshot.events, input)
     },
-    async command(input: WorkspaceCommand) { return ingress.submit(input) },
+    async cancelCommand(input: { epoch: string; requestId: string; seq: number }) { requireEpoch(input.epoch); return ingress.cancelUnknown(input.epoch, input.requestId, input.seq) },
+    async command(input: WorkspaceCommand) {
+      validateCommand(input)
+      if (input.recreateFrom !== undefined) {
+        const original = store.repos.ticket.get(input.recreateFrom)
+        const thread = original && store.repos.thread.get(original.thread_key)
+        const lineage = original && store.repos.decision.get(original.decision_id)
+        if (!original || original.state !== 'ended' || !original.stopped_by_human || lineage?.ticket_id !== original.id || lineage?.thread_key !== original.thread_key || ![current, ...bindings.archives].some(row => thread?.source === `session:${row.sessionId}`)) return commandError('ticket_recreate_denied')
+      }
+      return ingress.submit(input)
+    },
     async commandStatus(input: { epoch: string; requestId: string }) {
       if (![current, ...bindings.archives].some(row => row.epoch === input.epoch)) return commandError('epoch_not_found', 404)
       return ingress.status(input.epoch, input.requestId)

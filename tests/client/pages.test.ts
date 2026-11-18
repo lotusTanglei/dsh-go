@@ -97,7 +97,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     const submit = section('submit')
     contains(submit, ['const existing = saved.pending', 'const epoch = existing?.epoch || draftEpochRef.current', 'if (!existing && epoch !== epochRef.current) return', 'requestId: mintId()', "saved.target ? 'ticket-input' : saved.intent", "call('command-status', { epoch, requestId: payload.requestId }", "e?.code !== 'command_not_found'", 'requestId: payload.requestId', 'text: payload.text', "call('command', exact, controller)", 'epochRef.current !== epoch', 'historyRef.current !== epoch', 'new TextEncoder().encode(saved.draft).length > 16384'])
     expect(submit.match(/mintId\(\)/g)).toHaveLength(1)
-    contains(section('applyReceipt'), ['current.pending?.requestId === payload.requestId', "matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage))", "receipt.accepted === true && current.draft === payload.text ? { draft: '' }"])
+    contains(section('applyReceipt'), ['current.pending?.requestId === payload.requestId', "matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage))", "receipt.accepted === true && current.draft === payload.text ? { draft: '', origin: null }"])
     contains(workspace, ['sendController.current?.abort()', "setNotice(tr('EpochChanged'))", 'const oldDraft = !!draftEpoch && draftEpoch !== workspace?.epoch', 'disabled: sending || !!pendingRequest || archive || oldDraft || !workspace', 'disabled: sending || archive || oldDraft || !composer.draft.trim()', "button(tr('CheckStatus'), () => { void submit(true) }", "button(tr('RetrySameRequest'), () => { void submit(false) }", 'pendingRequest.epoch !== workspace?.epoch || archive', 'e.nativeEvent?.isComposing', 'e.isComposing', 'e.nativeEvent?.keyCode === 229', 'e.keyCode === 229', "e.key !== 'Enter' || e.shiftKey"])
   })
 
@@ -146,7 +146,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(section('approvalView')).not.toMatch(/\.slice\(|\.substring\(/)
     contains(section('completeBrief'), ["typeof brief.goal === 'string'", "typeof brief.scope?.repo === 'string'", 'Array.isArray(brief.scope?.subdirs)', "['allowWrite', 'denyWrite', 'acceptance', 'blockers', 'outOfScope']", "!JSON.stringify(brief).includes('[REDACTED')"])
     contains(section('admissionView'), ['briefView(plan.brief)', '!completeBrief(plan)', 'plan.expiresAt <= Date.now()', '!plan.fingerprint', 'plan.epoch !== epochRef.current'])
-    contains(section('perform'), ["!['admission', 'revision'].includes(value.kind) && !reason.trim()", 'value.epoch !== epochRef.current', '!completeBrief(value.item)', 'fingerprint: value.item.fingerprint', 'reason: reason.trim()', "e?.status === 409 ? tr('DecisionConflict')", 'poke.current()'])
+    contains(section('perform'), ["!['admission', 'revision', 'request'].includes(value.kind) && !reason.trim()", 'value.epoch !== epochRef.current', '!completeBrief(value.item)', 'fingerprint: value.item.fingerprint', 'reason: reason.trim()', "e?.status === 409 ? tr('DecisionConflict')", 'poke.current()'])
     contains(workspace, ['valueView(confirmation.item.impact?.details)', "tr('ReasonRequired')", 'required: true', "'aria-required': true", 'dialogRef.current.showModal()', 'confirmationFocus.current.focus()'])
   })
 
@@ -155,6 +155,16 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('admissionView'), ["scopeIdentity === 'host-owner-home-relative'", "tr('HomeRelativeScope')", "askConfirm('revision', plan, 'revise')"])
     contains(section('perform'), ["value.kind === 'revision' ? 'admission-revise'", 'requestId: value.item.requestId', 'fingerprint: value.item.fingerprint', 'patch: { goal: revisionGoal.trim(), firstAction: revisionFirstAction.trim() }'])
     contains(workspace, ["tr('RevisionHint')", 'setRevisionGoal(e.target.value)', 'setRevisionFirstAction(e.target.value)'])
+  })
+
+  it('separates canceling uncertain routing from task stop and recreates stopped work only as an explicit new draft', () => {
+    contains(section('perform'), ["value.kind === 'request' ? 'command-cancel'", 'requestId: value.item.payload.requestId, seq: value.item.seq', "if (value.kind === 'request') applyReceipt(value.epoch, value.item.payload, result)"])
+    contains(workspace, ["latest?.stage === 'unknown' && latest.accepted === false", "tr('CancelUnknownHint')", "askConfirm('request', { payload: pendingRequest, seq: latest.seq }, 'cancel')"])
+    const recreate = section('recreate')
+    contains(recreate, ['composerRef.current.draft.trim()', "item.state !== 'ended' || item.stoppedByHuman !== true", "intent: 'new-task', target: null, origin: { id: item.id", "tr('ResolveDraftFirst')"])
+    expect(recreate).not.toMatch(/call\(|submit\(/)
+    contains(section('submit'), ['recreateFrom: saved.origin.id', 'recreateFrom: payload.recreateFrom'])
+    contains(workspace, ["button(tr('RecreateTask'), () => recreate(item)", "fields([['RecreatedFrom', text(item.originTicket)]])"])
   })
 
   it('always presents the production boundary, never synthesizes Worker execution or task success', () => {

@@ -60,15 +60,20 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
     const admissionEvent = admitted ?? (record.targetTicket ? insertion : undefined)
     if (admissionEvent && Number(admissionEvent.seq) <= watermark && durable && !['processing', 'published', 'rejected', 'canceled'].includes(next.stage)) {
       await ports.ingest(next, admissionEvent)
-      next = journal.update(next.requestId, { stage: 'processing', durable: true })
+      // Ingest may publish/reject while awaited. Never replace that terminal receipt.
+      next = journal.read(next.requestId) ?? next
+      if (!['processing', 'published', 'rejected', 'canceled'].includes(next.stage)) next = journal.update(next.requestId, { stage: 'processing', durable: true })
     }
     return next
   }
-  async function reconcile(record: CommandRecord, events?: any[]): Promise<CommandRecord> {
+  async function withReconciliation(record: CommandRecord, run: () => Promise<CommandRecord>): Promise<CommandRecord> {
     const previous = reconciliation.get(record.requestId) ?? Promise.resolve(record)
-    const task = previous.catch(() => record).then(() => reconcileUnlocked(record, events))
+    const task = previous.catch(() => record).then(run)
     reconciliation.set(record.requestId, task)
     try { return await task } finally { if (reconciliation.get(record.requestId) === task) reconciliation.delete(record.requestId) }
+  }
+  async function reconcile(record: CommandRecord, events?: any[]): Promise<CommandRecord> {
+    return withReconciliation(record, () => reconcileUnlocked(record, events))
   }
   async function send(input: WorkspaceCommand): Promise<CommandRecord> {
     validateCommand(input)
@@ -121,6 +126,25 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
       const record = journal.read(requestId)
       if (!record || record.epoch !== epoch) return commandError('command_not_found', 404)
       return receipt(epoch === ports.binding().epoch ? await reconcile(record) : record)
+    },
+    async cancelUnknown(epoch: string, requestId: string, seq: number) {
+      if (!Number.isSafeInteger(seq) || seq < 1) return commandError('invalid_input', 400)
+      if (epoch !== ports.binding().epoch) return commandError('epoch_mismatch')
+      const record = journal.read(requestId)
+      if (!record) return commandError('command_not_found', 404)
+      if (record.epoch !== epoch) return commandError('epoch_mismatch')
+      return receipt(await withReconciliation(record, async () => {
+        if (epoch !== ports.binding().epoch) return commandError('epoch_mismatch')
+        // Refresh real Session evidence and durability before applying the human fence.
+        await reconcileUnlocked(record)
+        if (epoch !== ports.binding().epoch) return commandError('epoch_mismatch')
+        const current = journal.read(requestId)!
+        if (current.stage === 'canceled' && current.error === 'human_canceled_unknown') return current
+        if (current.stage !== 'unknown' || current.durable) return commandError('command_cancel_denied')
+        if (current.seq !== seq) return commandError('command_conflict')
+        // No await between the exact seq check and commit; Session/model are untouched.
+        return journal.update(requestId, { stage: 'canceled', error: 'human_canceled_unknown', durable: false })
+      }))
     },
     async catchUp(messageIds: readonly string[]) {
       const records = messageIds.map(id => journal.byMessage(id)).filter((row): row is CommandRecord => Boolean(row))

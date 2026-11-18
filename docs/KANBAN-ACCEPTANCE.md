@@ -4,8 +4,8 @@
 
 **部分完成／不可交付，非生产就绪；不能称工程闭环完成。**
 
-- 本轮已实现后端及单入口工作区，并分阶段提交：`05a8ab8`（命令/确认/结果/安全关门）、`7d55411`（对话四列看板）。
-- 目前完整三闸与打包：37 files / **283 tests**，typecheck/test/build/pack exit0；[完整日志](<../probes/kanban/final-20261118-215400/test.log>)、[构建](<../probes/kanban/final-20261118-215400/build.log>)、[打包](<../probes/kanban/final-20261118-215400/pack.log>)。后端还验证过精确暂存树，267tests/三闸/pack通过，非借未暂存UI掩盖阶段缺件：[暂存树测试](<../probes/kanban/s1-staged-20261118-212700/test.log>)。
+- 本轮已实现后端及单入口工作区，并分阶段提交：`05a8ab8`（命令/确认/结果/安全关门）、`7d55411`（对话四列看板）、`6ceeee6`（过期/分页/计划修订/精确范围展示与证据）。最后补充提交包含未知请求路由终止、人工停止后的来源关联新建。
+- 目前完整三闸与打包：37 files / **307 tests**，typecheck/test/build/pack exit0；[完整日志](<../probes/kanban/supplement-20261118-221200/test.log>)、[构建](<../probes/kanban/supplement-20261118-221200/build.log>)、[打包](<../probes/kanban/supplement-20261118-221200/pack.log>)。后端还验证过精确暂存树，267tests/三闸/pack通过，非借未暂存UI掩盖阶段缺件：[暂存树测试](<../probes/kanban/s1-staged-20261118-212700/test.log>)。
 - 真实安装版 L1 spawn 父根、L2 同票未列/deny 可写反证已成立：[S0原始结果](<../probes/kanban/s0-20261118-202300-result.json>)。**真实生产Worker启动、恢复、工具执行全部关闭**，不是通过隔离验收。
 - 已完成真实Host“命令→特定计划→确认→建票→同会话唯一持久通知”，但Router为本地确定性适配器、通知为合成Channel fixture；**不是实际Worker报告完成链路**：[S1结果](<../probes/kanban/s1-20261118-211400-result.json>)。外部产品provider请求0，本地适配器3次/fixture，协作代理另计。
 - 无浏览器控制；没有当前GUI视觉/点击/IME/主题/console证据。没有部署Desktop、搜凭据、创建假DOM/截图或启动替代GUI。当前URL匿名401不等于已验证本插件界面。
@@ -23,30 +23,30 @@
 
 | ID | 本轮结论 | 实现与原始证据 | 边界/剩余 |
 |---|---|---|---|
-| UX-01 | 部分实现 | `05a8ab8/7d55411`；[S1真实Host](<../probes/kanban/s1-20261118-211400-result.json>)、[runtime tests](<../tests/workspace/runtime.test.ts>) | 单入口new-task可生成计划/显式确认；[最新Host修订](<../probes/kanban/s3-20261118-215400-result.json>)通过owner home-relative精确scope。真实Worker关门，其他不可审阅scope继续禁批；首次安全项目选择/配置UX未闭合 |
+| UX-01 | 部分实现 | `05a8ab8/7d55411`；[S1真实Host](<../probes/kanban/s1-20261118-211400-result.json>)、[runtime tests](<../tests/workspace/runtime.test.ts>) | 单入口new-task可生成计划/显式确认；[最新Host修订](<../probes/kanban/s3-20261118-221200-result.json>)通过owner home-relative精确scope。真实Worker关门，其他不可审阅scope继续禁批；首次安全项目选择/配置UX未闭合 |
 | UX-02 | 静态接线；需人工 | `7d55411`；[workspace](<../src/client/workspace.ts>)、[客户端合同](<../tests/client/pages.test.ts>) | 同界面补充/审批/结果、草稿/目标/滚动持有；实际焦点/滚动/窄屏行为未验 |
 | MSG-01 | 自动通过；Host合成通过 | `05a8ab8`；[命令测试](<../tests/workspace/commands.test.ts>)、[并发反例](<../tests/workspace/adversarial.test.ts>)、[S1结果](<../probes/kanban/s1-20261118-211400-result.json>) | 同ID串行锁+payload摘要409；unknown不换ID。不是跨库物理exactly-once |
 | MSG-02 | 自动通过 | `05a8ab8`；[runtime定向A/B/C](<../tests/workspace/runtime.test.ts>)、[legacy共享Thread](<../tests/workspace/adversarial.test.ts>) | new-task独立Thread；target在intake事务内绑定。真实并行Worker未验 |
 | MSG-03 | 自动通过；Host合成通过 | `05a8ab8`；[当前turn catch-up](<../src/workspace/runtime.ts>)、[S1唯一messageEvents](<../probes/kanban/s1-20261118-211400-result.json>) | 真实user-message归一化后建单；补充单次inject不唤醒Router。不把postcommit observer当barrier |
-| MSG-04 | 自动通过选定崩溃窗 | `05a8ab8`；[commands](<../tests/workspace/commands.test.ts>)、[admission恢复](<../tests/workspace/admission.test.ts>)、[flush取消竞态](<../tests/workspace/adversarial.test.ts>)、[结果SQLite重启](<../tests/workspace/runtime.test.ts>) | dispatch fence无证据保持unknown不盲发；报告settlement后pump以确定键补Outbox。未声称所有Host/OS崩溃窗已穷尽 |
+| MSG-04 | 自动通过选定崩溃窗 | `05a8ab8`；[commands](<../tests/workspace/commands.test.ts>)、[admission恢复](<../tests/workspace/admission.test.ts>)、[flush取消竞态](<../tests/workspace/adversarial.test.ts>)、[结果SQLite重启](<../tests/workspace/runtime.test.ts>) | dispatch fence无证据保持unknown不盲发；owner可对unknown/false精确seq二次确认终止路由，先对账并拒绝queued/admitted，晚证据不得驱动业务；不取消模型或宣称任务已停。报告settlement后pump以确定键补Outbox。未声称所有Host/OS崩溃窗已穷尽 |
 | MSG-05 | 自动通过 | `05a8ab8`；[归档与lineage](<../tests/workspace/runtime.test.ts>)、[恢复错误分类](<../tests/runtime-recovery.test.ts>) | exact-notfound换epoch，corrupt failclosed；旧epoch只读；运行中canonical即时failover未实现 |
 | RESULT-01 | 自动通过；真实产品阻断 | `05a8ab8`；[fake Spawner结构化结果](<../tests/workspace/runtime.test.ts>)、[Host持久Channel](<../probes/kanban/s1-20261118-211400-result.json>) | 无下一条人消息即可确定性摘要；真实Worker链因执行安全未运行，不勾真实端到端通过 |
 | RESULT-02 | 自动通过 | `05a8ab8`；[报告校验](<../tests/engine/brief-report.test.ts>)、[runtime](<../tests/workspace/runtime.test.ts>)、[注入/停止](<../tests/closeout/injection.test.ts>) | failed/not-run/不全不completed，人工stop晚报告不复活；sent是flush持久发布不是已读 |
 | BOARD-01 | 自动通过 | `05a8ab8/7d55411`；[看板测试](<../tests/panel/kanban.test.ts>) | 每票一列；unknown可见/禁动作；预算不当完成百分比。实际布局未验 |
 | BOARD-02 | 自动通过 | `05a8ab8/7d55411`；[每列107/135时间线/135审批](<../tests/panel/kanban.test.ts>)、[UI分页合同](<../tests/client/pages.test.ts>) | revision包括Ticket/Assignment/Approval；变化409重新同步不假快照；后端全表扫描存在规模限制 |
-| ACTION-01 | 自动通过；真实执行阻断 | `05a8ab8/7d55411`；[生命周期](<../tests/domain/domain.test.ts>)、[runtime停止/恢复](<../tests/workspace/runtime.test.ts>)、[UI停止重试](<../tests/client/pages.test.ts>) | 先持久终止再interrupt/dispose；生产guard拒绝旧Worker；任意后台进程组收敛未由真实产品证明。无人工stop原地resume按钮 |
+| ACTION-01 | 自动通过；真实执行阻断 | `05a8ab8/7d55411`；[生命周期](<../tests/domain/domain.test.ts>)、[runtime停止/恢复](<../tests/workspace/runtime.test.ts>)、[UI停止重试](<../tests/client/pages.test.ts>) | 先持久终止再interrupt/dispose；生产guard拒绝旧Worker；任意后台进程组收敛未由真实产品证明。无人工stop原地resume；带来源新建仅铺新草稿，发送后独立Thread/新计划确认、不继承旧审批，有SQLite重开与归档归属反例 |
 | ACTION-02 | 自动通过 | `05a8ab8/7d55411`；[多审批与过期](<../tests/panel/routes.test.ts>)、[指纹/双标签](<../tests/panel/kanban.test.ts>)、[隐藏action反例](<../tests/workspace/adversarial.test.ts>) | owner身份来自Host链，不信任actor；聊天/报告不能批准。业务批准不授权Host权限变化 |
-| ACTION-03 | 自动通过；Host合成通过 | `05a8ab8/7d55411`及最终修订；[plan CAS/修订/过期](<../tests/workspace/admission.test.ts>)、[owner修改实际Host](<../probes/kanban/s3-20261118-215400-result.json>) | 不改confirm默认，更保守地均显式确认；同界面owner修改目标/第一步产生新plan/指纹，旧指纹409；API受限patch不改scope/runtime/base，绝不隐式批准。过期跨epoch释放容量已验；其余不可审阅scope禁批 |
+| ACTION-03 | 自动通过；Host合成通过 | `05a8ab8/7d55411`及最终修订；[plan CAS/修订/过期](<../tests/workspace/admission.test.ts>)、[owner修改实际Host](<../probes/kanban/s3-20261118-221200-result.json>) | 不改confirm默认，更保守地均显式确认；同界面owner修改目标/第一步产生新plan/指纹，旧指纹409；API受限patch不改scope/runtime/base，绝不隐式批准。过期跨epoch释放容量已验；其余不可审阅scope禁批 |
 | S1 | 未通过/阻断 | [S0真实provider](<../probes/kanban/s0-20261118-202300-result.json>) | direct meta Ticket根允许合法/拒跨票及symlink；生产spawn继承父header根，因此不能算产品L1通过 |
 | S2 | 部分反例/阻断 | [24个真实间接执行case](<../probes/kanban/s0-indirect-20261118-213300-result.json>) | native/Node/Python/heredoc/间接script/background全部allowed成功、crossTicket无文件、同票unlisted/deny均写入；full sandbox=true，仅direct constrained fixture，不外推生产Worker或网络/进程隔离 |
 | S3 | 未通过/阻断 | [同Ticket unlisted/deny实写](<../probes/kanban/s0-20261118-202300-result.json>) | native+shell均可写；不以prompt、删bash或字符串parse冒充逐glob限制 |
 | S4 | 未通过/阻断（产品关门） | `05a8ab8`；[能力文档](<KANBAN-CAPABILITY.md>)、[旧live恢复先结束](<../tests/workspace/runtime.test.ts>)、[生产guard](<../tests/workspace/adversarial.test.ts>) | 没有已证实的首工具前安全启动方案；只证明拒绝执行，不证明允许执行安全 |
 | SAFE-01 | 自动选定范围通过 | `05a8ab8/7d55411`；[store安全](<../tests/store/closeout-security.test.ts>)、[panel注入](<../tests/panel/kanban.test.ts>)、[文本投影](<../tests/workspace/conversation.test.ts>) | 固定错误/参数SQL/UTF8上限/文本React/secret-path；shell网络策略未强化，真实浏览器XSS/任意秘密编码未全面证明 |
 | REL-01 | 自动通过选定回归 | `05a8ab8`；[并发/背压](<../tests/closeout/concurrency.test.ts>)、[故障](<../tests/closeout/faults.test.ts>)、[容量并集](<../tests/workspace/adversarial.test.ts>) | paused/subscription容量、maxWorkers、clock/readonly/lock/orphan保留；真实高并发成本、长时间watchdog新运行未做 |
-| BUILD-01 | 自动通过 | `05a8ab8/7d55411`；[283tests](<../probes/kanban/final-20261118-215400/test.log>)、[typecheck](<../probes/kanban/final-20261118-215400/typecheck.log>)、[build](<../probes/kanban/final-20261118-215400/build.log>)、[pack](<../probes/kanban/final-20261118-215400/pack.log>) | Electron Node24.21.0/pnpm10.33.0；真artifact VM只做factory注册，无DOM替身 |
-| LIVE-01 | 真实Host合同通过；非浏览器认证证明 | [S4最终Host](<../probes/kanban/s4-20261118-215400-result.json>)、[artifact VM](<../tests/client/artifact.test.ts>) | 3preset无broken、current artifact资源200/字节匹配、3slots、owner200/真实unknown Peer403/Origin403；1main+1title本地调用/外部0。不是浏览器真实cookie认证或视觉证明 |
+| BUILD-01 | 自动通过 | `05a8ab8/7d55411`；[307tests](<../probes/kanban/supplement-20261118-221200/test.log>)、[typecheck](<../probes/kanban/supplement-20261118-221200/typecheck.log>)、[build](<../probes/kanban/supplement-20261118-221200/build.log>)、[pack](<../probes/kanban/supplement-20261118-221200/pack.log>) | Electron Node24.21.0/pnpm10.33.0；真artifact VM只做factory注册，无DOM替身 |
+| LIVE-01 | 真实Host合同通过；非浏览器认证证明 | [S4最终Host](<../probes/kanban/s4-20261118-221200-result.json>)、[artifact VM](<../tests/client/artifact.test.ts>) | 3preset无broken、current artifact资源200/字节匹配、3slots、owner200/真实unknown Peer403/Origin403；1main+1title本地调用/外部0。不是浏览器真实cookie认证或视觉证明 |
 | VIS-01 | 需人工；未验 | [人工步骤](<KANBAN-MANUAL.md>) | 深浅/中英/宽窄/IME/键盘/焦点/网络/console无证据；独立代码UI/UX审查不替代视觉 |
-| CLEAN-01 | 自动通过自有fixture范围 | [最终清理回执](<../probes/kanban/cleanup-20261118-215800.json>)、[S3 agents0](<../probes/kanban/s3-20261118-215400-result.json>)、[S4 agents0](<../probes/kanban/s4-20261118-215400-result.json>) | 11个Host SQLite只读非终态Assignment/Trigger/Eval/Outbox均0、锁无；自有dev进程0/无dev:web watcher；CLI无新GUI服务器。保留历史/sentinel/产物，不动用户服务；无浏览器视觉证明 |
+| CLEAN-01 | 自动通过自有fixture范围 | [最终清理回执](<../probes/kanban/cleanup-20261118-221500.json>)、[S3 agents0](<../probes/kanban/s3-20261118-221200-result.json>)、[S4 agents0](<../probes/kanban/s4-20261118-221200-result.json>) | 13个Host SQLite只读非终态Assignment/Trigger/Eval/Outbox均0、锁无；自有dev进程0/无dev:web watcher；CLI无新GUI服务器。保留历史/sentinel/产物，不动用户服务；无浏览器视觉证明 |
 
 ## 已做独立审查及闭合
 
@@ -57,7 +57,7 @@
 ## 最小后续决定
 
 1. **执行安全**：按[能力方案](<KANBAN-CAPABILITY.md#L55-L61>)批准后再实施首工具前独立Agent安全根与shell/后台逐路径强制架构；如涉及核心/依赖/DDL/权限必须单独授权。不能把现在关门改成放行。
-2. **完整授权UX**：补首次安全项目选择、owner之外/跨机器路径的精确身份方案。当前Host owner主目录内规范repo已支持无损`~/完整后缀`，显式修订/过期/分页已完成；仍不能忽略隐私脱敏批准隐藏scope。未知请求人工终态处置、人工stop后带来源的一键新建仍未闭合。
+2. **完整授权UX**：补首次安全项目选择、owner之外/跨机器路径的精确身份方案。当前Host owner主目录内规范repo已支持无损`~/完整后缀`，显式修订/过期/分页已完成；仍不能忽略隐私脱敏批准隐藏scope。未知请求显式路由终止、人工stop后带来源新建草稿已补；二者不授权执行、不复用旧审批；仍需实际浏览器验收。
 3. **实际部署与浏览器验收**：安全能力解决后，通过受支持Desktop管理界面另行授权安装，在当前GUI执行人工清单；不由代理手改运行profile。
 
 以上未做项均保持阻断或未验，不用“静态看板已完成”替代完整交付。

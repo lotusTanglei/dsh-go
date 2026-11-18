@@ -1,0 +1,11 @@
+# Current final supplemental workspace artifact; no external LLM, Worker or browser rendering.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-221200
+    confirm: always
+- insert:
+    - id: kanban-s4-20261118-221200
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261118-221200/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-20261118-221200-result.json

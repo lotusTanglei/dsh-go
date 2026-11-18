@@ -33,6 +33,7 @@ export interface AdmissionPlanDTO {
   readonly acceptance: TicketBrief['acceptance']
   readonly risk: Pick<TicketBrief, 'blockers' | 'approvalsRequired' | 'outOfScope'>
   readonly ticketId?: string
+  readonly originTicket?: string
   readonly blockedReason?: string
 }
 export interface AdmissionOptions {
@@ -163,6 +164,7 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
       fingerprint: plan.fingerprint, state, createdAt: plan.createdAt, expiresAt: plan.expiresAt, policyVersion: plan.policy.version,
       brief: plan.brief, scope: plan.brief.scope, acceptance: plan.brief.acceptance,
       risk: { blockers: plan.brief.blockers, approvalsRequired: plan.brief.approvalsRequired, outOfScope: plan.brief.outOfScope },
+      ...(journal.read(plan.command.requestId)?.originTicket ? { originTicket: journal.read(plan.command.requestId)!.originTicket } : {}),
       ...(state === 'consumed' ? { ticketId: plan.ticketId } : {}), ...(blockedReason ? { blockedReason } : {}) })
   }
   function metadata(plan: Plan) {

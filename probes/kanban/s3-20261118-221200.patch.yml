@@ -1,0 +1,10 @@
+# Full owner revision, accepted-request cancel denial and independently confirmed recreation.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s3-state-20261118-221200
+    confirm: always
+- insert:
+    - id: kanban-s3-20261118-221200
+      name: dsh-superagent/kanban-s3-probe
+      config:
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s3-20261118-221200-result.json

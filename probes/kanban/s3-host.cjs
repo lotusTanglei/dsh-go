@@ -17,9 +17,9 @@ exports.apply = function (ctx, config) {
     async *stream(options) {
       const title = options.purpose === 'session-title'
       if (title) result.titleCalls++; else result.mainCalls++
-      if (result.mainCalls > 2 || result.titleCalls > 1) throw new Error('S3_LOCAL_RUNAWAY')
-      const tool = !title && result.mainCalls === 1
-      const block = tool ? { type: 'tool-call', id: 'kanban-s3-create', name: 'ticket_create', arguments: JSON.stringify({ brief }) } : { type: 'text', text: title ? 'Synthetic revision fixture' : 'Review the exact scope and revise the plan before confirming.' }
+      if (result.mainCalls > 4 || result.titleCalls > 2) throw new Error('S3_LOCAL_RUNAWAY')
+      const tool = !title && result.mainCalls % 2 === 1
+      const block = tool ? { type: 'tool-call', id: `kanban-s3-create-${result.mainCalls}`, name: 'ticket_create', arguments: JSON.stringify({ brief }) } : { type: 'text', text: title ? 'Synthetic revision fixture' : 'Review the exact scope and revise the plan before confirming.' }
       yield { type: 'block-start', index: 0, blockType: block.type }
       yield { type: 'block-end', index: 0, block }
       yield { type: 'usage', usage: { inputTokens: 0, outputTokens: 0 } }
@@ -72,6 +72,27 @@ exports.apply = function (ctx, config) {
       const log = await ctx.sessionQuery.readSession(agent.id)
       result.userMessageEvents = log.events.filter(row => row.type === 'user/message' && row.data.id === `workspace:${input.requestId}`).length
       check(result.userMessageEvents === 1 && result.externalProviderRequests === 0 && result.mainCalls === 2, 'S3_COMMAND_BOUNDARY_FAILED')
+      const ticketId = result.admission.body.data.ticketId
+      result.acceptedCancelDenied = await post('command-cancel', { epoch, requestId: input.requestId, seq: result.status.body.data.seq })
+      check(result.acceptedCancelDenied.status === 409, 'S3_ACCEPTED_CANCEL_ALLOWED')
+      result.stop = await post('ticket-action', { id: ticketId, action: 'stop', reason: 'Owner ends this planning-only task before recreating it' })
+      check(result.stop.status === 200, 'S3_STOP_FAILED')
+      const recreatedInput = { epoch, requestId: randomUUID(), intent: 'new-task', text: 'Re-evaluate the stopped requirement as a separately confirmed planning-only task.', recreateFrom: ticketId }
+      result.recreatedCommand = await post('command', recreatedInput)
+      check(result.recreatedCommand.body.data.accepted === true, 'S3_RECREATE_NOT_ACCEPTED')
+      await agent.whenIdle(); await ctx.sessions.flush(agent.session)
+      const recreatedWorkspace = await post('workspace', {})
+      const newPlan = recreatedWorkspace.body.data.admissions.find(row => row.requestId === recreatedInput.requestId)
+      check(newPlan?.state === 'pending' && newPlan.originTicket === ticketId && newPlan.planId !== revised.planId && newPlan.reviewable === true, 'S3_RECREATE_PLAN_INVALID')
+      result.recreatedAdmission = await post('admission', { epoch, requestId: recreatedInput.requestId, planId: newPlan.planId, fingerprint: newPlan.fingerprint, decision: 'approve' })
+      check(result.recreatedAdmission.body.data.state === 'consumed' && result.recreatedAdmission.body.data.originTicket === ticketId, 'S3_RECREATE_CONFIRM_FAILED')
+      const oldDetail = await post('ticket', { id: ticketId })
+      const newDetail = await post('ticket', { id: result.recreatedAdmission.body.data.ticketId })
+      result.recreationProof = { original: oldDetail.body.data.ticket, recreated: newDetail.body.data.ticket, oldApprovals: oldDetail.body.data.approvalsTotal, newApprovals: newDetail.body.data.approvalsTotal }
+      check(result.recreationProof.original.state === 'ended' && result.recreationProof.original.stoppedByHuman === true && result.recreationProof.recreated.state === 'open' && result.recreationProof.recreated.originTicket === ticketId, 'S3_RECREATE_CHANGED_ORIGINAL')
+      check(result.recreationProof.original.threadKey !== result.recreationProof.recreated.threadKey && result.recreationProof.newApprovals === 0, 'S3_RECREATE_REUSED_AUTHORITY')
+      await runtime.tick()
+      check(result.externalProviderRequests === 0 && result.mainCalls === 4, 'S3_RECREATE_PROVIDER_BOUNDARY_FAILED')
       result.state = 'passed'
     } catch (error) { result.state = 'failed'; result.error = { code: String(error?.code || error?.message || 'S3_FAILED') } }
     finally {

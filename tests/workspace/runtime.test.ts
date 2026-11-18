@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -9,7 +9,7 @@ import { openStore, type Store } from '../../src/store/index.js'
 import type { TicketBrief } from '../../src/domain/ticket.js'
 import type { Report } from '../../src/engine/report.js'
 import type { AdmissionPlanDTO } from '../../src/workspace/admission.js'
-import type { WorkspaceCommand } from '../../src/workspace/commands.js'
+import { commandDigest, type CommandRecord, type WorkspaceCommand } from '../../src/workspace/commands.js'
 import type { ActivationResult, Spawner, SpawnActivationInput } from '../../src/sessions/worker.js'
 import { installPanelRoutes } from '../../src/panel/routes.js'
 
@@ -597,6 +597,77 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect(h.calls.followup).toHaveLength(103); expect(h.calls.inject).toEqual([])
     expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
   }, 30_000)
+
+  it('recreates a human-stopped archived task only as a fresh confirmed plan with durable origin and independent thread', async () => {
+    const h = fixture({ production: true }), original = await h.task('Original requirement')
+    h.store.repos.approval.insert({ id: 'old-task-approval', ticket_id: original.ticketId, kind: 'permission', summary: 'Old exact approval', payload_json: { branch: 'original' }, requested_by: 'fixture', created_at: Date.now(), state: 'approved' })
+    expect(await h.runtime.panelPorts.stopTicket(original.ticketId, 'Owner stopped the original task')).toBe(true)
+    const stopped = h.store.repos.ticket.get(original.ticketId)!
+    expect(stopped).toMatchObject({ state: 'ended', stopped_by_human: 1, outcome: 'stopped', current_assignment: null })
+    await h.restart({ production: true, missingRouter: true })
+    expect((await h.runtime.panelPorts.workspace()).epoch).not.toBe(original.input.epoch)
+    const input = await h.input('Re-evaluate the same requirement with a new brief', { recreateFrom: original.ticketId })
+    const receipt = await h.runtime.panelPorts.command(input)
+    const command = h.store.repos.side_effect.get(`workspace-command:v1:${input.requestId}`)!.detail as CommandRecord
+    expect(command).toMatchObject({ originTicket: original.ticketId, threadKey: `workspace:${input.requestId}` })
+    expect(command.threadKey).not.toBe(stopped.thread_key); expect(receipt.requestId).not.toBe(original.input.requestId)
+    h.admit(receipt)
+    const newBrief = { ...brief('Fresh interpretation of the same requirement'), scope: original.plan.brief.scope, firstAction: 'Inspect the stopped task scope afresh' }
+    const plan = await h.propose(newBrief); h.endTurn()
+    expect(plan).toMatchObject({ originTicket: original.ticketId, state: 'pending', brief: newBrief })
+    expect(plan.planId).not.toBe(original.plan.planId); expect(plan.fingerprint).not.toBe(original.plan.fingerprint)
+    expect(h.store.repos.ticket.all()).toHaveLength(1)
+    expect(h.store.repos.ticket.get(original.ticketId)).toEqual(stopped)
+    expect(h.store.repos.approval.all()).toEqual([expect.objectContaining({ id: 'old-task-approval', ticket_id: original.ticketId })])
+    await h.restart({ production: true })
+    expect((h.store.repos.side_effect.get(`workspace-command:v1:${input.requestId}`)!.detail as CommandRecord).originTicket).toBe(original.ticketId)
+    expect((await h.runtime.panelPorts.workspace({ planId: plan.planId })).admissions).toEqual([expect.objectContaining({ originTicket: original.ticketId, state: 'pending' })])
+    await expect(h.runtime.panelPorts.admission({ ...approve(plan), fingerprint: original.plan.fingerprint })).rejects.toMatchObject({ code: 'admission_binding_mismatch', status: 409 })
+    expect(h.store.repos.ticket.all()).toHaveLength(1)
+    const created = await h.runtime.panelPorts.admission(approve(plan))
+    expect(created).toMatchObject({ state: 'consumed', originTicket: original.ticketId, ticketId: `ticket:admission:${plan.planId}` })
+    const fresh = h.store.repos.ticket.get(created.ticketId!)!
+    expect(fresh).toMatchObject({ state: 'open', stopped_by_human: 0, brief_json: newBrief })
+    expect(fresh.thread_key).toBe(command.threadKey); expect(fresh.thread_key).not.toBe(stopped.thread_key)
+    expect(h.store.repos.approval.all().filter(row => row.ticket_id === fresh.id)).toEqual([])
+    expect(h.store.repos.ticket.get(original.ticketId)).toEqual(stopped)
+    expect(h.store.repos.ticket.all()).toHaveLength(2)
+    expect(h.calls.followup).toHaveLength(2); expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+  it('rejects recreation from running, foreign or mismatched-lineage tickets and binds recreateFrom into request identity', async () => {
+    const h = fixture({ production: true }), active = await h.task('Running is not a recreation source')
+    h.seedLiveWorker(active.ticketId)
+    const stopped = await h.task('Human-stopped owned source')
+    await h.runtime.panelPorts.stopTicket(stopped.ticketId, 'Owner stopped this source')
+    const originalThread = h.store.repos.ticket.get(stopped.ticketId)!.thread_key as string
+    const decisionId = h.store.repos.ticket.get(stopped.ticketId)!.decision_id as string
+    const baseline = { calls: h.calls.followup.length, triggers: h.store.repos.trigger.all().length, commands: h.store.repos.side_effect.all().filter(row => row.kind === 'workspace-command-v1').length }
+    for (const recreateFrom of [active.ticketId, 'foreign-ticket-not-owned']) {
+      await expect(h.runtime.panelPorts.command(await h.input('Must reject an ineligible source', { recreateFrom }))).rejects.toMatchObject({ code: 'ticket_recreate_denied', status: 409 })
+    }
+    h.store.db.prepare('UPDATE thread SET source=? WHERE key=?').run('session:foreign-canonical', originalThread)
+    await expect(h.runtime.panelPorts.command(await h.input('Foreign source cannot authorize recreation', { recreateFrom: stopped.ticketId }))).rejects.toMatchObject({ code: 'ticket_recreate_denied', status: 409 })
+    h.store.db.prepare('UPDATE thread SET source=? WHERE key=?').run(`session:${h.router().id}`, originalThread)
+    h.store.db.prepare('UPDATE decision SET ticket_id=? WHERE id=?').run(active.ticketId, decisionId)
+    await expect(h.runtime.panelPorts.command(await h.input('Tampered decision cannot authorize recreation', { recreateFrom: stopped.ticketId }))).rejects.toMatchObject({ code: 'ticket_recreate_denied', status: 409 })
+    h.store.db.prepare('UPDATE decision SET ticket_id=? WHERE id=?').run(stopped.ticketId, decisionId)
+    await expect(h.runtime.panelPorts.command(await h.input('A supplement is not a new-task recreation', { intent: 'ticket-input', ticketId: stopped.ticketId, recreateFrom: stopped.ticketId }))).rejects.toMatchObject({ code: 'invalid_command', status: 400 })
+    expect(h.calls.followup).toHaveLength(baseline.calls); expect(h.store.repos.trigger.all()).toHaveLength(baseline.triggers)
+    expect(h.store.repos.side_effect.all().filter(row => row.kind === 'workspace-command-v1')).toHaveLength(baseline.commands)
+
+    const plain = await h.input('Identity binds the explicit origin')
+    const legacyDigest = createHash('sha256').update(JSON.stringify([plain.epoch, plain.intent, plain.text, null])).digest('hex')
+    expect(commandDigest(plain)).toBe(legacyDigest)
+    const recreation = { ...plain, recreateFrom: stopped.ticketId }
+    expect(commandDigest(recreation)).not.toBe(legacyDigest)
+    await h.runtime.panelPorts.command(recreation)
+    await expect(h.runtime.panelPorts.command(plain)).rejects.toMatchObject({ code: 'request_conflict', status: 409 })
+    expect(h.calls.followup).toHaveLength(baseline.calls + 1)
+    expect(h.store.repos.ticket.get(stopped.ticketId)).toMatchObject({ state: 'ended', stopped_by_human: 1 })
+    expect(h.store.repos.ticket.get(active.ticketId)?.state).toBe('running')
+    expect(h.store.repos.ticket.all()).toHaveLength(2); expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
+  })
 
   it('never promotes synthetic fake-Spawner execution permission into the production runtime', async () => {
     const h = fixture({ production: true }), task = await h.task()

@@ -48,6 +48,7 @@ export interface PanelPorts {
   readonly conversation?: (input: any) => Promise<unknown>
   readonly command?: (input: any) => Promise<unknown>
   readonly commandStatus?: (input: any) => Promise<unknown>
+  readonly cancelCommand?: (input: any) => Promise<unknown>
   readonly admission?: (input: any) => Promise<unknown>
   readonly reviseAdmission?: (input: any) => Promise<unknown>
   readonly ownsTicketTransitions?: boolean
@@ -68,7 +69,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -273,7 +274,7 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     return ok(await ports.conversation(input))
   })
   route('/command', async request => {
-    const parsed = await body(request, ['epoch', 'requestId', 'intent', 'text', 'ticketId']); if (parsed.error) return parsed.error
+    const parsed = await body(request, ['epoch', 'requestId', 'intent', 'text', 'ticketId', 'recreateFrom']); if (parsed.error) return parsed.error
     if (!ports.command) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
     return ok(await ports.command(parsed.value!))
   })
@@ -282,6 +283,13 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     if (!validId(parsed.value!.epoch) || !validId(parsed.value!.requestId)) return fail('invalid_input', 'Request identity required', 400)
     if (!ports.commandStatus) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
     return ok(await ports.commandStatus(parsed.value!))
+  })
+  route('/command-cancel', async request => {
+    const parsed = await body(request, ['epoch', 'requestId', 'seq']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!validId(input.epoch) || !validId(input.requestId) || !Number.isSafeInteger(input.seq) || Number(input.seq) < 1) return fail('invalid_input', 'Exact request version required', 400)
+    if (!ports.cancelCommand) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
+    return ok(await ports.cancelCommand(input))
   })
   route('/admission', async request => {
     const parsed = await body(request, ['epoch', 'requestId', 'planId', 'fingerprint', 'decision']); if (parsed.error) return parsed.error

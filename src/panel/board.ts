@@ -13,9 +13,12 @@ export function boardTicket(store: Store, row: Row) {
   const approvals = store.repos.approval.all().filter(item => item.ticket_id === row.id)
   const report = assignment?.report_json as any
   const pending = approvals.filter(item => item.state === 'pending').length
+  const admission = store.repos.side_effect.all().find(item => item.kind === 'workspace-admission-v1' && item.ticket_id === row.id)
+  const requestId = (admission?.detail as any)?.requestId
+  const origin = requestId ? (store.repos.side_effect.get(`workspace-command:v1:${requestId}`)?.detail as any)?.originTicket : undefined
   const anomaly = !knownStates.includes(String(row.state)) ? 'unknown_state' : row.state === 'running' && (!assignment || assignment.state !== 'running' || pending || row.attention_json) ? 'state_conflict' : undefined
   return { id: row.id, title: row.title, state: row.state, column: boardColumn(row.state), outcome: row.state === 'ended' ? ['completed', 'failed', 'stopped', 'dropped'].includes(String(row.outcome)) ? row.outcome : 'unknown' : undefined,
-    createdAt: row.created_at, updatedAt: row.updated_at, pendingApprovals: pending, attention: row.attention_json,
+    ...(typeof origin === 'string' ? { originTicket: origin } : {}), stoppedByHuman: Boolean(row.stopped_by_human), createdAt: row.created_at, updatedAt: row.updated_at, pendingApprovals: pending, attention: row.attention_json,
     progress: Array.isArray(report?.done) ? report.done.at(-1) : undefined, lastProgressAt: assignment?.last_progress_at,
     budget: { steps: assignment?.steps ?? null, usage: assignment?.tokens ?? null },
     acceptance: { passed: Array.isArray(report?.acceptance) ? report.acceptance.filter((item: any) => item.result === 'passed').length : null, total: Array.isArray((row.brief_json as any)?.acceptance) ? (row.brief_json as any).acceptance.length : null },

@@ -116,6 +116,16 @@
 - 最后保护检查脚本第1次exit1：全局把所有` 2 `替换为` 5 `作为期望误伤其他数字，不是原文被覆盖；改为逐文件准确原用户那一处阈值替换，再验证三文件字节一致exit0。无源码或用户稿修改。
 - 新增完整逐项矩阵`KANBAN-ACCEPTANCE.md`、人工步骤`KANBAN-MANUAL.md`；当前只可称部分完成/不可交付，首次项目选择、unknown人工处置、带来源一键重建等普通UX缺项也明确列出，不借安全阻断掩盖。下一步仅最新文档包三闸/pack和选择性提交，不再扩范围。
 
+## 2026-11-18T22:13:25+08:00 · 最后普通交互补齐，源码冻结
+
+- 前三阶段已提交`05a8ab8 / 7d55411 / 6ceeee6`，无push；最终核对后继续补两个不受执行沙箱阻断的必需交互，未以“最后提交”提前停工。
+- unknown请求可显式二次确认终止**路由**：先逐request串行真实Session/flush对账，只unknown+durablefalse+exact seq可CAS canceled，late日志仍可显示但不得ingest/唤醒/建票。queued/admitted/processing拒绝；不清Session/不停止模型/不宣称任务已停。28项command测试含并发flush/late log/旧epoch/终态不复活；await ingest后补读避免覆盖终态。
+- 人工停止后“以此需求新建任务”只铺新草稿，不覆盖原草稿，不自动发送/执行；recreateFrom纳入digest（旧无字段hash不变），Host验证stopped+owned Decision lineage，journal originTicket持久、新Thread/新plan重新确认、不承袭审批，详情显示来源。SQLite reopen/归档/外国lineage篡改回归通过。
+- 补充focused第1轮2失败：新增测试把raw SQLite stopped_by_human INTEGER1/0误写true/false；已按已核Repo表示修三断言，产品停止语义未放宽。后focused83/83、全量37files/**307tests**、typecheck/build均exit0，原始完整三闸日志`supplement-20261118-221200/`。独立快审无新增明显P0/P1，不等于浏览器验收。
+- 最新真实Host补充`s3-20261118-221200-result.json`passed：main4/title1/外部0，owner修订/旧指纹409、已受理请求cancel409、停止原票、新request新Thread新plan明确批准后新票open+origin，旧票仍stopped，agents0；S4同标签passed，当前client109484bytes/hash d822109f…、Host200精确字节、3preset/owner/非owner/Origin及cleanup。未真实执行Worker。
+- `cleanup-20261118-221500.json` actual22:12:56，13自有Host SQLite非终态Assignment/Trigger/Eval/Outbox0、lock无、dev进程0、watcher0；保留历史/sentinel/数据库/pack，未开启新GUI服务器或修改Desktop。
+- 目标当前disarmed，尝试resume被Host拒绝“需direct human turn”；未重复绕过，未mark complete/blocked。源码冻结，最后文档同步/pack/提交后仅报告部分完成与明确执行安全/实际GUI阻断，剩首次项目选择等普通UX限制也单列。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。
