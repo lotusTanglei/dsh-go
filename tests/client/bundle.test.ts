@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createClientPlugin } from '../../src/client/index.js'
+import { createChannelDefinitions } from '../../src/client/channel.js'
 
 // Check the public registration contract only: no DOM or renderer emulation.
 describe('P5 client module contract', () => {
@@ -10,16 +11,17 @@ describe('P5 client module contract', () => {
     const dictionaries = { en: JSON.parse(readFileSync('locale/en.json', 'utf8')).panel, zh: JSON.parse(readFileSync('locale/zh.json', 'utf8')).panel }
     let localeRemoved = false
     const disposers: Array<() => void> = []
-    const plugin = createClientPlugin({ createElement() { throw new Error('registration must not render') } }, dictionaries)
+    const plugin = createClientPlugin({ createElement() { throw new Error('registration must not render') } }, dictionaries, createChannelDefinitions())
     plugin.apply({
       effect(factory: () => (() => void)) { disposers.push(factory()) },
+      uiConversation: { events: { register(definition: { kind: string }) { expect(definition.kind).toBe('superagent-channel-notice'); return () => {} } } },
       locale: { register(name: string) { expect(name).toBe('superagent'); return () => { localeRemoved = true } }, bind() { return (key: string) => key } },
       layout: { selectPanel() {} },
       slots: { inject(owner: string, factory: () => void) { owners.push(owner); factory() }, register(options: typeof slots[number]) { slots.push(options) } },
     })
-    expect(plugin.inject).toEqual(['slots', 'locale', 'layout'])
-    expect(owners).toEqual(['sidebar.panellist', 'main'])
-    expect(slots).toMatchObject([{ name: 'sidebar.panellist', id: 'superagent' }, { name: 'main', key: 'superagent' }])
+    expect(plugin.inject).toEqual(['slots', 'locale', 'layout', 'uiConversation'])
+    expect(owners).toEqual(['conversation.chat.node', 'sidebar.panellist', 'main'])
+    expect(slots).toMatchObject([{ name: 'conversation.chat.node', key: 'superagent-channel-notice' }, { name: 'sidebar.panellist', id: 'superagent' }, { name: 'main', key: 'superagent' }])
     expect(slots.some(slot => slot.name === 'root')).toBe(false)
     disposers.forEach(dispose => dispose())
     expect(localeRemoved).toBe(true)

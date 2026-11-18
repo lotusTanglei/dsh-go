@@ -1,0 +1,65 @@
+{
+  "kind": "product-p4-sample-deviation",
+  "state": "passed",
+  "modelsStarted": true,
+  "scope": "Product sampleDeviation only; no full watchdog tick or Worker steer is claimed.",
+  "startedAt": 1794984231235,
+  "mainSessionId": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+  "liveIdsBefore": [
+    "234b9575-5261-4d99-a4a3-32ac5367eff4"
+  ],
+  "timeoutMs": 45000,
+  "request": {
+    "provider": "spawn",
+    "agentPreset": "dsh-superagent-watchdog",
+    "maxTokens": 512,
+    "delivery": "caller"
+  },
+  "activation": {
+    "childId": "3040d5ce-1022-49e2-aa56-a4cedf4dcd40",
+    "disposeRequested": true,
+    "disposed": true
+  },
+  "modelResult": {
+    "stopReason": "completed",
+    "structured": {
+      "deviated": true,
+      "reason": "The stated goal is repairing the SQLite outbox idempotency transaction so duplicate delivery never causes a second payment (database transaction boundaries and idempotency ledger). The reported work is a tropical aquarium decoration guide about coral colors, seaweed arrangements and fish tank wallpaper — no SQLite, payment, transaction, ledger, code, or outbox work was attempted, the acceptance criterion outbox-dedup is explicitly failed, and the only todo is continuing to choose decorative wall"
+    }
+  },
+  "correction": "The stated goal is repairing the SQLite outbox idempotency transaction so duplicate delivery never causes a second payment (database transaction boundaries and idempotency ledger). The reported work is a tropical aquarium decoration guide about coral colors, seaweed arrangements and fish tank wallpaper — no SQLite, payment, transaction, ledger, code, or outbox work was attempted, the acceptance criterion outbox-dedup is explicitly failed, and the only todo is continuing to choose decorative wall",
+  "deviationDetected": true,
+  "activationCleanupSucceeded": true,
+  "session": {
+    "sessionId": "3040d5ce-1022-49e2-aa56-a4cedf4dcd40",
+    "turns": 1,
+    "steps": 1,
+    "usage": {
+      "inputTokens": 1356,
+      "cacheReadTokens": 768,
+      "cacheWriteTokens": 0,
+      "outputTokens": 215
+    },
+    "toolCalls": [
+      {
+        "name": "structured_output",
+        "callId": "call_00_brquwMLQ8paou8QuivgB4526"
+      }
+    ],
+    "toolResults": [
+      {
+        "callId": "call_00_brquwMLQ8paou8QuivgB4526",
+        "isError": false
+      }
+    ],
+    "readonlyCalls": true,
+    "onlyStructuredOutput": true,
+    "structuredOutputSucceeded": true
+  },
+  "liveIdsAfter": [
+    "234b9575-5261-4d99-a4a3-32ac5367eff4"
+  ],
+  "childReleased": true,
+  "newLiveIds": [],
+  "finishedAt": 1794984233418
+}

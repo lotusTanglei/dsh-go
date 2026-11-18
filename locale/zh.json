@@ -1,7 +1,7 @@
 {
   "meta": {"title":"超管","description":"Ticket 任务编排、来源事件管线、Worker 监督与审批面板。"},
   "panel": {
-    "title":"超管", "subtitle":"任务、会话与审批的运行概览", "navigation":"超管导航",
+    "channelNotice":"超管通知", "title":"超管", "subtitle":"任务、会话与审批的运行概览", "navigation":"超管导航",
     "overview":"总览", "tickets":"任务", "threads":"话题", "sources":"来源", "approvals":"审批", "health":"健康", "settings":"设置",
     "counts":"任务统计", "activities":"最近活动", "empty":"暂无记录。来源接入后可在这里查看运行状态。",
     "loading":"正在加载…", "retry":"重试", "requestFailed":"请求失败，请稍后重试。", "requestTimeout":"请求超过 15 秒未响应。", "invalidResponse":"服务器返回了无效响应。",

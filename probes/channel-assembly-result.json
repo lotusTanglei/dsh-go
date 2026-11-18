@@ -1,0 +1,12 @@
+{
+  "kind": "real-installed-conversation-and-chat-builder",
+  "state": "unavailable",
+  "modelsStarted": false,
+  "domUsed": false,
+  "checksCompleted": 0,
+  "attempts": [
+    { "exitCode": 1, "code": "LOADER_RESOLVE_RECURSION" },
+    { "exitCode": 1, "code": "INSTALLED_CLIENT_STORE_MODULE_UNRESOLVED" }
+  ],
+  "scope": "Optional Node execution of installed browser-package sources could not load the real assembler. Stop after two failures; contract tests and recorded real Channel splice do not constitute browser or actual Chat engine execution."
+}

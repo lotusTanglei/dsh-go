@@ -2,9 +2,9 @@
 
 在 DeepSeek Harness 上实现的一个 Super-agent bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
-**当前状态：主链路与真实 e2e 已通过，P3/P4/P5 按保留项标为部分交付。** 最新 typecheck／111 项测试／build 通过；真实 3 Trigger → 2 Ticket → 2 Worker → 2 有效汇报，两个任务 completed；审批落库/重启一致，liveAgents=0、无 owner lock。
+**当前状态：主链路与真实 e2e 已通过，P3/P4/P5 按保留项标为部分交付。** 最新 typecheck／115 项测试／build 通过；真实 3 Trigger → 2 Ticket → 2 Worker → 2 有效汇报，两个任务 completed；审批落库/重启一致，liveAgents=0、无 owner lock。
 
-尚未完成：Session Channel 即时人可见回复、P4模型纠偏/提醒实证、侧栏点击与主题视觉。用户允许视觉待人工继续 e2e，但不把它标为通过。desktop 未改。
+补充验证：Channel通知即时投影实现完成，真实持久事件只一条且不唤醒模型；只读Watchdog真实抽样成功并释放。尚未完成：实际浏览器中的通知显示、侧栏点击与主题视觉，以及完整生产tick→Worker steer实证。用户允许视觉待人工继续 e2e，但不把它标为通过。desktop 未改。
 
 证据与下一步见 [最终验收记录](docs/FINAL-VERIFY.md)、[P3](docs/P3-report.md)／[P4](docs/P4-report.md)／[P5](docs/P5-report.md) 报告。旧 P2/A3 计数与注入证明的问题已在 [诊断更正](docs/P2-DIAGNOSIS.md) 披露。
 

@@ -15,7 +15,7 @@
 
 - React 由 Host 模块表提供；无 DSH Client 包运行时 import。
 - `scripts/build-client.mjs` 复用 tsc 编译输出，生成 `window.__ModuleLoader__.load({id:'dsh-superagent',factory...})`；无新打包依赖。
-- 仅注册 `sidebar.panellist` 与 keyed `main`，id/key 均 `superagent`；不占 root。
+- 面板注册 `sidebar.panellist` 与 keyed `main`，id/key 均 `superagent`；另以独立 `conversation.chat.node` key 注册Channel通知，生命周期自有；不占 root。
 - 主题 token，无硬编码色值；中英文 locale。
 - 固定根 API、same-origin、15 秒超时、5 秒轮询、4xx 不自动重试、5xx 退避；卸载取消请求/定时器。
 - 原生 dialog：二次确认、理由、Escape/关闭/焦点恢复。
@@ -31,12 +31,13 @@ Owner-only 身份由 DSH connection carrier 保证，路由额外校验 Origin�
 ## 已验证与未验证
 
 - Host 八条单测通过：路由契约、攻击字段/Origin、审批 CAS/replay/过期、重启、linked Ticket、安全 impact/detail、多审批与身份。
-- Client 两条契约测试通过：slot/locale 注册与释放、资源/主题/模块格式；未模拟 DOM/renderer。
+- Client五条契约测试通过：slot/locale 注册与释放、资源/主题/模块格式、Channel即时投影/同id去重/冷读兜底/普通消息隔离；未模拟 DOM/renderer。
 - 专门 UI/UX 只读审查完成，已修固定路径、超时/非JSON、详情/影响范围、resume理由、对话框与接口差异。
 - **无浏览器控制工具**：尚不能证明实际侧栏出现、点击、控制台无 slot crash、深浅主题正确；不会用自制截图/DOM 模拟代替。
 
 - 修复 Router setup 后，隔离 `superagent-dev` 三个预设无 broken，runtime ready/1 source健康；未认证 API 401，跨Origin403，owner健康与列表200。
-- Host 页面包含插件资源引用，真实客户端脚本200、19334bytes、module-loader factory正确；未执行DOM/React模拟。
+- Host 页面包含插件资源引用；原客户端脚本19334bytes；通知版实测200、22387bytes，含自有Conversation注册与renderer，module-loader factory正确；未执行DOM/React模拟。
+- 通知版补做窄UI/UX静态审查，无当前单消息inject路径阻断项。Node运行真实浏览器包assembler的可选验证因loader递归及installed client-store解析失败，未完成任何引擎检查；两次失败后停止，不用自制引擎或DOM替代，见[未验证回执](../probes/channel-assembly-result.json)。
 - 受控审批fixture经HTTP approve200、replay409；payload secret未泄漏，SQLite持久approved。重启后HTTP仍approved，Router恢复原session id。
 - 仍无视觉点击/主题证据。用户明确选择“继续e2e，视觉待人工”，只豁免阻塞顺序，不把视觉标为通过。
 

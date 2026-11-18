@@ -6,22 +6,22 @@
 
 | 阶段 | 状态 | 保留项 |
 |---|---|---|
-| P3 | 部分完成：持久管线、恢复、FakeSource 场景与真实派活/汇报通过 | Session Channel 仅延迟通知，不是即时人可见回复 |
-| P4 | 部分完成：五规则、动作、审计、冷读与有界模型抽样接线完成 | 偏离模型尚无真实结果证据；escalate 唤醒 Router，不是已验证的人可见通知 |
+| P3 | 功能已实现：管线、恢复、派活/汇报与即时通知投影 | 实际浏览器通知显示仍待人工，不宣称已读 |
+| P4 | 规则与适配通过，真实只读偏离抽样通过 | 完整生产tick→Worker steer未实跑；通知视觉待人工 |
 | P5 | 部分完成：主三页、九路由、真实审批与重启一致性通过 | 其余四页只读/占位；侧栏点击、深浅主题与 console 待人工 |
 
-用户已明确同意：①解除两次 setup 启动失败停止，修复后继续；②视觉检查留待人工，不阻塞 e2e。第二项不等于视觉验收通过，也不豁免 Channel 功能限制。
+用户已明确同意：①解除两次 setup 启动失败停止，修复后继续；②视觉检查留待人工，不阻塞 e2e。第二项不等于视觉验收通过。Channel已补插件自有即时通知投影，但仍不冒称浏览器已显示或人已读。
 
 ## 七步门禁
 
 | 步骤 | 结果 | 证据与限制 |
 |---|---|---|
-| 1 typecheck / test / build | **通过** | Node v24.21.0；22 files / **111 tests**；client factory build 成功 |
+| 1 typecheck / test / build | **通过** | Node v24.21.0；23 files / **115 tests**；client factory build 成功 |
 | 2 预设零 token | **通过** | 三个 dsh-superagent preset 无 broken；产品 runtime ready，1 Session Source 健康 |
 | 3 P3 fake 场景 | **通过** | 顺序重跑15项：三重复→1Trigger/1Ticket、同Thread串行补跑、暂停、FakeSource扩展、真实SIGKILL与ledger去重 |
-| 4 P4 场景 | **规则场景通过；生产模型未全验** | 顺序重跑8项，随后新增token字段回归，全量111通过；卡死/空转/20分钟进展/预算顺序/等人不取消均有证据 |
+| 4 P4 场景 | **规则场景通过；生产模型未全验** | 通知版全量115通过后，按顺序重跑P3 15项、P4 9项；另真实sampleDeviation通过；卡死/空转/20分钟进展/预算顺序/等人不取消均有证据 |
 | 5 P5 实测 | **HTTP/持久化通过；视觉待人工** | 匿名401、跨Origin403、owner200；资源200；approve200/replay409；重启仍approved；用户允许视觉待人工继续 |
-| 6 真机e2e一次 | **通过（受控fixture）** | 实测3Trigger→2Ticket→2Assignment/Worker→2有效report；两个Ticket completed；Router每条1轮、共3turns/7steps |
+| 6 真机e2e一次 | **通过（受控fixture）** | 实测3Trigger→2Ticket→2Assignment/Worker→2有效report；两个Ticket completed；Router每条1轮、共3turns/7steps。后续只改Channel通知/提醒投递，不改派活/汇报路径，复用此证据，未重复跑模型e2e |
 | 7 清理 | **运行资源通过** | 实测liveAgents=0；所有隔离进程已停；端口无listener；activeAssignments=0、pendingTriggers=0、owner lock不存在；不删除历史/备份 |
 
 最终工作区检查在收口提交后执行，不能用提交前的修改状态冒称干净。
@@ -33,9 +33,9 @@
 ```text
 $ tsc --noEmit -p tsconfig.json
 $ vitest run
-Test Files  22 passed (22)
-Tests       111 passed (111)
-Duration    10.61s
+Test Files  23 passed (23)
+Tests       115 passed (115)
+Duration    10.89s
 $ tsc -p tsconfig.build.json && node scripts/build-client.mjs
 DSH client factory built: lib/client.js
 [exit code: 0]
@@ -64,10 +64,10 @@ dsh-superagent-watchdog
 健康响应关键字段：
 
 ```json
-{"ok":true,"runtime":{"state":"ready"},"sessionChannel":{"delivery":"deferred-until-next-admitted-step","immediateHumanReply":false},"outbox":{"pending":0},"sources":[{"id":"session:234b9575-5261-4d99-a4a3-32ac5367eff4","kind":"session","ok":true}]}
+{"ok":true,"runtime":{"state":"ready"},"sessionChannel":{"delivery":"durable-chat-notice","modelWakeup":false,"visualVerification":"pending-human"},"outbox":{"pending":0},"sources":[{"id":"session:234b9575-5261-4d99-a4a3-32ac5367eff4","kind":"session","ok":true}]}
 ```
 
-HTTP 实测：未认证401、跨Origin403、owner下health/overview/tickets/approvals200。Host HTML有dsh-superagent客户端引用；真实资源200、19334bytes、module-loader factory正确。没有浏览器截图或DOM替身，不把HTTP成功当作React成功挂载。
+HTTP 实测：未认证401、跨Origin403、owner下health/overview/tickets/approvals200。Host HTML有dsh-superagent客户端引用；原资源200、19334bytes；通知版资源200、22387bytes，包含自有Conversation定义/renderer，module-loader factory正确。没有浏览器截图或DOM替身，不把HTTP成功当作React成功挂载。
 
 ## 3. 审批与重启
 
@@ -113,7 +113,15 @@ restart: approval still approved
 | Worker2 | 922 | 3840 | 187 |
 | **合计** | **5757** | **29696** | **1312** |
 
-cacheWriteTokens=0。字段互斥；总计36765 token，其中输入35453、输出1312。没有估造金额。
+cacheWriteTokens=0。字段互斥；e2e总计36765 token，其中输入35453、输出1312。另一次P4真实抽样input1356/cacheRead768/output215，共2339；两类合计39104。没有估造金额。
+
+### 补充：Channel即时通知与P4真实抽样
+
+[Channel实测](../probes/final-channel-result.json)：使用现有真人Thread调用产品channel_reply，两次相同id只形成一条真实inbox/spliced，addedTurns=0、admitted=false；产品自有Definition从该真实事件构建visible notice，不等下一轮模型。客户端独立key renderer注册、纯文本/换行/主题/中英文与同id冷读兜底均有契约回归。Watchdog escalate也改走同一Outbox，不再唤醒Router模型。sent含义为持久发布到Chat投影，不是浏览器ACK或人已读。
+
+[真实Watchdog结果](../probes/p4-live-result.json)：实际调用产品sampleDeviation，readonly preset、512输出上限；1turn/1step仅structured_output，返回deviated=true和明确理由；子会话已释放且无新增liveAgent。这个证明只覆盖抽样，不冒称完整生产tick→Worker steer实跑。
+
+可选[真实assembler探针](../probes/channel-assembly.cjs)尝试在Electron Node中加载installed浏览器包，先resolver递归、再client-store模块无法解析，两次失败后停止，0项引擎检查完成。[未完成回执](../probes/channel-assembly-result.json)明确unavailable。没有复制/模拟引擎、DOM或React来替代，也不把手动调用Definition等同真实浏览器执行。
 
 ## 5. 清理
 
@@ -131,7 +139,7 @@ cacheWriteTokens=0。字段互斥；总计36765 token，其中输入35453、输�
 {"activeAssignments":0,"pendingTriggers":0,"ownerLockPresent":false,"recoverySentinelPresent":true}
 ```
 
-进程表无superagent-dev；端口58387/59915/61602无listener。空recovery sentinel是[持久恢复互斥文件](../src/store/db.ts#L29-L31)，不是owner lock，OS释放占用，不删除该设计文件。保留受控fixture、session历史和备份供追溯，未清库、未删除用户数据。
+进程表无superagent-dev；端口58387/59915/61602及补充验收53693均无listener。空recovery sentinel是[持久恢复互斥文件](../src/store/db.ts#L29-L31)，不是owner lock，OS释放占用，不删除该设计文件。保留受控fixture、session历史和备份供追溯，未清库、未删除用户数据。
 
 ## 6. 已修失败与过程偏差
 
@@ -141,8 +149,8 @@ cacheWriteTokens=0。字段互斥；总计36765 token，其中输入35453、输�
 
 ## 7. 保留风险与下一步边界
 
-1. **Session Channel仍是部分实现**：通知等待下一次step admit；未admit保持UNKNOWN_DELIVERY/pending，无法即时显示。需要明确的人可见通知通道后才能闭合。
-2. **P4模型抽样和人可见escalate未完整实证**：只读preset、512输出上限、超时/释放已有适配回归；生产模型判断未单独测试，不以两个Worker的e2e代替。
+1. **Session Channel即时投影已实现、实际显示待验**：真实持久发布/去重/零模型唤醒通过；没有浏览器执行证据。失败投递仍保留pending，不伪造人已读；不支持脱离本插件客户端的人可见通知保证。
+2. **P4抽样真实结果已通过，完整动作链未全实跑**：readonly preset、512上限、成功结构化结果与释放已实测；规则→steer由可控port测试覆盖，未以此冒称真实生产Worker被纠偏；escalate通知视觉待人工。
 3. **P5视觉待人工**：侧栏入口、点击、console无slot crash、深浅主题尚未验证。用户只同意这项不阻塞e2e，并未声明视觉通过。
 4. 七页中只有Overview/Tickets/Approvals为主流程；Threads/Settings为只读简版，Sources/Health占位，符合允许的P5范围缩减并明确披露。
 5. 只使用superagent-dev和命令行临时overlay，不改desktop、不安装依赖、不新增DDL、不修改DSH安装包。
@@ -158,6 +166,7 @@ a1dd179 feat(runtime): close guarded execution lifecycle
 3927938 docs: record live startup gate stop
 a3a5f5a fix(runtime): honor agent setup commit contract
 6e2be39 fix(watchdog): count uncached input tokens
+9aeeba6 docs: preserve measured runtime acceptance
 ```
 
-**一句话：P3部分（主链路通过、Channel延迟限制）；P4部分（规则通过、模型/人可见提醒待验）；P5部分（HTTP/持久化通过、视觉待人工）。**
+**一句话：P3主链路通过、通知实现待视觉；P4规则/真实抽样通过、完整生产纠偏未全验；P5 HTTP/持久化通过、视觉待人工。整体仍是部分验收，不宣称全部交付。**

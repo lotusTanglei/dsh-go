@@ -263,7 +263,10 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     },
     async nudge(id, text) { const agent = ctx.agents.get(id); if (!agent) throw new Error('Worker not live'); await agent.steer(message(text)) }, async steer(id, text) { const agent = ctx.agents.get(id); if (!agent) throw new Error('Worker not live'); await agent.steer(message(text)) },
     async cancel(assignment, reason) { await stopTicket(assignment.ticketId, reason, 'watchdog') },
-    async escalate(assignment, text) { await sendRouter(`${assignment.ticketId}: ${text}`, true) },
+    async escalate(assignment, text) {
+      engine.enqueue({ channel: 'session', threadKey: threadKey(`session:${mainId}`), ticketId: ticketId(assignment.ticketId), kind: 'notice', body: `${assignment.ticketId}: ${text}`, idempotencyKey: `watchdog:${assignment.assignmentId}:${text}` })
+      await engine.drainOutbox()
+    },
     audit(record) { audit('watchdog', record, record.ticketId); heartbeat = record.metrics.at },
   }, { stallMs: config.stallMs, repeatCallThreshold: config.repeatCallThreshold, waitingHumanMs: config.waitingHumanMs, maxSteps: config.maxStepsPerTicket, maxTokens: config.maxTokensPerTicket, maxDurationMs: config.maxDurationMsPerTicket, deviationIntervalMs: config.watchdogIntervalMs * 10 })
 
@@ -295,11 +298,10 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         const agent = ctx.agents.get(mainId!)
         if (!agent) throw new Error('Router unavailable')
         const snapshot = await ctx.sessionQuery.readSession(mainId!)
-        // Inbox splice alone is not displayed by DSH Chat. Only an admitted user/message
-        // is visible as a context notice. Never mark an idle injected notice as sent.
-        if (snapshot.events.some((event: any) => event.type === 'user/message' && event.data?.id === idemKey)) return
-        if (!snapshot.events.some((event: any) => event.data?.inserted?.some((item: any) => item.id === idemKey))) await agent.inject({ ...message(body), id: idemKey })
-        throw Object.assign(new Error('Session notice is waiting for admission; human delivery is unconfirmed'), { code: 'UNKNOWN_DELIVERY' })
+        // The plugin-owned Chat Definition renders this durable splice immediately,
+        // without waking a model. Sent means published to Chat, never human-read.
+        if (snapshot.events.some((event: any) => event.type === 'user/message' && event.data?.id === idemKey || event.type === 'agent/inbox/spliced' && event.data?.inserted?.some((item: any) => item.id === idemKey && item.source?.kind === 'superagent-channel'))) return
+        await agent.inject({ ...message(String(redact(body))), id: idemKey, source: { kind: 'superagent-channel', form: 'notice', summary: 'Superagent notification' } })
       },
       onError() { audit('source_error', { code: 'SA_SOURCE_FAILURE' }) },
     }, async trigger => {
@@ -366,11 +368,13 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       if (name === 'channel_reply') {
         if (args.threadKey !== `session:${mainId}` || !store.repos.thread.get(args.threadKey)) return { ok: false, code: 'SA_CHANNEL_SCOPE_DENIED' }
         engine.enqueue({ channel: 'session', threadKey: args.threadKey, body: args.body, kind: 'reply', idempotencyKey: exec.callId ?? randomUUID() })
+        await engine.drainOutbox()
         return { ok: true, code: 'SA_ENQUEUED' }
       }
       if (name === 'human_ask') {
         if (!store.repos.thread.get(`session:${mainId}`)) return { ok: false, code: 'SA_NO_HUMAN_THREAD' }
         engine.enqueue({ channel: 'session', threadKey: threadKey(`session:${mainId}`), body: args.question, kind: 'reply', idempotencyKey: exec.callId ?? randomUUID() })
+        await engine.drainOutbox()
         return { ok: true, code: 'SA_QUESTION_ENQUEUED' }
       }
       if (!worker) return { ok: false, code: 'SA_ASSIGNMENT_UNBOUND' }
@@ -403,7 +407,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       return { ok: false, code: 'SA_TOOL_UNWIRED' }
     },
     panelPorts: {
-      async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'deferred-until-next-admitted-step', immediateHumanReply: false }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
+      async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'durable-chat-notice', modelWakeup: false, visualVerification: 'pending-human' }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
       async sources() { return Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, ...await source.health() }))) },
       // Panel owns the domain transition; this port only quiesces the active Worker.
       async stopTicket(id: string) { const row = ticketFor(id); const assignment = row.current_assignment ? store.repos.assignment.get(row.current_assignment) : undefined; if (assignment) { ctx.subagents.interrupt?.(String(assignment.session_id), { kind: 'user' }); store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'human-stop' }); await workers.get(String(assignment.id))?.dispose() } },

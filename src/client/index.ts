@@ -1,13 +1,18 @@
 /** Browser factory is bundled by scripts/build-client.mjs; React stays host-owned. */
-export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>) {
+export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>, channelDefinitions: readonly unknown[]) {
   const h = React.createElement
   const NS = 'superagent'
   const pages = ['overview', 'tickets', 'threads', 'sources', 'approvals', 'health', 'settings'] as const
   return {
-    inject: ['slots', 'locale', 'layout'],
+    inject: ['slots', 'locale', 'layout', 'uiConversation'],
     apply(ctx: any) {
       ctx.effect(() => ctx.locale.register(NS, dictionaries))
       const t = ctx.locale.bind(NS)
+      for (const definition of channelDefinitions) ctx.effect(() => ctx.uiConversation.events.register(definition))
+      function ChannelNotice({ node }: any) {
+        return h('section', { role: 'status', 'aria-label': t('channelNotice'), style: { color: 'var(--dsw-alias-label-primary)', background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 12, margin: '8px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, h('strong', null, t('channelNotice')), ...(node.data.messages ?? []).map((message: any) => h('p', { key: message.id, style: { margin: '8px 0 0' } }, message.text)))
+      }
+      ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'superagent-channel-notice', locale: NS }, ChannelNotice))
       let selected: string = 'overview'
       const css = `.sa-panel{height:100%;overflow:auto;box-sizing:border-box;padding:calc(var(--dsh-frame-top-clearance,0px) + 24px) 24px 24px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:inherit}.sa-panel h1{font-size:22px;margin:0 0 8px}.sa-panel h2{font-size:17px;margin:0 0 12px}.sa-sub{color:var(--dsw-alias-label-secondary);margin:0 0 24px}.sa-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--dsw-alias-border-l1);padding-bottom:12px;margin-bottom:20px}.sa-btn{font:inherit;cursor:pointer;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:8px 12px}.sa-btn[aria-selected=true]{border-color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}.sa-btn:focus-visible{outline:2px solid var(--dsw-alias-label-primary);outline-offset:2px}.sa-btn:disabled{cursor:default;opacity:.5}.sa-card{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:12px;padding:16px;margin-bottom:12px}.sa-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.sa-error{color:var(--dsw-alias-state-error-primary)}.sa-meta{color:var(--dsw-alias-label-secondary);font-size:13px}.sa-dialog{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;max-width:560px;width:calc(100% - 48px)}.sa-dialog textarea{box-sizing:border-box;width:100%;min-height:80px;font:inherit;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;margin:12px 0;padding:8px}.sa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.sa-value{font-size:22px;font-weight:600}.sa-list{margin:0;padding-left:20px}.sa-detail{margin-top:12px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l1)}`
 

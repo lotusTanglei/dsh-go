@@ -24,9 +24,9 @@
 
 Host runtime 已接入定时器、指标来源、动作、持久状态与模型抽样。[sampleDeviation](../src/sessions/watchdog.ts) 使用只读 preset、512 输出 token 上限和超时；成功与晚返回 activation 释放均有单测。waiting-human 优先于预算，已结束但仍等人的 Ticket 仍参与提醒。
 
-Router setup 曾把 preset mount 的返回对象透传给 AgentSetupCommit，导致两次启动失败并停止。用户明确允许修复继续后，`a3a5f5a` 已修复并加入真实提交契约回归；最新111项测试通过，隔离 runtime ready，重启恢复原 Router id、冷读 heartbeat 正常。生产偏离模型结果仍未单独实证，不冒充全部 live P4 场景。
+Router setup 曾把 preset mount 的返回对象透传给 AgentSetupCommit，导致两次启动失败并停止。用户明确允许修复继续后，`a3a5f5a` 已修复并加入真实提交契约回归；最新115项测试通过，隔离 runtime ready，重启恢复原 Router id、冷读 heartbeat 正常。[真实偏离抽样](../probes/p4-live-result.json)已通过：实际readonly Watchdog preset、512 maxTokens、1turn/1step、仅structured_output，识别明显不相关工作并返回纠偏理由；input1356/cacheRead768/output215，activation释放无新增liveAgent。它验证产品sampleDeviation，不冒充完整生产tick→Worker steer场景。
 
-Session Channel 没有即时显示能力：inbox 注入未 admit 不记 sent；escalate 目前唤醒 Router，并非已验证的人可见通知。
+escalate改走Session Outbox通知，不再唤醒Router模型；客户端自有Conversation Definition即时投影notice。真实Channel持久发布/去重/零唤醒已测，实际浏览器显示仍待人工，不宣称人已看到。
 
 不允许 Watchdog 改代码、改 Policy 或直接对外发消息；任何模型抽样都必须只读、有预算和释放。
 
@@ -34,4 +34,4 @@ Session Channel 没有即时显示能力：inbox 注入未 admit 不记 sent；e
 
 `aeb54b2 feat(p4): supervise workers with cold snapshots`
 
-最终生产接线与验收结论以 [FINAL-VERIFY](FINAL-VERIFY.md) 为准。阶段结论：部分完成（规则和有界适配通过，真实模型纠偏与人可见escalate仍待验）。
+最终生产接线与验收结论以 [FINAL-VERIFY](FINAL-VERIFY.md) 为准。阶段结论：规则、生产适配与真实只读抽样通过；完整生产tick→Worker steer未实跑，通知视觉待人工。

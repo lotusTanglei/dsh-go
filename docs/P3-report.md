@@ -35,11 +35,11 @@
 - Router setup两次失败后按计划停止，用户允许修复继续；`a3a5f5a`修复提交契约，真实runtime启动和原Router id重启恢复通过。
 - [真实e2e结果](../probes/final-runtime-result.json)：产品Router真实调用工具，3Trigger→2Ticket→2Worker→2有效report，两个Ticket completed。两次assignment_start成功结果与DB Assignment匹配；两个汇报入inbox，但仅第一份进入后续模型上下文，不宣称两份均已消费。
 - [运行链路回归](../tests/runtime-integration.test.ts) 11 项通过：多审批阻断/恢复、最多一次报告 correction、maxRetries、只读诊断、seq 串行投递和失败不 ack。它们使用真实 SQLite + 可控 DSH 替身，不是 live Host 证明。
-- Session Channel 的 inbox 注入只能等待下一次 step admit；未进入可渲染日志时保留 Outbox pending，不能当即时人可见回复。
+- Session Channel新增插件自己的Chat Conversation Definition与renderer：持久superagent-channel splice立即产生visible节点，不等待step admit、不唤醒模型；admit沿用同消息id，不重复。真实Host实测两次调用只有一条splice、addedTurns=0；失败仍保留Outbox pending。sent只表示持久发布，不代表人已读；浏览器视觉仍待人工。
 
 ## 提交
 
 - `05192bd feat(p3): persist and recover trigger processing`
 - `531cbee fix(p3): trust host clocks and drain source work`
 
-最终逐条证据见 [FINAL-VERIFY](FINAL-VERIFY.md)。阶段结论：部分完成（事件管线/恢复/派活汇报通过，Session Channel延迟限制未闭合）。
+最终逐条证据见 [FINAL-VERIFY](FINAL-VERIFY.md)。阶段结论：功能链路和通知投影实现已完成；运行主链路通过，通知浏览器显示仍待人工验收。

@@ -81,7 +81,7 @@ function makeHarness(options: HarnessOptions = {}) {
     sessionQuery: { async readSession() { return { events: [], session: { agentPreset: 'dsh-superagent-router' } } } },
   }
   const runtime = createRuntime(ctx, store, config)
-  return { config, store, runtime, agents, listeners, effects, main: () => [...agents.values()].find(agent => !String(agent.id).startsWith('worker-')), get workerDisposeCount() { return workerDisposeCount } }
+  return { ctx, config, store, runtime, agents, listeners, effects, main: () => [...agents.values()].find(agent => !String(agent.id).startsWith('worker-')), get workerDisposeCount() { return workerDisposeCount } }
 }
 
 async function flush(turns = 3) { for (let i = 0; i < turns; i++) await new Promise<void>(resolve => setImmediate(resolve)) }
@@ -134,6 +134,26 @@ describe('runtime safety boundaries', () => {
     expect(h.store.repos.thread_trigger.all().find(row => row.trigger_id === trigger.id)).toMatchObject({ state: 'pending' })
     workerResult.resolve({ structured: report })
     await flush(5)
+    await h.runtime.dispose()
+  })
+
+  it('publishes an idle Channel notice once with no model wake and idempotent durable replay', async () => {
+    const h = makeHarness(); await h.runtime.ready
+    const router = h.main()!
+    const events: any[] = []
+    let injected = 0, woke = 0
+    h.ctx.sessionQuery.readSession = async () => ({ events })
+    router.inject = async (message: any) => { injected++; events.push({ type: 'agent/inbox/spliced', data: { inserted: [message] } }) }
+    router.followup = () => { woke++ }; router.steer = () => { woke++ }
+    h.listeners.get('session/event')!({ id: router.id }, { type: 'user/message', time: Date.now(), data: { id: 'human-channel', source: { kind: 'user' }, content: [{ type: 'text', text: 'hello' }] } })
+    await flush()
+    const request = () => h.runtime.invoke('channel_reply', { threadKey: `session:${router.id}`, body: 'Safe notice Bearer confidential123' }, { agent: router, callId: 'channel-idempotency' })
+    await request(); await request()
+    expect(injected).toBe(1); expect(woke).toBe(0)
+    expect(events[0].data.inserted[0]).toMatchObject({ id: 'channel-idempotency', source: { kind: 'superagent-channel' } })
+    expect(JSON.stringify(events)).not.toContain('confidential123')
+    expect(h.store.repos.outbound.all()).toHaveLength(1)
+    expect(h.store.repos.outbound.all()[0]?.state).toBe('sent')
     await h.runtime.dispose()
   })
 

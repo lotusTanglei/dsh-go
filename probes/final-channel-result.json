@@ -1,0 +1,93 @@
+{
+  "kind": "product-channel-notice",
+  "mainSessionId": "234b9575-5261-4d99-a4a3-32ac5367eff4",
+  "id": "verify-channel-notice-20261118",
+  "modelsStarted": false,
+  "matchingSplices": 1,
+  "addedTurns": 0,
+  "admitted": false,
+  "projection": {
+    "key": "superagent-channel-notice:verify-channel-notice-20261118",
+    "id": "verify-channel-notice-20261118",
+    "kind": "superagent-channel-notice",
+    "target": "chat",
+    "anchorSeq": 72,
+    "location": {
+      "kind": "session"
+    },
+    "visibility": "visible",
+    "groupTree": "turn",
+    "data": {
+      "seq": 72,
+      "messages": [
+        {
+          "id": "verify-channel-notice-20261118",
+          "summary": "Superagent notification",
+          "text": "Channel acceptance: durable notification without a model wake."
+        }
+      ]
+    }
+  },
+  "realEvents": [
+    {
+      "type": "agent/inbox/spliced",
+      "seq": 72,
+      "time": 1794984231219,
+      "data": {
+        "target": "next-step",
+        "start": 0,
+        "inserted": [
+          {
+            "id": "verify-channel-notice-20261118",
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Channel acceptance: durable notification without a model wake."
+              }
+            ],
+            "source": {
+              "kind": "superagent-channel",
+              "form": "notice",
+              "summary": "Superagent notification"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "visual": "pending-human",
+  "state": "passed",
+  "servedClient": {
+    "status": 200,
+    "bytes": 22387,
+    "noticeDefinition": true
+  },
+  "health": {
+    "ok": true,
+    "runtime": {
+      "state": "ready"
+    },
+    "db": {
+      "version": 1
+    },
+    "watchdog": {
+      "lastAt": 1794984350668
+    },
+    "sessionChannel": {
+      "delivery": "durable-chat-notice",
+      "modelWakeup": false,
+      "visualVerification": "pending-human"
+    },
+    "outbox": {
+      "pending": 0
+    },
+    "sources": [
+      {
+        "id": "session:234b9575-5261-4d99-a4a3-32ac5367eff4",
+        "kind": "session",
+        "ok": true
+      }
+    ]
+  }
+}

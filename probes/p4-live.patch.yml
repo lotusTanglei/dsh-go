@@ -1,0 +1,8 @@
+# Command-line-only P4 sampler probe; model work begins only after explicit owner POST.
+- insert:
+    - id: superagent-p4-live-probe
+      name: dsh-superagent/p4-live-probe
+      config:
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        timeoutMs: 45000
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p4-live-result.json

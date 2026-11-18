@@ -26,4 +26,7 @@ T+03:54 | P5 HTTP验收 | 真实审批approve200、replay409、payload无泄密�
 T+03:55 | P5重启通过 | Router原id恢复、approval仍approved；用户明确允许视觉待人工继续e2e | 下一步:真实模型3Trigger/2Ticket/2Worker/2report | 卡点:视觉待人工，不算通过 | 测试 110 passed
 T+03:57 | 真机e2e通过 | DB实测3Trigger/2Ticket/2Assignment/2有效report；ticket均completed；Router每条1轮，Worker各仅structured_output | 下一步:完整liveAgents=0/owner锁/报告/clean tree | 卡点:视觉待人工与Channel即时回复限制 | 测试 110 passed；token output1312/cacheRead29696
 T+04:01 | 证据复核修复 | inputTokens字段修正并补预算回归；从原3session冷读重算，不重跑模型 | 下一步:整理报告/补冷读工具成功证据/清理 | 卡点:Channel即时通知与P4模型实证保留 | 测试 111 passed/typecheck/build；input5757/cacheRead29696/output1312
-T+04:10 | 收尾继续 | 实测liveAgents=0、activeAssignments=0、pendingTriggers=0、owner锁不存在；隔离进程与端口均释放 | 下一步:提交证据/确认clean tree；保留项不冒称完成 | 卡点:视觉待人工、Channel即时回复、P4模型实证 | 测试 111 passed（当前代码全量）
+T+04:10 | 收尾继续 | 实测liveAgents=0、activeAssignments=0、pendingTriggers=0、owner锁不存在；隔离进程与端口均释放 | 下一步:提交证据/确认clean tree；保留项不冒称完成 | 卡点:视觉待人工、Channel即时回复、P4模型实证 | 测试 111 passed（当时代码全量）
+T+04:25 | 通知缺口补齐 | 自有Chat notice definition/renderer+持久id；重复调用一条splice、零模型轮次；escalate走Outbox不唤醒 | 下一步:真实P4抽样/报告 | 卡点:浏览器视觉仍待人工 | 测试 115 passed/typecheck/build
+T+04:26 | P4真实抽样通过 | readonly preset/512上限/structured_output/偏离true/activation已释放；input1356/cacheRead768/output215 | 下一步:收尾并记录完整tick未实跑 | 卡点:无 | 测试 P3 15/P4 9 passed
+T+04:30 | 可选引擎验证停止 | Node加载installed浏览器assembler先resolver递归、后client-store无法解析，两次失败停止；未完成真实引擎检查，不伪造 | 下一步:报告保留视觉/引擎未验、构建提交 | 卡点:实际浏览器待人工 | 测试 115 passed；runtime liveAgents0/端口53693释放/owner锁无

@@ -14,13 +14,14 @@
     "./watchdog": "./lib/p2/watchdog.js",
     "./p2-real-run": "./probes/p2-real-run.cjs",
     "./final-runtime-probe": "./probes/final-runtime.cjs",
+    "./p4-live-probe": "./probes/p4-live.cjs",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "engines": { "node": ">=24.0.0", "dsh": ">=0.2.2-rc.3 <0.3.0" },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web" }
+    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-chat"] }
   },
   "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md"],
   "scripts": {
