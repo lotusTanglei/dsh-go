@@ -77,7 +77,7 @@ export const defaults = Object.freeze({
   triggerRetentionMs: 7_776_000_000, outboundRetentionMs: 2_592_000_000, sqliteBusyTimeoutMs: 5_000, staleLockMs: 3_600_000,
   roleTools: Object.freeze({
     router: ['read', 'glob', 'grep', 'ticket_create', 'ticket_list', 'ticket_status', 'ticket_cancel', 'ticket_resume', 'assignment_start', 'assignment_stop', 'human_ask', 'channel_reply'],
-    worker: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'job_list', 'job_output', 'job_kill', 'report_progress', 'report_result', 'request_approval', 'ask_router'],
+    worker: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'job_list', 'job_output', 'job_kill', 'report_progress', 'report_result', 'request_approval', 'ask_router', 'structured_output'],
     watchdog: ['read', 'watchdog_nudge', 'watchdog_steer', 'watchdog_cancel', 'watchdog_escalate'],
   }),
 })

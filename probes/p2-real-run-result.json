@@ -4,33 +4,136 @@
   "expectedTriggers": 3,
   "workerReports": [
     {
-      "structured": null,
-      "hasStructured": false,
-      "stopReason": "error",
-      "outputCount": 2,
+      "structured": {
+        "state": "ready",
+        "done": [
+          "Read the supplied fixture brief from the ticket payload (goal, scope, base ref 'fixture', allowWrite [], denyWrite ['**'], acceptance A1, outOfScope 'All code changes')",
+          "Verified the supplied working directory exists and is empty (0 files), so the harmless fixture task has no artifacts to touch",
+          "Confirmed base ref 'fixture' resolves and made no code changes, no writes, and no external side effects, consistent with denyWrite '**'",
+          "Submitted the structured ready report with fixture evidence"
+        ],
+        "todo": [],
+        "changedPaths": [],
+        "acceptance": [
+          {
+            "id": "A1",
+            "result": "passed",
+            "evidence": "Report returned with state=ready and fixture evidence: cwd=/Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-real-run/ticket-1; working directory listing contains 0 files; base ref 'fixture' is valid; allowWrite=[] and denyWrite=['**'] honored with zero writes and no external side effects."
+          }
+        ],
+        "risks": [
+          "None: task was read-only and harmless with no writes or external effects"
+        ],
+        "needHuman": []
+      },
+      "hasStructured": true,
+      "stopReason": "completed",
+      "outputCount": 3,
       "outputKinds": [
         "reasoning",
-        "text"
-      ]
+        "text",
+        "tool-call"
+      ],
+      "diagnostic": null,
+      "tokenUsage": null
     },
     {
-      "structured": null,
-      "hasStructured": false,
-      "stopReason": "error",
+      "structured": {
+        "state": "ready",
+        "done": [
+          "Read the supplied fixture brief (goal, scope, deny-write '**', acceptance A1, no blockers).",
+          "Inspected the supplied working directory: it is empty and contains no fixture artifacts to act on.",
+          "Confirmed no code changes or external side effects were required or performed; all write paths are denied by the brief."
+        ],
+        "todo": [],
+        "changedPaths": [],
+        "acceptance": [
+          {
+            "id": "A1",
+            "result": "passed",
+            "evidence": "Fixture ticket-2 brief reviewed in cwd /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-real-run/ticket-2; directory listing produced (empty), no writes attempted (denyWrite '**'), no external side effects, and this report is returned with state ready."
+          }
+        ],
+        "risks": [
+          "None: fixture-only task with no writes, no code changes, and no external side effects."
+        ],
+        "needHuman": []
+      },
+      "hasStructured": true,
+      "stopReason": "completed",
       "outputCount": 2,
       "outputKinds": [
         "reasoning",
-        "text"
-      ]
+        "tool-call"
+      ],
+      "diagnostic": null,
+      "tokenUsage": null
     }
   ],
   "turns": {
     "router": 1,
-    "55f0f63f-bf40-494f-b269-cb898707cdd8": 1,
-    "378cef11-fd22-49a0-96a3-8ed068570025": 1
+    "worker": 1
   },
   "tokenUsage": {
     "router": null
+  },
+  "effectiveOptions": {
+    "router": {
+      "provider": "deepseek-official",
+      "model": "deepseek-flash",
+      "maxTokens": 256
+    },
+    "worker": {
+      "provider": "deepseek-official",
+      "model": "deepseek-flash",
+      "maxTokens": 768
+    }
+  },
+  "sessionEvents": {
+    "ce070e52-ca33-4cf6-a224-56b949c45bd1": [
+      {
+        "type": "assistant/message",
+        "summary": "{\"type\":\"assistant/message\",\"seq\":59,\"time\":1794967154687,\"data\":{\"turn\":1,\"step\":5,\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"Everything checks out:\\n- cwd exists, is empty (0 files) — no fixture files to modify, and denyWrite is \\\"**\\\" anyway.\\n- Brief read: goal, scope, base ref fixture, allowWrite [], denyWrite [\\\"**\\\"], acceptance A1, outOfScope: all code changes.\\n- I made zero writes. No external side effects.\\n- A1: ready report with fixture evidence — passing.\\"
+      },
+      {
+        "type": "tool/call",
+        "summary": "{\"type\":\"tool/call\",\"seq\":60,\"time\":1794967154688,\"data\":{\"turn\":1,\"step\":5,\"callId\":\"call_00_kt1VO5bHTWHbQ5ShyroB6844\",\"name\":\"structured_output\",\"arguments\":\"{\\\"state\\\": \\\"ready\\\", \\\"done\\\": [\\\"Read the supplied fixture brief from the ticket payload (goal, scope, base ref 'fixture', allowWrite [], denyWrite ['**'], acceptance A1, outOfScope 'All code changes')\\\", \\\"Verified the supplied working directory exists and is empty (0 files), so the harmless fixture task has no artifacts to touch\\\", \\"
+      },
+      {
+        "type": "tool/result",
+        "summary": "{\"type\":\"tool/result\",\"seq\":61,\"time\":1794967154698,\"data\":{\"turn\":1,\"step\":5,\"message\":{\"role\":\"tool\",\"source\":{\"kind\":\"tool\",\"callId\":\"call_00_kt1VO5bHTWHbQ5ShyroB6844\"},\"toolCallId\":\"call_00_kt1VO5bHTWHbQ5ShyroB6844\",\"content\":[{\"type\":\"text\",\"text\":\"Structured output recorded.\"}],\"isError\":false,\"id\":\"f13d97f4-d381-4957-84ed-83bcb769eacc\"}},\"sourceEventSeqs\":[60],\"surfaceOp\":\"append\"}"
+      },
+      {
+        "type": "step/end",
+        "summary": "{\"type\":\"step/end\",\"seq\":62,\"time\":1794967154698,\"data\":{\"turn\":1,\"step\":5}}"
+      },
+      {
+        "type": "turn/end",
+        "summary": "{\"type\":\"turn/end\",\"seq\":63,\"time\":1794967154699,\"data\":{\"turn\":1,\"reason\":{\"kind\":\"completed\"}}}"
+      }
+    ],
+    "126cf9bf-dfbb-4af7-8d23-d24e4507e68a": [
+      {
+        "type": "assistant/message",
+        "summary": "{\"type\":\"assistant/message\",\"seq\":35,\"time\":1794967148752,\"data\":{\"turn\":1,\"step\":3,\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"The fixture brief is the brief supplied in the assignment. It's a harmless fixture. Acceptance A1: \\\"Return a ready report with fixture evidence.\\\" So just produce structured_output with state ready, done listing something, acceptance A1 passed with fixture evidence.\\n\\nMaybe check git repo? denyWrite all means no code changes. Scope repo is /Us"
+      },
+      {
+        "type": "tool/call",
+        "summary": "{\"type\":\"tool/call\",\"seq\":36,\"time\":1794967148753,\"data\":{\"turn\":1,\"step\":3,\"callId\":\"call_00_s5m5CosCLj7G45ZKvXVg0587\",\"name\":\"structured_output\",\"arguments\":\"{\\\"state\\\": \\\"ready\\\", \\\"done\\\": [\\\"Read the supplied fixture brief (goal, scope, deny-write '**', acceptance A1, no blockers).\\\", \\\"Inspected the supplied working directory: it is empty and contains no fixture artifacts to act on.\\\", \\\"Confirmed no code changes or external side effects were required or performed; all write paths are deni"
+      },
+      {
+        "type": "tool/result",
+        "summary": "{\"type\":\"tool/result\",\"seq\":37,\"time\":1794967148758,\"data\":{\"turn\":1,\"step\":3,\"message\":{\"role\":\"tool\",\"source\":{\"kind\":\"tool\",\"callId\":\"call_00_s5m5CosCLj7G45ZKvXVg0587\"},\"toolCallId\":\"call_00_s5m5CosCLj7G45ZKvXVg0587\",\"content\":[{\"type\":\"text\",\"text\":\"Structured output recorded.\"}],\"isError\":false,\"id\":\"08e74db6-6ef7-4eb4-889b-30f33a65ae47\"}},\"sourceEventSeqs\":[36],\"surfaceOp\":\"append\"}"
+      },
+      {
+        "type": "step/end",
+        "summary": "{\"type\":\"step/end\",\"seq\":38,\"time\":1794967148758,\"data\":{\"turn\":1,\"step\":3}}"
+      },
+      {
+        "type": "turn/end",
+        "summary": "{\"type\":\"turn/end\",\"seq\":39,\"time\":1794967148758,\"data\":{\"turn\":1,\"reason\":{\"kind\":\"completed\"}}}"
+      }
+    ]
   },
   "cleanup": {
     "liveAgents": 0

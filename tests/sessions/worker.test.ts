@@ -13,15 +13,23 @@ const brief: TicketBrief = {
 describe('sessions/worker', () => {
   it('adapts startActivation with the required spawn/caller shape', async () => {
     let call: SpawnActivationInput | undefined
+    let bound = 0
+    let unbound = 0
     const spawner: Spawner = {
       async startActivation(input) {
         call = input
         return {
-          id: 'activation-1', sessionId: 'child-1',
+          id: 'activation-1', childId: 'child-1', sessionId: 'child-1',
           result: Promise.resolve({ structured: { state: 'ready' } }),
           async dispose() {},
         }
       },
+      bindWorker(_activation, snapshot) {
+        bound++
+        expect(snapshot.binding.assignmentId).toBe('assignment-1')
+        expect(snapshot.binding.ticketId).toBe('ticket-1')
+      },
+      unbindWorker() { unbound++ },
     }
     const signal = new AbortController().signal
     const worker = await startWorker({
@@ -38,6 +46,9 @@ describe('sessions/worker', () => {
     expect(call?.outputSchema.required).toEqual(expect.arrayContaining(['state', 'acceptance']))
     expect(worker.sessionId).toBe('child-1')
     await expect(worker.result).resolves.toEqual({ structured: { state: 'ready' } })
+    expect(bound).toBe(1)
+    await worker.dispose()
+    expect(unbound).toBe(1)
   })
 
   it('rejects relative worker directories before invoking the spawner', async () => {

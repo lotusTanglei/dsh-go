@@ -1,0 +1,75 @@
+{
+  "state": "finished",
+  "acceptedTickets": 1,
+  "expectedTriggers": 1,
+  "workerReports": [
+    {
+      "structured": {
+        "state": "ready",
+        "done": [
+          "ok"
+        ],
+        "todo": [],
+        "changedPaths": [],
+        "acceptance": [],
+        "risks": [],
+        "needHuman": []
+      },
+      "hasStructured": true,
+      "stopReason": "completed",
+      "outputCount": 2,
+      "outputKinds": [
+        "reasoning",
+        "tool-call"
+      ],
+      "diagnostic": null,
+      "tokenUsage": null
+    }
+  ],
+  "turns": {
+    "router": 1,
+    "004d1aad-ca4d-4859-b4f8-f5d757f3a190": 1
+  },
+  "tokenUsage": {
+    "router": null
+  },
+  "effectiveOptions": {
+    "router": {
+      "provider": "deepseek-official",
+      "model": "deepseek-flash",
+      "maxTokens": 256
+    },
+    "worker": {
+      "provider": "deepseek-official",
+      "model": "deepseek-flash",
+      "maxTokens": 4096
+    }
+  },
+  "sessionEvents": {
+    "004d1aad-ca4d-4859-b4f8-f5d757f3a190": [
+      {
+        "type": "assistant/message",
+        "summary": "{\"type\":\"assistant/message\",\"seq\":19,\"time\":1794965138626,\"data\":{\"turn\":1,\"step\":1,\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"\"},{\"type\":\"tool-call\",\"id\":\"call_00_ET_U26EsK3DEVfECe2aGlya1618\",\"name\":\"structured_output\",\"arguments\":\"{\\\"state\\\": \\\"ready\\\", \\\"done\\\": [\\\"ok\\\"], \\\"todo\\\": [], \\\"changedPaths\\\": [], \\\"acceptance\\\": [], \\\"risks\\\": [], \\\"needHuman\\\": []}\"}],\"source\":{\"kind\":\"model\",\"provider\":\"deepseek-official\",\"model\":\"deepseek-flash\",\"replayState\":{\"response"
+      },
+      {
+        "type": "tool/call",
+        "summary": "{\"type\":\"tool/call\",\"seq\":20,\"time\":1794965138627,\"data\":{\"turn\":1,\"step\":1,\"callId\":\"call_00_ET_U26EsK3DEVfECe2aGlya1618\",\"name\":\"structured_output\",\"arguments\":\"{\\\"state\\\": \\\"ready\\\", \\\"done\\\": [\\\"ok\\\"], \\\"todo\\\": [], \\\"changedPaths\\\": [], \\\"acceptance\\\": [], \\\"risks\\\": [], \\\"needHuman\\\": []}\"}}"
+      },
+      {
+        "type": "tool/result",
+        "summary": "{\"type\":\"tool/result\",\"seq\":21,\"time\":1794965138637,\"data\":{\"turn\":1,\"step\":1,\"message\":{\"role\":\"tool\",\"source\":{\"kind\":\"tool\",\"callId\":\"call_00_ET_U26EsK3DEVfECe2aGlya1618\"},\"toolCallId\":\"call_00_ET_U26EsK3DEVfECe2aGlya1618\",\"content\":[{\"type\":\"text\",\"text\":\"Structured output recorded.\"}],\"isError\":false,\"id\":\"15cb735c-a35c-42fb-bbb8-4e33f7d986aa\"}},\"sourceEventSeqs\":[20],\"surfaceOp\":\"append\"}"
+      },
+      {
+        "type": "step/end",
+        "summary": "{\"type\":\"step/end\",\"seq\":22,\"time\":1794965138637,\"data\":{\"turn\":1,\"step\":1}}"
+      },
+      {
+        "type": "turn/end",
+        "summary": "{\"type\":\"turn/end\",\"seq\":23,\"time\":1794965138637,\"data\":{\"turn\":1,\"reason\":{\"kind\":\"completed\"}}}"
+      }
+    ]
+  },
+  "cleanup": {
+    "liveAgents": 0
+  }
+}

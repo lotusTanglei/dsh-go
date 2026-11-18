@@ -1,0 +1,42 @@
+- insert:
+    - id: p2-s1-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-s1-worker
+        plugins:
+          - id: business
+            name: dsh-superagent/worker
+    - id: p2-s1-run
+      name: dsh-superagent/p2-real-run
+      config:
+        singleWorker: true
+        routerPreset: p2-s1-worker
+        workerPreset: p2-s1-worker
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-s1
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-s1-result.json
+        routerPrompt: Say done.
+        workerPrompt: >-
+          Immediately call the structured_output tool with exactly this object:
+          {state:'ready',done:['ok'],todo:[],changedPaths:[],acceptance:[],risks:[],needHuman:[]}.
+          Do not answer in prose.
+        routerAgentOptions:
+          provider: deepseek-official
+          model: deepseek-flash
+          maxTokens: 256
+        workerAgentOptions:
+          provider: deepseek-official
+          model: deepseek-flash
+          maxTokens: 512
+        outputSchema:
+          type: object
+          properties:
+            state: { type: string, enum: [progress, ready, blocked, failed] }
+            done: { type: array, items: { type: string } }
+            todo: { type: array, items: { type: string } }
+            changedPaths: { type: array, items: { type: string } }
+            acceptance: { type: array, items: { type: object, properties: { id: { type: string }, result: { type: string, enum: [passed, failed, not-run] }, evidence: { type: string } }, required: [id, result, evidence], additionalProperties: false } }
+            risks: { type: array, items: { type: string } }
+            needHuman: { type: array, items: { type: string } }
+          required: [state, done, todo, changedPaths, acceptance, risks, needHuman]
+          additionalProperties: false

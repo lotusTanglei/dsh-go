@@ -14,11 +14,14 @@
           layer will create exactly two Tickets and start exactly two Workers.
           Acknowledge the supplied trigger set in one turn; do not use tools.
         workerPrompt: >-
-          This is a harmless fixture. Do not use tools, ask a human, or contact
-          a channel. Return one complete structured report as JSON with exactly
-          these fields: state=ready, done=["fixture completed"], todo=[],
-          changedPaths=[], acceptance=[{id:"A1",result:"passed",evidence:"fixture"}],
-          risks=[], needHuman=[].
+          This is a harmless fixture. Do not use tools other than the required
+          structured_output tool, ask a human, or contact a channel. Return one
+          complete structured report with exactly these fields: state=ready,
+          done=["fixture completed"], todo=[], changedPaths=[],
+          acceptance=[{id:"A1",result:"passed",evidence:"fixture"}], risks=[],
+          needHuman=[]. After completing the work, you MUST call structured_output
+          with that report. Do not answer in prose; only the structured_output
+          tool call counts as the final report.
         routerAgentOptions:
           provider: deepseek-official
           model: deepseek-flash

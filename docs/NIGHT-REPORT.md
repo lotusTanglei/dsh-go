@@ -7,8 +7,8 @@
 - P1：基线已存在；本夜基准门禁通过。
 - P2 A1：完成。
 - P2 A2：完成，三个 preset 的 `broken` 均为空。
-- P2 A3：未通过；真实 Worker structured report 连续两次失败，触发“同一门禁连续失败 2 次”停止条件。
-- P3：未开始；已停止委派实现，未纳入本夜交付。
+- P2 A3：已通过；S1/S2/S3 定位后修复 structured_output 引导与 Worker Assignment binding，生产路径得到 2 条 structured report，liveAgents=0。
+- P3：未开始；本轮 A3 收口后才恢复推进。
 - P4：未开始；已停止委派实现，未纳入本夜交付。
 - P5：未开始。
 
@@ -45,39 +45,35 @@
 
 证据文件：`probes/p2-real-run-result.json`。
 
-第一次真实运行：
+诊断阶段先执行 S1/S2/S3：S1、S2、S3 均得到 `structured` 且 `stopReason: completed`；S1/S2 排除预算问题，S3 确认 prompt 必须明确调用 `structured_output`。随后修复 Worker prompt 和正式 Assignment binding。
+
+最终生产路径 A3 原文摘要：
 
 ```json
 {
-  "workerReports": [
-    {"structured":null,"hasStructured":false,"stopReason":"max-tokens","outputCount":1,"outputKinds":["reasoning"]},
-    {"structured":null,"hasStructured":false,"stopReason":"max-tokens","outputCount":1,"outputKinds":["reasoning"]}
+  "state":"finished",
+  "acceptedTickets":2,
+  "expectedTriggers":3,
+  "workerReports":[
+    {"hasStructured":true,"stopReason":"completed","diagnostic":null},
+    {"hasStructured":true,"stopReason":"completed","diagnostic":null}
+  ],
+  "turns":{"router":1,"worker":1},
+  "routerInjectedReports":[
+    {"ticketId":"ticket-1","assignmentId":"assignment-1","wakeup":false},
+    {"ticketId":"ticket-2","assignmentId":"assignment-2","wakeup":false}
   ],
   "cleanup":{"liveAgents":0}
 }
 ```
 
-第二次受限重试（明确 JSON prompt、增大 output cap）：
-
-```json
-{
-  "workerReports": [
-    {"structured":null,"hasStructured":false,"stopReason":"error","outputCount":2,"outputKinds":["reasoning","text"]},
-    {"structured":null,"hasStructured":false,"stopReason":"error","outputCount":2,"outputKinds":["reasoning","text"]}
-  ],
-  "turns":{"router":1},
-  "tokenUsage":{"router":null},
-  "cleanup":{"liveAgents":0}
-}
-```
-
-结论：2 Tickets 与 2 Worker activation 曾创建，但没有 2 条结构化 report，A3 不通过。真实模型调用达到本夜实际上限 2 次；依据停止规则不再重试。provider token usage 在探针中不可用，记录为 `null`，未估算。
+provider token usage 在当前 runtime 返回 `null`，没有估算；累计真实调用为 S1/S2/S3 三次诊断 + 最终 A3 一次，共 4 次。
 
 清理：`liveAgents: 0`；active `superagent.sqlite.lock` 不存在，仅保留既有 `.lock.recovery` 文件。
 
 ## 阶段 B：P3
 
-未开始。原因：P2 A3 同一门禁连续失败两次，触发停止条件。
+尚未实现；P2 A3 现在已通过，下一阶段可开始。
 
 ## 阶段 C：P4
 
@@ -108,13 +104,13 @@ $ tsc -p tsconfig.build.json
 
 ## 偏差与已知问题
 
-1. A3 真实 Worker 没有返回 `output.structured`；目前只得到 reasoning/text 或 error。
-2. 当前探针使用的 `outputSchema` 与真实模型调用路径仍需继续定位；下一次应先用 DSH structured-output contract 的最小独立 probe 确认 `structured_output` 工具调用方式，再恢复 A3。
-3. P3/P4 未实现，不应声称夜间任务完成。
+1. provider token usage 当前 runtime 返回 `null`，未估算。
+2. 探针中的 Router 注入记录为 Host correlation + `wakeup:false`，没有额外唤醒模型轮次。
+3. P3/P4/P5 尚未实现，不应声称整晚任务全部完成。
 4. 没有修改 DSH 包、没有碰 desktop profile、没有安装新依赖、没有改数据库 schema。
 
 ## 下一步
 
-1. 先定位真实 spawn 的 structured-output contract，不增加真实调用次数，优先用零 token/本地 fake activation 和 DSH 安装源码验证。
-2. 修复后重新跑 A1 → A2 → A3；A3 通过后再开始 P3。
-3. 保持每阶段提交前三条门禁全绿。
+1. A3 已通过，下一步实现 P3 `sources/types.ts`、实例 registry 和契约测试。
+2. 保持每阶段提交前三条门禁全绿。
+3. 后续 P3/P4 仍需独立验收，不得用 P2 证据替代。

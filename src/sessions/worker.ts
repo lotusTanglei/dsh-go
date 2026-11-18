@@ -13,6 +13,8 @@ export interface WorkerActivation {
   readonly id?: string
   readonly sessionId?: string
   readonly childSessionId?: string
+  readonly childId?: string
+  readonly agent?: object
   readonly result: Promise<ActivationResult>
   dispose?(): void | Promise<void>
 }
@@ -41,8 +43,22 @@ export interface SpawnActivationInput {
 }
 
 /** Injectable adapter over ctx.subagents.startActivation. */
+export interface WorkerGuardSnapshot {
+  readonly sessionId: string
+  readonly binding: { readonly assignmentId: Assignment['id']; readonly ticketId: Ticket['id'] }
+  readonly ticket: Pick<Ticket, 'id' | 'state' | 'currentAssignment'>
+  readonly assignment: Pick<Assignment, 'id' | 'ticketId' | 'sessionId' | 'state'>
+}
+
+export interface WorkerBindingRegistrar {
+  bindWorker(agent: object, snapshot: WorkerGuardSnapshot): void
+  unbindWorker(agent: object): void
+}
+
 export interface Spawner {
   startActivation(input: SpawnActivationInput): Promise<WorkerActivation>
+  bindWorker?(activation: WorkerActivation, snapshot: WorkerGuardSnapshot): void
+  unbindWorker?(activation: WorkerActivation): void
 }
 
 /** Input kept domain-structural and free of DSH types. */
@@ -100,7 +116,7 @@ function reportPrompt(input: WorkerInput): readonly Record<string, unknown>[] {
       assignmentId: input.assignment.id,
       title: input.ticket.title,
       brief: input.brief,
-      instruction: 'Execute the ticket in the supplied cwd and return a structured report matching the output schema.',
+      instruction: 'Execute the ticket in the supplied cwd. When complete, you MUST call the structured_output tool with one complete report matching the output schema. Do not answer with prose; only the structured_output tool call counts as the final report.',
     }),
   }]
 }
@@ -128,12 +144,23 @@ export async function startWorker(input: WorkerInput, spawner: Spawner): Promise
     ...(input.agentOptions ? { agentOptions: input.agentOptions } : {}),
     prompt: reportPrompt(input),
   })
+  const guardSnapshot: WorkerGuardSnapshot = {
+    sessionId: activation.sessionId ?? activation.childSessionId ?? activation.childId ?? input.assignment.sessionId,
+    binding: { assignmentId: input.assignment.id, ticketId: input.ticket.id },
+    ticket: { id: input.ticket.id, state: 'running', currentAssignment: input.assignment.id },
+    assignment: { id: input.assignment.id, ticketId: input.assignment.ticketId, sessionId: activation.sessionId ?? activation.childSessionId ?? activation.childId ?? input.assignment.sessionId, state: 'running' },
+  }
+  spawner.bindWorker?.(activation, guardSnapshot)
   return {
     activation,
     sessionId: activation.sessionId ?? activation.childSessionId ?? input.assignment.sessionId,
     result: activation.result,
     async dispose() {
-      await activation.dispose?.()
+      try {
+        await activation.dispose?.()
+      } finally {
+        spawner.unbindWorker?.(activation)
+      }
     },
   }
 }
@@ -142,6 +169,18 @@ export async function startWorker(input: WorkerInput, spawner: Spawner): Promise
 export const start = startWorker
 
 /** Adapter helper for a real DSH context; no DSH package import is needed. */
-export function spawnerFromContext(context: { readonly subagents: { startActivation(input: SpawnActivationInput): Promise<WorkerActivation> } }): Spawner {
-  return { startActivation: (input) => context.subagents.startActivation(input) }
+export function spawnerFromContext(context: { readonly subagents: { startActivation(input: SpawnActivationInput): Promise<WorkerActivation> }; readonly agents?: { get(id: string): object | undefined }; readonly superagentRoleGuard?: WorkerBindingRegistrar }): Spawner {
+  return {
+    startActivation: (input) => context.subagents.startActivation(input),
+    bindWorker: (activation, snapshot) => {
+      const id = activation.childId ?? activation.childSessionId ?? activation.sessionId ?? activation.id
+      const agent = activation.agent ?? (id ? context.agents?.get(id) : undefined)
+      if (agent) context.superagentRoleGuard?.bindWorker(agent, snapshot)
+    },
+    unbindWorker: activation => {
+      const id = activation.childId ?? activation.childSessionId ?? activation.sessionId ?? activation.id
+      const agent = activation.agent ?? (id ? context.agents?.get(id) : undefined)
+      if (agent) context.superagentRoleGuard?.unbindWorker(agent)
+    },
+  }
 }

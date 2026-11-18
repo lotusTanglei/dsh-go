@@ -1,0 +1,46 @@
+- insert:
+    - id: p2-s3-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: p2-s3-worker
+        plugins:
+          - id: business
+            name: dsh-superagent/worker
+    - id: p2-s3-run
+      name: dsh-superagent/p2-real-run
+      config:
+        singleWorker: true
+        routerPreset: p2-s3-worker
+        workerPreset: p2-s3-worker
+        cwd: /Users/dundundebaba/sync/dsh-s-p
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work/p2-s3
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/p2-s3-result.json
+        routerPrompt: Say done.
+        workerPrompt: >-
+          Execute this harmless real brief: goal=verify structured reporting;
+          scope=the supplied fixture directory; base=clean fixture;
+          runtime=no external side effects; acceptance=A1 report a ready result
+          with evidence fixture; outOfScope=all code changes; blockers=none;
+          firstAction=inspect the prompt; approvalsRequired=none. Complete the
+          work and then you MUST call structured_output to submit the result.
+          Do not answer with prose; only the structured_output tool call counts.
+        routerAgentOptions:
+          provider: deepseek-official
+          model: deepseek-flash
+          maxTokens: 256
+        workerAgentOptions:
+          provider: deepseek-official
+          model: deepseek-flash
+          maxTokens: 4096
+        outputSchema:
+          type: object
+          properties:
+            state: { type: string, enum: [progress, ready, blocked, failed] }
+            done: { type: array, items: { type: string } }
+            todo: { type: array, items: { type: string } }
+            changedPaths: { type: array, items: { type: string } }
+            acceptance: { type: array, items: { type: object, properties: { id: { type: string }, result: { type: string, enum: [passed, failed, not-run] }, evidence: { type: string } }, required: [id, result, evidence], additionalProperties: false } }
+            risks: { type: array, items: { type: string } }
+            needHuman: { type: array, items: { type: string } }
+          required: [state, done, todo, changedPaths, acceptance, risks, needHuman]
+          additionalProperties: false

@@ -6,6 +6,7 @@ import { installRoleGuard } from './tools/runtime.js'
 /** Host adapter boundary. Sessions remain behind src/sessions; P2 only installs the deny-only guard. */
 export interface PluginContext {
   effect(factory: () => (() => void | Promise<void>)): unknown
+  provide?(name: string, value: unknown): unknown
   logger?: { info(message: string): void }
   tools?: { guard?(callback: (execution: import('./tools/runtime.js').ToolExecutionContext) => unknown): unknown }
   agentPresets?: { composedPreset(ctx: unknown): string | undefined }
@@ -31,7 +32,10 @@ export function apply(ctx: PluginContext, input: Config): void {
       workerPreset: 'dsh-superagent-worker',
       watchdogPreset: 'dsh-superagent-watchdog',
     }) : undefined
-    if (roleGuard) ctx.effect(() => () => roleGuard.dispose())
+    if (roleGuard) {
+      ctx.effect(() => () => roleGuard.dispose())
+      ctx.provide?.('superagentRoleGuard', roleGuard)
+    }
     // No paths, input data, credentials, raw diagnostics or private URLs in logs.
     console.log('[superagent] loaded')
   } catch (error) {
