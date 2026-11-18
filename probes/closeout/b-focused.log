@@ -1,0 +1,13 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+(node:89419) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-integration.test.ts (12 tests | 11 skipped) 43ms
+ ✓ tests/engine/watchdog.test.ts (7 tests | 5 skipped) 4ms
+
+ Test Files  2 passed (2)
+      Tests  3 passed | 16 skipped (19)
+   Start at  15:28:29
+   Duration  997ms (transform 178ms, setup 0ms, collect 268ms, tests 46ms, environment 0ms, prepare 265ms)
+

@@ -1,0 +1,267 @@
+{
+  "kind": "closeout-b-production-stall-chain",
+  "state": "passed",
+  "startedAt": "2026-11-18T07:36:56.542Z",
+  "providerRequests": [
+    {
+      "at": 1794987416918,
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "provider": "deepseek-official",
+      "model": "deepseek-flash"
+    }
+  ],
+  "actualCalls": [
+    {
+      "at": 1794987419204,
+      "name": "fixture.report_hold",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "callId": "call_00_ET_Hq5gyNPBssdYfLb5R2Sh1117"
+    },
+    {
+      "at": 1794987420715,
+      "name": "agent.steer",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "messageId": "d4fc5b02-1e98-4178-b347-f05d17bcf527",
+      "text": "No recorded progress. Report completed work or a specific blocker; do not repeat ineffective actions."
+    },
+    {
+      "at": 1794987420820,
+      "name": "subagents.interrupt",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "authority": "user"
+    },
+    {
+      "at": 1794987420821,
+      "name": "fixture.hold_released",
+      "aborted": true
+    },
+    {
+      "at": 1794987420833,
+      "name": "assignmentStop.persisted",
+      "state": "ended",
+      "ended_reason": "Still no progress after nudge; stopping the Assignment."
+    }
+  ],
+  "boundary": "Real Worker/model; controlled report-tool hold; production runtime.tick/stopTicket/outbox. Router fixture is created deterministically, not a Router-model e2e.",
+  "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+  "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+  "workerSessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+  "audits": [
+    {
+      "at": 1794987420715,
+      "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+      "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "metrics": {
+        "at": 1794987420713,
+        "lastProgressAt": 1794987416588,
+        "steps": 1,
+        "tokens": 4938,
+        "stallMs": 4125,
+        "durationMs": 4125,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      },
+      "state": {
+        "stallAt": 1794987420713,
+        "stallStage": 1
+      },
+      "action": "nudge",
+      "rule": "stall",
+      "message": "No recorded progress. Report completed work or a specific blocker; do not repeat ineffective actions.",
+      "outcome": "requested"
+    },
+    {
+      "at": 1794987420716,
+      "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+      "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "metrics": {
+        "at": 1794987420713,
+        "lastProgressAt": 1794987416588,
+        "steps": 1,
+        "tokens": 4938,
+        "stallMs": 4125,
+        "durationMs": 4125,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      },
+      "state": {
+        "stallAt": 1794987420713,
+        "stallStage": 1
+      },
+      "action": "nudge",
+      "rule": "stall",
+      "message": "No recorded progress. Report completed work or a specific blocker; do not repeat ineffective actions.",
+      "outcome": "completed"
+    },
+    {
+      "at": 1794987420820,
+      "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+      "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "metrics": {
+        "at": 1794987420819,
+        "lastProgressAt": 1794987416588,
+        "steps": 1,
+        "tokens": 4938,
+        "stallMs": 4231,
+        "durationMs": 4231,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      },
+      "state": {
+        "stallAt": 1794987420713,
+        "stallStage": 2
+      },
+      "action": "cancel",
+      "rule": "stall",
+      "message": "Still no progress after nudge; stopping the Assignment.",
+      "outcome": "requested"
+    },
+    {
+      "at": 1794987420832,
+      "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+      "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "metrics": {
+        "at": 1794987420819,
+        "lastProgressAt": 1794987416588,
+        "steps": 1,
+        "tokens": 4938,
+        "stallMs": 4231,
+        "durationMs": 4231,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      },
+      "state": {
+        "stallAt": 1794987420713,
+        "stallStage": 2
+      },
+      "action": "cancel",
+      "rule": "stall",
+      "message": "Still no progress after nudge; stopping the Assignment.",
+      "outcome": "completed"
+    },
+    {
+      "at": 1794987420955,
+      "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+      "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "metrics": {
+        "at": 1794987420833,
+        "lastProgressAt": 1794987416588,
+        "steps": 1,
+        "tokens": 4938,
+        "stallMs": 4245,
+        "durationMs": 4245,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      },
+      "state": {
+        "stallAt": 1794987420713,
+        "stallStage": 3
+      },
+      "action": "escalate",
+      "rule": "stall",
+      "message": "Assignment stopped after repeated no-progress checks; human review is required.",
+      "outcome": "requested"
+    },
+    {
+      "at": 1794987420956,
+      "assignmentId": "95e43815-f4d3-42c1-911e-3c4aadfdd33b",
+      "ticketId": "766a1c8f-2350-4e8b-a5ce-79e7cb49ec1c",
+      "sessionId": "3c3c8e42-cce3-4c33-a7e8-be27f38646bd",
+      "metrics": {
+        "at": 1794987420833,
+        "lastProgressAt": 1794987416588,
+        "steps": 1,
+        "tokens": 4938,
+        "stallMs": 4245,
+        "durationMs": 4245,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      },
+      "state": {
+        "stallAt": 1794987420713,
+        "stallStage": 3
+      },
+      "action": "escalate",
+      "rule": "stall",
+      "message": "Assignment stopped after repeated no-progress checks; human review is required.",
+      "outcome": "completed"
+    }
+  ],
+  "outbound": [
+    {
+      "id": "outbound:0863422e-c951-4ee5-9c58-013b880e4fbe",
+      "state": "sent",
+      "attempts": 1,
+      "idempotency_key": "watchdog:95e43815-f4d3-42c1-911e-3c4aadfdd33b:Assignment stopped after repeated no-progress checks; human review is required."
+    }
+  ],
+  "usage": {
+    "inputTokens": 920,
+    "cacheReadTokens": 3840,
+    "cacheWriteTokens": 0,
+    "outputTokens": 178
+  },
+  "workerEvents": [
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987416607
+    },
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987416609
+    },
+    {
+      "type": "turn/start",
+      "time": 1794987416609
+    },
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987416609
+    },
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987416610
+    },
+    {
+      "type": "tool/call",
+      "time": 1794987419197,
+      "name": "structured_output"
+    },
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987420715
+    },
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987420821
+    },
+    {
+      "type": "turn/end",
+      "time": 1794987420822
+    }
+  ],
+  "noticeSplices": [
+    {
+      "type": "agent/inbox/spliced",
+      "time": 1794987420955,
+      "ids": [
+        "watchdog:95e43815-f4d3-42c1-911e-3c4aadfdd33b:Assignment stopped after repeated no-progress checks; human review is required."
+      ]
+    }
+  ],
+  "ticket": {
+    "state": "ended",
+    "outcome": "stopped",
+    "stopped_by_human": 0
+  },
+  "workerCount": 1,
+  "ticketCount": 1,
+  "chainPassed": true,
+  "liveAgents": 0,
+  "finishedAt": "2026-11-18T07:37:01.051Z"
+}

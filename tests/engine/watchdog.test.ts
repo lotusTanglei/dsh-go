@@ -17,6 +17,19 @@ describe('P4 cold-read watchdog', () => {
     expect(f.audits.map(row => row.outcome)).toEqual(['requested', 'completed', 'requested', 'completed'])
     expect(f.reads).toEqual(['s', 's', 's'])
   })
+  it('finishes stall nudge → cancel → escalate once, including after state recovery', async () => {
+    const f = fixture()
+    await f.watchdog.tick(300_001)
+    await f.watchdog.tick(600_002)
+    await f.watchdog.tick(600_003)
+    await f.watchdog.tick(600_004)
+    expect(f.actions.map(row => row.split(':')[0])).toEqual(['nudge', 'cancel', 'escalate'])
+    expect(f.audits.every(row => typeof row.metrics.stallMs === 'number' && row.metrics.stallMs >= 0 && typeof row.metrics.tokens === 'number' && typeof row.metrics.durationMs === 'number' && typeof row.metrics.repeatedCalls === 'number')).toBe(true)
+    const actions: string[] = []
+    const recovered = createWatchdog({ sessionQuery: { async readSession() { return { sessionId: 's', events: [] } } }, async assignments() { return [{ ...base, state: 'ended' }] }, state() { return { stallStage: 2, stallAt: 300_001 } }, async nudge() { actions.push('nudge') }, async steer() {}, async cancel() { actions.push('cancel') }, async escalate() { actions.push('escalate') }, audit() {} }, options)
+    await recovered.tick(600_003); await recovered.tick(600_004)
+    expect(actions).toEqual(['escalate'])
+  })
   it('identifies the exact repeated call without treating tool activity as progress', async () => {
     const events = Array.from({ length: 3 }, () => ({ type: 'tool/call', data: { name: 'read', arguments: '{"path":"same"}' } }))
     const f = fixture({ ...base }, events)

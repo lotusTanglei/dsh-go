@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,7 +45,7 @@ function harness(extra: Partial<Config> = {}) {
     agents: {
       get(id: string) { return agents.get(id) },
       async create(input: any) {
-        router = { id: input.sessionId, ctx: {}, injected: [] as any[], followedUp: [] as any[], async inject(message: any) { this.injected.push(message) }, async followup(message: any) { this.followedUp.push(message) }, async steer() {} }
+        router = { id: input.sessionId, ctx: {}, model: { current() { return { provider: 'fixture-provider', model: 'fixture-model' } } }, injected: [] as any[], followedUp: [] as any[], async inject(message: any) { this.injected.push(message) }, async followup(message: any) { this.followedUp.push(message) }, async steer() {} }
         agents.set(router.id, router)
         await input.setup?.({})
         return { agent: router, async dispose() { agents.delete(router.id) } }
@@ -56,7 +56,7 @@ function harness(extra: Partial<Config> = {}) {
         const worker = { id: input.childId, input, result: deferred<any>(), steerMessages: [] as any[], disposed: false }
         const agent = { id: worker.id, ctx: {}, async steer(message: any) { worker.steerMessages.push(message); if (steer) await steer(message) } }
         workers.push(worker); agents.set(agent.id, agent)
-        return { childId: worker.id, sessionId: worker.id, agent, result: worker.result.promise, async dispose() { worker.disposed = true; agents.delete(worker.id) } }
+        return { childId: worker.id, sessionId: worker.id, agent, result: worker.result.promise, async dispose() { worker.disposed = true; agents.delete(worker.id); worker.result.resolve({ stopReason: 'aborted' }) } }
       },
       interrupt() {},
     },
@@ -103,6 +103,32 @@ function waitTicket(store: Store, ticketId: string) {
 // These are integration contracts, not model/e2e claims: real SQLite + product runtime,
 // with explicit fake DSH activation handles and independently controlled promises.
 describe('Host runtime integration contracts', () => {
+  it('passes a cold Router pending model selection to the Worker without inventing a request header', async () => {
+    const h = harness(); const id = await h.ticket(); await h.start(id)
+    expect(h.workers[0]!.input.agentOptions).toEqual({ provider: 'fixture-provider', model: 'fixture-model', reasoningEffort: undefined })
+    expect(Object.hasOwn(h.workers[0]!.input.agentOptions, 'reasoningEffort')).toBe(true)
+  })
+  it('runs the persisted stall stop and escalation through the timer maintenance path', async () => {
+    const h = harness({ stallMs: 100 })
+    const id = await h.ticket(); const assignmentId = await h.start(id)
+    const assignment = h.store.repos.assignment.get(assignmentId)!
+    const clock = vi.spyOn(Date, 'now')
+    try {
+      clock.mockReturnValue(Number(assignment.last_progress_at) + 101)
+      await h.runtime.tick()
+      expect(h.workers[0]!.steerMessages).toHaveLength(1)
+      clock.mockReturnValue(Number(assignment.last_progress_at) + 202)
+      // Fake activation disposal below settles its promise like the real provider.
+      await h.runtime.tick()
+      await h.runtime.tick(); await h.runtime.tick()
+      expect(h.store.repos.assignment.get(assignmentId)?.state).toBe('ended')
+      const actions = h.store.repos.audit.all().filter(row => row.action === 'watchdog' && (row.detail as any)?.outcome === 'completed')
+      expect(actions.map(row => (row.detail as any).action)).toEqual(['nudge', 'cancel', 'escalate'])
+      expect(actions.every(row => { const m = (row.detail as any).metrics; return ['stallMs', 'repeatedCalls', 'tokens', 'durationMs'].every(key => typeof m[key] === 'number') })).toBe(true)
+      expect(h.store.repos.outbound.all()).toEqual([expect.objectContaining({ state: 'sent', kind: 'notice' })])
+      expect(h.workers).toHaveLength(1)
+    } finally { clock.mockRestore() }
+  })
   it.each(['pending', 'denied', 'expired'])('does not resume an active Worker while another approval is %s', async blockedState => {
     const h = harness(); const id = await h.ticket(); await h.start(id)
     waitTicket(h.store, id)

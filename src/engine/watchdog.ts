@@ -10,9 +10,9 @@ export interface WatchdogAssignment {
 }
 export interface WatchdogMetrics {
   readonly at: number; readonly lastProgressAt: number; readonly steps: number; readonly tokens: number
-  readonly durationMs: number; readonly repeatedCalls: number; readonly repeatedCall?: string; readonly waitingMs: number
+  readonly stallMs: number; readonly durationMs: number; readonly repeatedCalls: number; readonly repeatedCall?: string; readonly waitingMs: number
 }
-export interface WatchdogState { stallAt?: number; repeatSignature?: string; budgetStage?: number; deviationAt?: number; waitingAt?: number }
+export interface WatchdogState { stallAt?: number; stallStage?: number; repeatSignature?: string; budgetStage?: number; deviationAt?: number; waitingAt?: number }
 export type WatchdogAction = 'nudge' | 'steer' | 'cancel' | 'escalate'
 export interface WatchdogAudit {
   readonly assignmentId: string; readonly ticketId: string; readonly sessionId: string
@@ -57,7 +57,7 @@ export function measureWorker(assignment: WatchdogAssignment, events: readonly u
     repeatedCalls = next === signature ? repeatedCalls + 1 : 1
     signature = next
   }
-  return { at: now, lastProgressAt: assignment.lastProgressAt, steps: Math.max(assignment.steps, steps), tokens: Math.max(assignment.tokens, tokens), durationMs: Math.max(0, now - assignment.startedAt), repeatedCalls, repeatedCall: signature || undefined, waitingMs: assignment.waitingSince === undefined ? 0 : Math.max(0, now - assignment.waitingSince) }
+  return { at: now, lastProgressAt: assignment.lastProgressAt, steps: Math.max(assignment.steps, steps), tokens: Math.max(assignment.tokens, tokens), stallMs: Math.max(0, now - assignment.lastProgressAt), durationMs: Math.max(0, now - assignment.startedAt), repeatedCalls, repeatedCall: signature || undefined, waitingMs: assignment.waitingSince === undefined ? 0 : Math.max(0, now - assignment.waitingSince) }
 }
 export function createWatchdog(ports: WatchdogPorts, options: WatchdogOptions) {
   for (const value of Object.values(options)) if (!Number.isFinite(value) || value <= 0) throw new Error('watchdog: positive finite thresholds required')
@@ -92,6 +92,11 @@ export function createWatchdog(ports: WatchdogPorts, options: WatchdogOptions) {
             if (metrics.waitingMs > options.waitingHumanMs && (state.waitingAt === undefined || now - state.waitingAt > options.waitingHumanMs)) await act(assignment, metrics, { ...state, waitingAt: now }, 'escalate', 'waiting-human', 'Worker is waiting for human input; please review the pending question or approval.')
             continue
           }
+          // Finish a persisted stall cancellation even though the Assignment is now ended.
+          if (state.stallStage === 2) {
+            await act(assignment, metrics, { ...state, stallStage: 3 }, 'escalate', 'stall', 'Assignment stopped after repeated no-progress checks; human review is required.')
+            continue
+          }
           const over = metrics.steps > options.maxSteps || metrics.tokens > options.maxTokens || metrics.durationMs > options.maxDurationMs
           if (over || (state.budgetStage ?? 0) > 0) {
             const stage = state.budgetStage ?? 0
@@ -101,9 +106,9 @@ export function createWatchdog(ports: WatchdogPorts, options: WatchdogOptions) {
             continue
           }
           if (assignment.state === 'ended') continue
-          if (now - assignment.lastProgressAt > options.stallMs) {
-            if (state.stallAt === undefined || assignment.lastProgressAt > state.stallAt) await act(assignment, metrics, { ...state, stallAt: now }, 'nudge', 'stall', 'No recorded progress. Report completed work or a specific blocker; do not repeat ineffective actions.')
-            else if (now - state.stallAt > options.stallMs) await act(assignment, metrics, state, 'cancel', 'stall', 'Still no progress after nudge; stopping the Assignment.')
+          if (metrics.stallMs > options.stallMs) {
+            if (state.stallAt === undefined || assignment.lastProgressAt > state.stallAt) await act(assignment, metrics, { ...state, stallAt: now, stallStage: 1 }, 'nudge', 'stall', 'No recorded progress. Report completed work or a specific blocker; do not repeat ineffective actions.')
+            else if (now - state.stallAt > options.stallMs) await act(assignment, metrics, { ...state, stallStage: 2 }, 'cancel', 'stall', 'Still no progress after nudge; stopping the Assignment.')
             continue
           }
           if (metrics.repeatedCalls >= options.repeatCallThreshold && state.repeatSignature !== metrics.repeatedCall) {

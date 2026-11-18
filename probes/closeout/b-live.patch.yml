@@ -1,0 +1,19 @@
+# Explicit controlled CLI-only real Worker acceptance; no desktop installation.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/closeout-b2
+    confirm: never
+    maxWorkers: 1
+    maxRetries: 0
+    stallMs: 100
+    watchdogIntervalMs: 60000
+    roleTools:
+      worker: [structured_output]
+- insert:
+    - id: superagent-closeout-b2-probe
+      name: dsh-superagent/closeout-b-probe
+      config:
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/closeout-b2/superagent.sqlite
+        workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/closeout-b2/work
+        stallMs: 100
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/closeout/b2-live-result.json

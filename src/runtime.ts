@@ -124,7 +124,11 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     try {
       mkdirSync(String(ticket.workdir), { recursive: true })
       const correction = store.repos.audit.all().filter(row => row.ticket_id === id && row.action === 'report_correction_requested').at(-1)?.detail as { errors?: string[] } | undefined
-      const worker = await startWorker({ ticket: { id: ticketId(id), title: String(ticket.title), brief: ticket.brief_json as TicketBrief, workdir: String(ticket.workdir) }, assignment, brief: ticket.brief_json as TicketBrief, workdir: String(ticket.workdir), preset: 'dsh-superagent-worker', parent: ctx.agents.get(mainId!), signal: controller.signal, ...(correction ? { correction: `One correction attempt: submit a complete structured_output report for every acceptance criterion. Fix: ${(correction.errors ?? []).join('; ')}` } : {}) }, spawner)
+      // A cold Router may have a pending selection but no request/header yet.
+      // Spawn's historical-header fallback cannot inherit that selection by itself.
+      const parent = ctx.agents.get(mainId!)
+      const selection = parent?.model?.current?.()
+      const worker = await startWorker({ ...(selection ? { agentOptions: { ...selection, reasoningEffort: selection.reasoningEffort } } : {}), ticket: { id: ticketId(id), title: String(ticket.title), brief: ticket.brief_json as TicketBrief, workdir: String(ticket.workdir) }, assignment, brief: ticket.brief_json as TicketBrief, workdir: String(ticket.workdir), preset: 'dsh-superagent-worker', parent: ctx.agents.get(mainId!), signal: controller.signal, ...(correction ? { correction: `One correction attempt: submit a complete structured_output report for every acceptance criterion. Fix: ${(correction.errors ?? []).join('; ')}` } : {}) }, spawner)
       workers.set(assignment.id, worker)
       await deliverPending(id)
       track((async () => {
@@ -244,7 +248,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       return store.repos.assignment.all().filter(row => {
         const ticket = store.repos.ticket.get(row.ticket_id)
         const latest = (store.repos.audit.all().filter(audit => audit.action === 'watchdog' && (audit.detail as any)?.assignmentId === row.id && (audit.detail as any)?.outcome === 'completed').at(-1)?.detail as any)?.state
-        return row.state === 'running' || latest?.budgetStage === 2 || ticket?.state === 'waiting_human' && store.repos.assignment.all().filter(item => item.ticket_id === row.ticket_id).at(-1)?.id === row.id
+        return row.state === 'running' || latest?.budgetStage === 2 || latest?.stallStage === 2 || ticket?.state === 'waiting_human' && store.repos.assignment.all().filter(item => item.ticket_id === row.ticket_id).at(-1)?.id === row.id
       }).map(row => {
         const ticket = store.repos.ticket.get(row.ticket_id)
         return { assignmentId: String(row.id), ticketId: String(row.ticket_id), sessionId: String(row.session_id), state: row.state, startedAt: Number(row.started_at ?? row.created_at), lastProgressAt: Number(row.last_progress_at), steps: Number(row.steps), tokens: Number(row.tokens), briefGoal: (ticket?.brief_json as any)?.goal ?? '', ...(ticket?.state === 'waiting_human' ? { waitingSince: Number((ticket.attention_json as any)?.at ?? ticket.updated_at) } : {}) } as WatchdogAssignment
@@ -254,12 +258,12 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     async deviation(assignment, metrics) {
       if (disposed) return
       const ticket = ticketFor(assignment.ticketId)
-      audit('watchdog_sample_requested', { assignmentId: assignment.assignmentId }, assignment.ticketId)
+      audit('watchdog.sample_requested', { assignmentId: assignment.assignmentId, metrics }, assignment.ticketId)
       try {
         const correction = await sampleDeviation({ goal: String(redact(assignment.briefGoal)), summary: safeDetail({ report: store.repos.assignment.get(assignment.assignmentId)?.report_json, metrics }), cwd: String(ticket.workdir), parent: ctx.agents.get(mainId!), signal: controller.signal, timeoutMs: Math.min(config.evalTimeoutMs, 60000) }, ctx.subagents)
-        audit('watchdog_sample_completed', { assignmentId: assignment.assignmentId, deviated: Boolean(correction) }, assignment.ticketId)
+        audit('watchdog.sample_completed', { assignmentId: assignment.assignmentId, metrics, deviated: Boolean(correction) }, assignment.ticketId)
         return correction ? String(redact(correction)) : undefined
-      } catch { audit('watchdog_sample_failed', { assignmentId: assignment.assignmentId }, assignment.ticketId); return undefined }
+      } catch { audit('watchdog.sample_failed', { assignmentId: assignment.assignmentId, metrics }, assignment.ticketId); return undefined }
     },
     async nudge(id, text) { const agent = ctx.agents.get(id); if (!agent) throw new Error('Worker not live'); await agent.steer(message(text)) }, async steer(id, text) { const agent = ctx.agents.get(id); if (!agent) throw new Error('Worker not live'); await agent.steer(message(text)) },
     async cancel(assignment, reason) { await stopTicket(assignment.ticketId, reason, 'watchdog') },
@@ -332,6 +336,8 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
 
   return {
     ready, engine, sources, startAssignment, stopTicket,
+    /** Same maintenance path as the timer, with no model wake or synthetic metrics. */
+    async tick() { await ready; await pump() },
     diagnostics() {
       return {
         mainSessionId: mainId,

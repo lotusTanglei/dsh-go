@@ -1,0 +1,16 @@
+{
+  "kind": "closeout-b-production-stall-chain",
+  "state": "failed",
+  "startedAt": "2026-11-18T07:29:53.629Z",
+  "providerRequests": [],
+  "actualCalls": [],
+  "boundary": "Real Worker/model; controlled report-tool hold; production runtime.tick/stopTicket/outbox. Router fixture is created deterministically, not a Router-model e2e.",
+  "ticketId": "3073828b-7b1e-487d-8e60-c9ec6ae131cb",
+  "assignmentId": "91daa2c3-b533-4fab-b266-d365fbe9452e",
+  "workerSessionId": "f4dd1844-f611-4393-8a51-f646d8172bfa",
+  "error": {
+    "code": "SA_HOLD_DEADLINE"
+  },
+  "liveAgents": 0,
+  "finishedAt": "2026-11-18T07:30:38.718Z"
+}
