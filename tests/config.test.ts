@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defaults, resolveConfig, type Config } from '../src/config.js'
+import { effectiveSettings } from '../src/panel/settings.js'
 
 function config(): Config {
   return { ...defaults, stateDir: resolve('.test-state'), dbPath: '', lockPath: '', workRoot: '', sources: [], roleTools: { router: [...defaults.roleTools.router], worker: [...defaults.roleTools.worker], watchdog: [...defaults.roleTools.watchdog] } } as Config
@@ -27,6 +28,22 @@ describe('Config boundary', () => {
     expect(() => resolveConfig({ ...c, roleTools: { ...c.roleTools, router: ['bash'] } })).toThrow('Router')
     expect(() => resolveConfig({ ...c, roleTools: { ...c.roleTools, worker: ['channel_reply'] } })).toThrow('Worker')
     expect(() => resolveConfig({ ...c, roleTools: { ...c.roleTools, watchdog: ['write'] } })).toThrow('Watchdog')
+  })
+  it('projects every effective field with evidence-based provenance and hidden paths', () => {
+    const c = resolveConfig(config())
+    const settings = effectiveSettings(c, { stateDir: c.stateDir, maxWorkers: defaults.maxWorkers, maxRetries: { __jsExpr: 'Number(process.env.SA_RETRIES || 2)' } })
+    expect(settings.find(row => row.key === 'maxWorkers')).toMatchObject({ value: 3, origin: 'patch' })
+    expect(settings.find(row => row.key === 'maxRetries')).toMatchObject({ value: 2, origin: 'environment' })
+    expect(settings.find(row => row.key === 'queueLimit')).toMatchObject({ value: 200, origin: 'default' })
+    expect(settings.find(row => row.key === 'dbPath')).toMatchObject({ value: '[REDACTED_PATH]', origin: 'derived', redacted: true })
+    expect(settings.find(row => row.key === 'roleTools.worker')).toMatchObject({ origin: 'default' })
+    expect(settings.find(row => row.key === 'mainSessionId')).toMatchObject({ value: null, origin: 'default' })
+    for (const key of Object.keys(c).filter(key => key !== 'roleTools')) expect(settings.some(row => row.key === key)).toBe(true)
+    expect(JSON.stringify(settings)).not.toContain(c.stateDir)
+    expect(JSON.stringify(settings)).not.toContain('__jsExpr')
+    expect(effectiveSettings(c).every(row => row.origin === 'unavailable')).toBe(true)
+    expect(effectiveSettings(c, { __jsExpr: 'JSON.parse(env.FIXTURE_CONFIG)' }).every(row => row.origin === 'unavailable')).toBe(true)
+    expect(effectiveSettings(c, { roleTools: { __jsExpr: 'JSON.parse(env.FIXTURE_ROLE_TOOLS)' } }).find(row => row.key === 'roleTools.worker')?.origin).toBe('environment')
   })
   it('validates with actual installed Schemastery, not a mock schema', () => {
     const runtime = JSON.parse(readFileSync(resolve('host-runtime.json'), 'utf8')) as { electronExecutable: string; installDir: string }

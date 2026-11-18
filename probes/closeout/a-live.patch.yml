@@ -1,0 +1,11 @@
+# Temporary CLI overlay only; never persisted into a profile.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/closeout-a
+    maxWorkers: 1
+    panelPollMs: !!js Number(process.env.SA_CLOSEOUT_POLL_MS || 5000)
+- insert:
+    - id: superagent-closeout-a-probe
+      name: dsh-superagent/closeout-a-probe
+      config:
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/closeout/a-live-result.json

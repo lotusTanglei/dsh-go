@@ -4,6 +4,12 @@
     "channelNotice":"超管通知", "title":"超管", "subtitle":"任务、会话与审批的运行概览", "navigation":"超管导航",
     "overview":"总览", "tickets":"任务", "threads":"话题", "sources":"来源", "approvals":"审批", "health":"健康", "settings":"设置",
     "counts":"任务统计", "activities":"最近活动", "empty":"暂无记录。来源接入后可在这里查看运行状态。",
+    "unknown":"未知", "yes":"是", "no":"否", "source":"来源", "lastInboundAt":"最后入站消息时间", "createdAt":"创建时间", "messageCount":"已持久消息数", "hasSubscription":"是否有订阅", "subscriptionCount":"订阅数", "evalState":"当前 Eval 状态", "evaluationId":"Eval ID", "paused":"暂停", "sequence":"序号",
+    "threadCountsHelp":"消息数为已持久化 Trigger 计数，不代表会话全文消息数；最后入站消息时间是来源最后一条入站事件的时间。", "pagination":"话题分页", "previousPage":"上一页", "nextPage":"下一页",
+    "value":"生效值", "origin":"配置来源", "originDetail":"来源说明", "originPatch":"patch（补丁配置）", "originEnvironment":"environment（环境变量）", "originDefault":"default（默认）", "originDerived":"derived（派生）", "originUnavailable":"unavailable（来源不可用）",
+    "attended":"有人值守", "lastEventAt":"最后事件时间", "pausedReadonlyHelp":"暂停开关仅显示来源状态，已禁用；此页面不能修改来源配置。",
+    "runtime":"运行时", "database":"数据库", "dbVersion":"迁移版本", "dbSizeBytes":"大小（字节）", "outbox":"发件箱", "dropped":"已丢弃", "watchdog":"最近 Watchdog 判定", "lastWatchdogAt":"最近 Watchdog 活动", "watchdogHelp":"最多显示 20 条已记录判定；停滞时间是距离最后进展的实测时长，不是配置阈值。缺失指标保留为未知。", "recentErrors":"最近错误",
+    "at":"时间", "action":"动作", "code":"错误码", "rule":"规则", "outcome":"结果", "assignmentId":"分配 ID", "metricsAt":"指标采样时间", "lastProgressAt":"最后进展时间", "stallMs":"停滞时长（毫秒）", "durationMs":"运行时长（毫秒）", "repeatedCalls":"重复调用次数", "usage":"Token 用量", "steps":"步骤数", "waitingMs":"等待时长（毫秒）",
     "loading":"正在加载…", "retry":"重试", "requestFailed":"请求失败，请稍后重试。", "requestTimeout":"请求超过 15 秒未响应。", "invalidResponse":"服务器返回了无效响应。",
     "approve":"批准", "deny":"拒绝", "stop":"停止", "resume":"恢复", "details":"详情", "confirm":"确认操作", "cancel":"取消", "close":"关闭", "reason":"理由", "reasonRequired":"理由（必填）", "reasonOptional":"理由（可选）",
     "open":"进行中", "total":"总数", "pending":"待处理", "healthy":"正常", "unhealthy":"异常", "state":"状态", "assignments":"分配", "timeline":"时间线", "impact":"影响范围", "ticketId":"任务", "kind":"类型", "targets":"目标", "readonly":"只读页面", "placeholder":"此页面当前仅支持查看，详细操作将在后续版本提供。"

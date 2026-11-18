@@ -1,0 +1,58 @@
+2026-11-18T15:02:40+0800
+v24.21.0
+$ tsc --noEmit -p tsconfig.json
+$ vitest run
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+(node:72448) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/store/hardening.test.ts (9 tests) 513ms
+(node:72478) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-integration.test.ts (11 tests) 309ms
+(node:72498) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/engine/p3-engine.test.ts (11 tests) 236ms
+ ✓ tests/config.test.ts (4 tests) 210ms
+(node:72506) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/engine/crash-recovery.test.ts (1 test) 159ms
+(node:72514) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/store/store.test.ts (6 tests) 150ms
+(node:72525) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/panel/routes.test.ts (8 tests) 188ms
+(node:72539) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-safety.test.ts (6 tests) 161ms
+(node:72542) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/plugin.test.ts (2 tests) 42ms
+(node:72544) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime.test.ts (2 tests) 50ms
+ ✓ tests/boundaries.test.ts (3 tests) 6ms
+ ✓ tests/client/bundle.test.ts (2 tests) 7ms
+ ✓ tests/engine/dispatch.test.ts (8 tests) 8ms
+ ✓ tests/domain/domain.test.ts (13 tests) 7ms
+ ✓ tests/sessions/watchdog.test.ts (3 tests) 7ms
+ ✓ tests/engine/watchdog.test.ts (6 tests) 4ms
+ ✓ tests/sources/sources.test.ts (3 tests) 4ms
+ ✓ tests/engine/brief-report.test.ts (4 tests) 3ms
+ ✓ tests/sessions/worker.test.ts (2 tests) 4ms
+ ✓ tests/client/channel.test.ts (3 tests) 3ms
+ ✓ tests/sessions/main.test.ts (2 tests) 3ms
+ ✓ tests/tools/tools.test.ts (4 tests) 3ms
+ ✓ tests/domain/immutable.test.ts (2 tests) 3ms
+
+ Test Files  23 passed (23)
+      Tests  115 passed (115)
+   Start at  15:02:43
+   Duration  10.70s (transform 382ms, setup 0ms, collect 1.01s, tests 2.08s, environment 3ms, prepare 2.83s)
+
+$ tsc -p tsconfig.build.json && node scripts/build-client.mjs
+DSH client factory built: lib/client.js
+
+[exit code: 0]

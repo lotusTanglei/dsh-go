@@ -1,0 +1,343 @@
+{
+  "kind": "closeout-a-live-zero-token",
+  "startedAt": "2026-11-18T07:21:40.790Z",
+  "modelsStarted": false,
+  "visual": "pending-human",
+  "presets": [
+    {
+      "id": "dsh-superagent-router",
+      "present": true,
+      "broken": null
+    },
+    {
+      "id": "dsh-superagent-worker",
+      "present": true,
+      "broken": null
+    },
+    {
+      "id": "dsh-superagent-watchdog",
+      "present": true,
+      "broken": null
+    }
+  ],
+  "resource": {
+    "status": 200,
+    "bytes": 33919,
+    "sha256": "fc864fe218eccb7e56510140e3e098a4eccab2daf7634285a6e1da1c76ca695d",
+    "includesCurrentFactory": true,
+    "markers": true,
+    "localizedPages": true,
+    "slotRegistrations": 3
+  },
+  "routes": {
+    "threads": {
+      "status": 200,
+      "response": {
+        "ok": true,
+        "data": {
+          "items": []
+        }
+      }
+    },
+    "settings": {
+      "status": 200,
+      "response": {
+        "ok": true,
+        "data": {
+          "effective": [
+            {
+              "key": "stateDir",
+              "value": "[REDACTED_PATH]",
+              "origin": "patch",
+              "originDetail": "Explicit Loader configuration; bundle/profile/overlay layer not distinguished",
+              "redacted": true
+            },
+            {
+              "key": "routerReadScope",
+              "value": "reported",
+              "origin": "default"
+            },
+            {
+              "key": "confirm",
+              "value": "when-ambiguous",
+              "origin": "default"
+            },
+            {
+              "key": "acceptMode",
+              "value": "auto",
+              "origin": "default"
+            },
+            {
+              "key": "bots",
+              "value": "deny",
+              "origin": "default"
+            },
+            {
+              "key": "paused",
+              "value": false,
+              "origin": "default"
+            },
+            {
+              "key": "maxWorkers",
+              "value": 1,
+              "origin": "patch",
+              "originDetail": "Explicit Loader configuration; bundle/profile/overlay layer not distinguished"
+            },
+            {
+              "key": "queueLimit",
+              "value": 200,
+              "origin": "default"
+            },
+            {
+              "key": "evalTimeoutMs",
+              "value": 120000,
+              "origin": "default"
+            },
+            {
+              "key": "maxEvalRequeues",
+              "value": 2,
+              "origin": "default"
+            },
+            {
+              "key": "maxStepsPerTicket",
+              "value": 80,
+              "origin": "default"
+            },
+            {
+              "key": "maxTokensPerTicket",
+              "value": 2000000,
+              "origin": "default"
+            },
+            {
+              "key": "maxDurationMsPerTicket",
+              "value": 7200000,
+              "origin": "default"
+            },
+            {
+              "key": "maxRetries",
+              "value": 2,
+              "origin": "default"
+            },
+            {
+              "key": "watchdogIntervalMs",
+              "value": 60000,
+              "origin": "default"
+            },
+            {
+              "key": "stallMs",
+              "value": 300000,
+              "origin": "default"
+            },
+            {
+              "key": "repeatCallThreshold",
+              "value": 3,
+              "origin": "default"
+            },
+            {
+              "key": "waitingHumanMs",
+              "value": 1800000,
+              "origin": "default"
+            },
+            {
+              "key": "budgetWarningRatio",
+              "value": 0.8,
+              "origin": "default"
+            },
+            {
+              "key": "approvalTimeoutMs",
+              "value": 86400000,
+              "origin": "default"
+            },
+            {
+              "key": "outboxMaxAttempts",
+              "value": 5,
+              "origin": "default"
+            },
+            {
+              "key": "outboxBackoffMs",
+              "value": 1000,
+              "origin": "default"
+            },
+            {
+              "key": "outboxBackoffMaxMs",
+              "value": 60000,
+              "origin": "default"
+            },
+            {
+              "key": "panelPollMs",
+              "value": 5000,
+              "origin": "environment",
+              "originDetail": "Environment-backed Loader expression (may include a fallback)"
+            },
+            {
+              "key": "panelPageSize",
+              "value": 20,
+              "origin": "default"
+            },
+            {
+              "key": "backupIntervalMs",
+              "value": 86400000,
+              "origin": "default"
+            },
+            {
+              "key": "backupKeep",
+              "value": 7,
+              "origin": "default"
+            },
+            {
+              "key": "triggerRetentionMs",
+              "value": 7776000000,
+              "origin": "default"
+            },
+            {
+              "key": "outboundRetentionMs",
+              "value": 2592000000,
+              "origin": "default"
+            },
+            {
+              "key": "sqliteBusyTimeoutMs",
+              "value": 5000,
+              "origin": "default"
+            },
+            {
+              "key": "staleLockMs",
+              "value": 3600000,
+              "origin": "default"
+            },
+            {
+              "key": "sources",
+              "value": [],
+              "origin": "default"
+            },
+            {
+              "key": "roleTools.router",
+              "value": [
+                "read",
+                "glob",
+                "grep",
+                "ticket_create",
+                "ticket_list",
+                "ticket_status",
+                "ticket_cancel",
+                "ticket_resume",
+                "assignment_start",
+                "assignment_stop",
+                "human_ask",
+                "channel_reply"
+              ],
+              "origin": "default"
+            },
+            {
+              "key": "roleTools.worker",
+              "value": [
+                "read",
+                "read_image",
+                "glob",
+                "grep",
+                "write",
+                "edit",
+                "bash",
+                "job_list",
+                "job_output",
+                "job_kill",
+                "report_progress",
+                "report_result",
+                "request_approval",
+                "a[REDACTED_SECRET]",
+                "structured_output"
+              ],
+              "origin": "default"
+            },
+            {
+              "key": "roleTools.watchdog",
+              "value": [
+                "read",
+                "watchdog_nudge",
+                "watchdog_steer",
+                "watchdog_cancel",
+                "watchdog_escalate",
+                "structured_output"
+              ],
+              "origin": "default"
+            },
+            {
+              "key": "dbPath",
+              "value": "[REDACTED_PATH]",
+              "origin": "derived",
+              "originDetail": "Resolved from stateDir/dbPath",
+              "redacted": true
+            },
+            {
+              "key": "lockPath",
+              "value": "[REDACTED_PATH]",
+              "origin": "derived",
+              "originDetail": "Resolved from stateDir/dbPath",
+              "redacted": true
+            },
+            {
+              "key": "workRoot",
+              "value": "[REDACTED_PATH]",
+              "origin": "derived",
+              "originDetail": "Resolved from stateDir/dbPath",
+              "redacted": true
+            },
+            {
+              "key": "mainSessionId",
+              "value": null,
+              "origin": "default"
+            }
+          ]
+        }
+      }
+    },
+    "health": {
+      "status": 200,
+      "response": {
+        "ok": true,
+        "data": {
+          "ok": true,
+          "runtime": {
+            "state": "ready"
+          },
+          "db": {
+            "version": 1,
+            "sizeBytes": 189528
+          },
+          "watchdog": {
+            "lastAt": 1794986500833,
+            "decisions": []
+          },
+          "sessionChannel": {
+            "delivery": "durable-chat-notice",
+            "modelWakeup": false,
+            "visualVerification": "pending-human"
+          },
+          "outbox": {
+            "pending": 0,
+            "dropped": 0
+          },
+          "sources": [
+            {
+              "id": "session:04d9da3b-525c-4234-a8af-6c4f8ec8d681",
+              "kind": "session",
+              "attended": true,
+              "paused": false,
+              "ok": true
+            }
+          ],
+          "recentErrors": []
+        }
+      }
+    }
+  },
+  "routeBoundary": "Actual Connection handler with in-process owner Peer; no HTTP carrier authentication or browser rendering claimed.",
+  "settingsOrigins": {
+    "explicit": "patch",
+    "environment": "environment",
+    "default": "default",
+    "derived": "derived"
+  },
+  "liveAgents": 0,
+  "state": "passed",
+  "finishedAt": "2026-11-18T07:21:40.869Z"
+}

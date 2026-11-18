@@ -15,6 +15,7 @@
     "./p2-real-run": "./probes/p2-real-run.cjs",
     "./final-runtime-probe": "./probes/final-runtime.cjs",
     "./p4-live-probe": "./probes/p4-live.cjs",
+    "./closeout-a-probe": "./probes/closeout/a-live.cjs",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },

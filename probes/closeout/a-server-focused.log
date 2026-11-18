@@ -1,0 +1,118 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+(node:76673) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/panel/routes.test.ts (8 tests) 159ms
+(node:76688) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/panel/closeout.test.ts (4 tests) 120ms
+node:internal/modules/esm/resolve:1035
+    throw error;
+    ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/dundundebaba/sync/dsh-s-p/src/store/codec.js' imported from /Users/dundundebaba/sync/dsh-s-p/src/config.ts
+    at finalizeResolution (node:internal/modules/esm/resolve:276:11)
+    at moduleResolve (node:internal/modules/esm/resolve:892:10)
+    at defaultResolve (node:internal/modules/esm/resolve:1019:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:705:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:725:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:763:56)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:604:27)
+    at ModuleJobSync.syncLink (node:internal/modules/esm/module_job:276:33)
+    at ModuleJobSync.link (node:internal/modules/esm/module_job:611:17)
+    at new ModuleJobSync (node:internal/modules/esm/module_job:601:26) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///Users/dundundebaba/sync/dsh-s-p/src/store/codec.js'
+}
+
+Node.js v24.21.0
+ ❯ tests/config.test.ts (5 tests | 1 failed) 202ms
+   ✓ Config boundary > resolves every deployment path through configuration 1ms
+   ✓ Config boundary > rejects relative/colliding paths and invalid cross-field budgets 1ms
+   ✓ Config boundary > configuration cannot grant prohibited role tools 0ms
+   ✓ Config boundary > projects every effective field with evidence-based provenance and hidden paths 2ms
+   × Config boundary > validates with actual installed Schemastery, not a mock schema 198ms
+     → Command failed: /Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness -e 
+      const { createRequire } = require('node:module');
+      const installed = createRequire(process.argv[1] + '/package.json');
+      const z = installed('@deepseek-ai/schemastery');
+      const {createConfigSchema, resolveConfig} = require(process.argv[2]);
+      const s = createConfigSchema(z);
+      const c = resolveConfig(s({stateDir:process.argv[3]}));
+      let invalid = 0;
+      for (const bad of [{maxWorkers:0},{evalTimeoutMs:-1},{repeatCallThreshold:0},{maxRetries:-1},{sources:[{id:'x',kind:'github',attended:false}]}]) {
+        try { s({...bad,stateDir:process.argv[3]}); } catch { invalid++; }
+      }
+      console.log(JSON.stringify({callable:typeof s === 'function',maxWorkers:c.maxWorkers,invalid,routerScope:c.routerReadScope}));
+     /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh /Users/dundundebaba/sync/dsh-s-p/src/config.ts /Users/dundundebaba/sync/dsh-s-p/.test-state
+node:internal/modules/esm/resolve:1035
+    throw error;
+    ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/dundundebaba/sync/dsh-s-p/src/store/codec.js' imported from /Users/dundundebaba/sync/dsh-s-p/src/config.ts
+    at finalizeResolution (node:internal/modules/esm/resolve:276:11)
+    at moduleResolve (node:internal/modules/esm/resolve:892:10)
+    at defaultResolve (node:internal/modules/esm/resolve:1019:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:705:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:725:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:763:56)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:604:27)
+    at ModuleJobSync.syncLink (node:internal/modules/esm/module_job:276:33)
+    at ModuleJobSync.link (node:internal/modules/esm/module_job:611:17)
+    at new ModuleJobSync (node:internal/modules/esm/module_job:601:26) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///Users/dundundebaba/sync/dsh-s-p/src/store/codec.js'
+}
+
+Node.js v24.21.0
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/config.test.ts > Config boundary > validates with actual installed Schemastery, not a mock schema
+Error: Command failed: /Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness -e 
+      const { createRequire } = require('node:module');
+      const installed = createRequire(process.argv[1] + '/package.json');
+      const z = installed('@deepseek-ai/schemastery');
+      const {createConfigSchema, resolveConfig} = require(process.argv[2]);
+      const s = createConfigSchema(z);
+      const c = resolveConfig(s({stateDir:process.argv[3]}));
+      let invalid = 0;
+      for (const bad of [{maxWorkers:0},{evalTimeoutMs:-1},{repeatCallThreshold:0},{maxRetries:-1},{sources:[{id:'x',kind:'github',attended:false}]}]) {
+        try { s({...bad,stateDir:process.argv[3]}); } catch { invalid++; }
+      }
+      console.log(JSON.stringify({callable:typeof s === 'function',maxWorkers:c.maxWorkers,invalid,routerScope:c.routerReadScope}));
+     /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh /Users/dundundebaba/sync/dsh-s-p/src/config.ts /Users/dundundebaba/sync/dsh-s-p/.test-state
+node:internal/modules/esm/resolve:1035
+    throw error;
+    ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/dundundebaba/sync/dsh-s-p/src/store/codec.js' imported from /Users/dundundebaba/sync/dsh-s-p/src/config.ts
+    at finalizeResolution (node:internal/modules/esm/resolve:276:11)
+    at moduleResolve (node:internal/modules/esm/resolve:892:10)
+    at defaultResolve (node:internal/modules/esm/resolve:1019:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:705:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:725:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:763:56)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:604:27)
+    at ModuleJobSync.syncLink (node:internal/modules/esm/module_job:276:33)
+    at ModuleJobSync.link (node:internal/modules/esm/module_job:611:17)
+    at new ModuleJobSync (node:internal/modules/esm/module_job:601:26) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///Users/dundundebaba/sync/dsh-s-p/src/store/codec.js'
+}
+
+Node.js v24.21.0
+
+ ❯ tests/config.test.ts:60:20
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 16 passed (17)
+   Start at  15:09:04
+   Duration  1.78s (transform 112ms, setup 0ms, collect 218ms, tests 482ms, environment 0ms, prepare 421ms)
+

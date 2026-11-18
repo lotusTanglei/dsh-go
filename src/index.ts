@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { resolveConfig, type Config } from './config.js'
+import { effectiveSettings } from './panel/settings.js'
 import { openStore } from './store/index.js'
 import { installRoleGuard } from './tools/runtime.js'
 import { createRuntime, readWorkerSnapshot, type RuntimeContext } from './runtime.js'
@@ -8,6 +9,8 @@ import { installPanelRoutes, type PanelConnection } from './panel/routes.js'
 /** Host owns ordered resource cleanup; runtime keeps DSH calls behind structural adapters. */
 export interface PluginContext {
   effect(factory: () => (() => void | Promise<void>)): unknown
+  /** Loader raw values still include !!js markers before interpolation/defaults. */
+  readonly fiber?: { readonly entry?: { readonly options: { readonly config?: unknown } } }
   provide?(name: string, value: unknown): unknown
   logger?: { info(message: string): void }
   tools?: { guard?(callback: (execution: import('./tools/runtime.js').ToolExecutionContext) => unknown): unknown }
@@ -23,6 +26,8 @@ export const inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagen
 
 export function apply(ctx: PluginContext, input: Config): void {
   const config = resolveConfig(input)
+  const raw = ctx.fiber?.entry?.options.config
+  const settings = effectiveSettings(config, raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : undefined)
   let store: ReturnType<typeof openStore>
   try {
     mkdirSync(config.stateDir, { recursive: true })
@@ -57,9 +62,9 @@ export function apply(ctx: PluginContext, input: Config): void {
       runtime = createRuntime(ctx as unknown as RuntimeContext, store, config, roleGuard)
       ctx.provide?.('superagentRuntime', runtime)
       void runtime.ready.catch(() => console.error('[superagent] runtime initialization failed'))
-      if (ctx.connection) panel = installPanelRoutes({ connection: ctx.connection }, store, config, runtime.panelPorts)
+      if (ctx.connection) panel = installPanelRoutes({ connection: ctx.connection }, store, config, { ...runtime.panelPorts, settings: () => settings })
     } else if (ctx.connection) {
-      panel = installPanelRoutes({ connection: ctx.connection }, store, config)
+      panel = installPanelRoutes({ connection: ctx.connection }, store, config, { settings: () => settings })
     }
     // No paths, input data, credentials, raw diagnostics or private URLs in logs.
     console.log('[superagent] loaded')

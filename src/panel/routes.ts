@@ -1,3 +1,6 @@
+import { statSync } from 'node:fs'
+import type { Config } from '../config.js'
+import { effectiveSettings, type EffectiveSetting } from './settings.js'
 import { transitionApproval, type Approval } from '../domain/approval.js'
 import { approvalId } from '../domain/ids.js'
 import { transition as transitionTicket, type Ticket, type TicketBrief } from '../domain/ticket.js'
@@ -36,6 +39,7 @@ export interface PanelConfig {
 export interface PanelPorts {
   readonly health?: () => unknown | Promise<unknown>
   readonly sources?: () => unknown | Promise<unknown>
+  readonly settings?: () => readonly EffectiveSetting[] | Promise<readonly EffectiveSetting[]>
   readonly stopTicket?: (ticketId: string, reason: string) => boolean | void | Promise<boolean | void>
   readonly resumeTicket?: (ticketId: string) => boolean | void | Promise<boolean | void>
   /** Revalidation is deliberately a port: a route cannot manufacture a valid mandate. */
@@ -132,7 +136,7 @@ function publicApproval(row: Row, actions: { readonly approve: boolean; readonly
     allowed: row.state === 'pending' ? { approve: actions.approve, deny: actions.deny } : { approve: false, deny: false },
   }
 }
-function publicThread(row: Row): Record<string, unknown> {
+function publicThread(row: Row, store: Store): Record<string, unknown> {
   return {
     key: typeof row.key === 'string' ? row.key : '',
     source: typeof row.source === 'string' ? row.source : '',
@@ -141,6 +145,10 @@ function publicThread(row: Row): Record<string, unknown> {
     seq: typeof row.seq === 'number' ? row.seq : undefined,
     paused: row.paused === true || row.paused === 1,
     evaluating: typeof row.evaluating === 'string' ? row.evaluating : undefined,
+    messageCount: Number(store.db.prepare('SELECT COUNT(*) AS n FROM trigger WHERE thread_key = ?').get(String(row.key))?.n ?? 0),
+    subscriptionCount: Number(store.db.prepare('SELECT COUNT(*) AS n FROM thread_subscription WHERE thread_key = ?').get(String(row.key))?.n ?? 0),
+    hasSubscription: Boolean(store.db.prepare('SELECT 1 FROM thread_subscription WHERE thread_key = ? LIMIT 1').get(String(row.key))),
+    eval: typeof row.evaluating === 'string' ? (() => { const evaluation = store.repos.eval.get(row.evaluating); return evaluation ? { id: evaluation.id, state: evaluation.state } : null })() : null,
   }
 }
 function actorFrom(_value: unknown): string { return 'panel-owner' }
@@ -187,9 +195,22 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
   }
 
   const healthData = async () => {
-    const health = ports.health ? await ports.health() : { ok: true }
-    const sources = ports.sources ? await ports.sources() : []
-    return isObject(health) ? { ...health, sources } : { status: health, sources }
+    const health = ports.health ? await ports.health() : { ok: false, runtime: { state: 'unavailable' } }
+    const sources = ports.sources ? await ports.sources() : isObject(health) && Array.isArray(health.sources) ? health.sources : []
+    const file = store.db.prepare('PRAGMA database_list').all().find(row => row.name === 'main')?.file
+    let sizeBytes: number | null = null
+    if (typeof file === 'string' && file) {
+      try { sizeBytes = [file, `${file}-wal`].reduce((sum, path, index) => { try { return sum + statSync(path).size } catch (error) { if (index === 1 && (error as NodeJS.ErrnoException).code === 'ENOENT') return sum; throw error } }, 0) } catch { /* unknown, never report a fabricated zero */ }
+    }
+    const recent = store.repos.audit.all().sort((a, b) => Number(b.at) - Number(a.at) || Number(b.id) - Number(a.id))
+    const decisions = recent.filter(row => row.action === 'watchdog' || String(row.action).startsWith('watchdog.')).filter(row => isObject(row.detail) && isObject(row.detail.metrics) && row.detail.outcome !== 'requested').slice(0, 20).map(row => {
+      const detail = row.detail as Record<string, unknown>, metrics = detail.metrics as Record<string, unknown>
+      const at = metrics.at, last = metrics.lastProgressAt
+      return { at: row.at, action: detail.action, rule: detail.rule, outcome: detail.outcome, assignmentId: detail.assignmentId, metrics: { at, lastProgressAt: last, stallMs: typeof at === 'number' && Number.isFinite(at) && typeof last === 'number' && Number.isFinite(last) ? Math.max(0, at - last) : null, steps: metrics.steps, usage: metrics.tokens, durationMs: metrics.durationMs, repeatedCalls: metrics.repeatedCalls, waitingMs: metrics.waitingMs } }
+    })
+    const outbounds = store.repos.outbound.all()
+    const base = isObject(health) ? health : { status: health }
+    return { ...base, db: { version: store.version, sizeBytes }, watchdog: { ...(isObject(base.watchdog) ? base.watchdog : {}), decisions }, outbox: { pending: outbounds.filter(row => row.state === 'pending').length, dropped: outbounds.filter(row => row.state === 'dropped').length }, recentErrors: recent.filter(row => /(?:error|failed|dropped)/i.test(String(row.action)) || isObject(row.detail) && row.detail.outcome === 'failed').slice(0, 20).map(row => ({ at: row.at, action: row.action, ...(isObject(row.detail) && typeof row.detail.code === 'string' && /^[A-Z0-9_]{1,80}$/.test(row.detail.code) ? { code: row.detail.code } : {}) })), sources }
   }
   const activityRows = () => repoRows(store.repos.audit).slice(-20).reverse().map(row => ({
     id: typeof row.id === 'number' ? row.id : undefined,
@@ -232,7 +253,8 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     const input = parsed.value!; if (input.key !== undefined && !validId(input.key) || input.cursor !== undefined && (typeof input.cursor !== 'string' || !/^\d{1,9}$/.test(input.cursor))) return fail('invalid_input', 'Invalid thread key or cursor', 400)
     const limit = limitOf(input.limit, config.panelPageSize); if (!limit) return fail('invalid_input', 'Invalid limit', 400)
     const cursor = Number(input.cursor ?? 0)
-    return ok({ items: repoRows(store.repos.thread).filter(row => input.key === undefined || row.key === input.key).slice(cursor, cursor + limit).map(publicThread) })
+    const rows = repoRows(store.repos.thread).filter(row => input.key === undefined || row.key === input.key).sort((a, b) => String(a.source).localeCompare(String(b.source)) || Number(b.last_at) - Number(a.last_at) || String(a.key).localeCompare(String(b.key)))
+    return ok({ items: rows.slice(cursor, cursor + limit).map(row => publicThread(row, store)), ...(cursor + limit < rows.length ? { next: String(cursor + limit) } : {}) })
   })
   route('/approvals', async request => {
     const parsed = await body(request, ['state', 'limit']); if (parsed.error) return parsed.error
@@ -331,7 +353,7 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
   route('/health', async request => { const parsed = await body(request, []); if (parsed.error) return parsed.error; return ok(await healthData()) })
   route('/settings', async request => {
     const parsed = await body(request, []); if (parsed.error) return parsed.error
-    return ok({ effective: Object.entries({ panelPollMs: config.panelPollMs, panelPageSize: config.panelPageSize, paused: config.paused, maxWorkers: config.maxWorkers, routerReadScope: config.routerReadScope, confirm: config.confirm, acceptMode: config.acceptMode, bots: config.bots }).filter(([, value]) => value !== undefined).map(([key, value]) => ({ key, value, origin: 'resolved Host configuration (patch/default provenance unavailable)' })) })
+    return ok({ effective: ports.settings ? await ports.settings() : effectiveSettings(config as Partial<Config>) })
   })
 
   const dispose = async () => { for (const disposer of routes.reverse()) await disposer() }
