@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { encodeJson, decodeJson, redact } from '../codec.js'
+import { encodeJson, decodeJson, hasSensitiveContractData, redact } from '../codec.js'
 
 export interface Row { readonly [key: string]: unknown }
 export interface TableRepo<T extends Row = Row> {
@@ -37,8 +37,9 @@ function toDbValue(column: string, value: unknown): unknown {
   if (value === undefined) return null
   if (JSON_COLUMNS.has(column)) {
     if (value === null) return null
-    // Contract data must roundtrip exactly; reject credentials/URLs rather than silently mutate it.
-    if (!REDACT_JSON_COLUMNS.has(column) && JSON.stringify(redact(value)) !== JSON.stringify(value)) throw new Error('Sensitive value is not permitted in contract data')
+    // Contracts retain legal local paths exactly; only privacy sinks redact those paths.
+    // Still reject credentials/URLs instead of silently mutating an execution contract.
+    if (!REDACT_JSON_COLUMNS.has(column) && hasSensitiveContractData(value)) throw new Error('Sensitive value is not permitted in contract data')
     // Normalize an already wrapped value, reapplying redaction rather than bypassing it.
     if (typeof value === 'string') {
       try {

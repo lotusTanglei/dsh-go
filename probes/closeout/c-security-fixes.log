@@ -1,0 +1,17 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+(node:10087) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/store/closeout-security.test.ts (11 tests) 212ms
+(node:10093) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/closeout/injection.test.ts (6 tests) 99ms
+(node:10104) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-recovery.test.ts (4 tests) 73ms
+
+ Test Files  3 passed (3)
+      Tests  21 passed (21)
+   Start at  15:57:03
+   Duration  2.26s (transform 286ms, setup 0ms, collect 555ms, tests 385ms, environment 1ms, prepare 603ms)

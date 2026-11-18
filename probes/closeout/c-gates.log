@@ -1,0 +1,77 @@
+$ tsc --noEmit -p tsconfig.json
+$ vitest run
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+(node:11669) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/store/hardening.test.ts (9 tests) 498ms
+(node:11673) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/closeout/faults.test.ts (4 tests) 346ms
+(node:11690) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/engine/p3-engine.test.ts (11 tests) 272ms
+(node:11694) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-integration.test.ts (13 tests) 310ms
+(node:11699) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/closeout/concurrency.test.ts (3 tests) 214ms
+(node:11702) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/store/closeout-security.test.ts (11 tests) 160ms
+ ✓ tests/config.test.ts (5 tests) 433ms
+   ✓ Config boundary > validates with actual installed Schemastery, not a mock schema  427ms
+(node:11720) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/engine/crash-recovery.test.ts (1 test) 168ms
+(node:11769) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/panel/routes.test.ts (8 tests) 151ms
+(node:11771) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/store/store.test.ts (6 tests) 196ms
+(node:11773) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-safety.test.ts (6 tests) 146ms
+(node:11788) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/panel/closeout.test.ts (5 tests) 116ms
+(node:11804) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/closeout/injection.test.ts (6 tests) 108ms
+(node:11812) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime-recovery.test.ts (4 tests) 81ms
+(node:11814) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/plugin.test.ts (2 tests) 61ms
+(node:11816) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/runtime.test.ts (2 tests) 54ms
+ ✓ tests/client/bundle.test.ts (2 tests) 14ms
+ ✓ tests/client/artifact.test.ts (3 tests) 10ms
+ ✓ tests/boundaries.test.ts (3 tests) 11ms
+ ✓ tests/engine/dispatch.test.ts (8 tests) 8ms
+ ✓ tests/client/pages.test.ts (7 tests) 8ms
+ ✓ tests/domain/domain.test.ts (13 tests) 6ms
+ ✓ tests/sessions/watchdog.test.ts (3 tests) 6ms
+ ✓ tests/engine/watchdog.test.ts (7 tests) 4ms
+ ✓ tests/sources/sources.test.ts (3 tests) 5ms
+ ✓ tests/sessions/worker.test.ts (2 tests) 4ms
+ ✓ tests/engine/brief-report.test.ts (4 tests) 4ms
+ ✓ tests/client/channel.test.ts (3 tests) 3ms
+ ✓ tests/tools/tools.test.ts (4 tests) 3ms
+ ✓ tests/domain/immutable.test.ts (2 tests) 3ms
+ ✓ tests/sessions/main.test.ts (2 tests) 2ms
+
+ Test Files  31 passed (31)
+      Tests  162 passed (162)
+   Start at  15:59:12
+   Duration  15.68s (transform 418ms, setup 0ms, collect 1.46s, tests 3.41s, environment 4ms, prepare 4.18s)
+
+$ tsc -p tsconfig.build.json && node scripts/build-client.mjs
+DSH client factory built: lib/client.js
+
+[exit code: 0]

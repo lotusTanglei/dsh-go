@@ -287,9 +287,22 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       const setup = async (scope: any): Promise<void> => { await ctx.agentPresets.mount(scope, 'dsh-superagent-router') }
       let handle: any
       if (candidate && ctx.agents.resume) {
-        const persisted = await ctx.sessionQuery.readSession(candidate)
-        if (persisted.session?.agentPreset !== 'dsh-superagent-router') throw new Error('Persisted Router has a different preset')
-        handle = await ctx.agents.resume({ resumeSessionId: candidate, setup })
+        let persisted: any
+        try {
+          persisted = await ctx.sessionQuery.readSession(candidate)
+        } catch (error) {
+          const code = (error as { code?: unknown })?.code
+          if (config.mainSessionId || code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
+          // A stale persisted binding is recoverable only when the query proves exact absence.
+          persisted = undefined
+        }
+        if (persisted) {
+          if (persisted.session?.agentPreset !== 'dsh-superagent-router') throw new Error('Persisted Router has a different preset')
+          handle = await ctx.agents.resume({ resumeSessionId: candidate, setup })
+        } else {
+          handle = await ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: config.workRoot, agentPreset: 'dsh-superagent-router' }, setup })
+          audit('main_session_recreated', { previousSessionId: candidate, newSessionId: handle.agent.id })
+        }
       } else handle = await ctx.agents.create({ sessionId: candidate ?? randomUUID(), meta: { cwd: config.workRoot, agentPreset: 'dsh-superagent-router' }, setup })
       ownedHandles.push(handle); mainId = handle.agent.id
     }

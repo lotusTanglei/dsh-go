@@ -1,0 +1,33 @@
+✓ Lockfile passes supply-chain policies (verified 22h ago)
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+Done in 688ms using pnpm v11.28.5
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+(node:1773) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ tests/runtime-recovery.test.ts (4 tests | 1 failed) 95ms
+   × closeout deleted-main-session recovery > recreates an absent persisted Router and replaces the binding without any model request 34ms
+     → synthetic storage problem
+   ✓ closeout deleted-main-session recovery > does not replace history on SESSION_QUERY_CORRUPT_SESSION 18ms
+   ✓ closeout deleted-main-session recovery > does not replace history on SESSION_QUERY_PERSISTENCE_FAILED 18ms
+   ✓ closeout deleted-main-session recovery > does not silently replace an explicitly configured missing Router 24ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-recovery.test.ts > closeout deleted-main-session recovery > recreates an absent persisted Router and replaces the binding without any model request
+Error: synthetic storage problem
+ ❯ Object.readSession tests/runtime-recovery.test.ts:18:723
+
+ ❯ src/runtime.ts:290:50
+ ❯ tests/runtime-recovery.test.ts:26:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  15:45:08
+   Duration  830ms (transform 189ms, setup 0ms, collect 305ms, tests 95ms, environment 0ms, prepare 144ms)
