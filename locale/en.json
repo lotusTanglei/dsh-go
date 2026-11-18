@@ -1,1 +1,11 @@
-{"meta":{"title":"Superagent foundation","description":"P1 domain and SQLite foundation. No Router, Worker, Watchdog, or panel is active yet."}}
+{
+  "meta": {"title":"Superagent","description":"Ticket orchestration, event intake, Worker supervision, and approvals."},
+  "panel": {
+    "title":"Superagent", "subtitle":"An operational view of tasks, sessions, and approvals", "navigation":"Superagent navigation",
+    "overview":"Overview", "tickets":"Tickets", "threads":"Threads", "sources":"Sources", "approvals":"Approvals", "health":"Health", "settings":"Settings",
+    "counts":"Task counts", "activities":"Recent activity", "empty":"No records yet. Connected sources will appear here.",
+    "loading":"Loading…", "retry":"Retry", "requestFailed":"Request failed. Please try again.", "requestTimeout":"The request timed out after 15 seconds.", "invalidResponse":"The server returned an invalid response.",
+    "approve":"Approve", "deny":"Deny", "stop":"Stop", "resume":"Resume", "details":"Details", "confirm":"Confirm action", "cancel":"Cancel", "close":"Close", "reason":"Reason", "reasonRequired":"Reason (required)", "reasonOptional":"Reason (optional)",
+    "open":"Open", "total":"Total", "pending":"Pending", "healthy":"Healthy", "unhealthy":"Unhealthy", "state":"State", "assignments":"Assignments", "timeline":"Timeline", "impact":"Impact", "ticketId":"Ticket", "kind":"Kind", "targets":"Targets", "readonly":"Read-only page", "placeholder":"This page is available for viewing; detailed controls will be added in a later release."
+  }
+}
