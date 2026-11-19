@@ -5,7 +5,7 @@
 **部分完成／不可交付，非生产就绪；不能称工程闭环完成。**
 
 - 本轮已实现后端及单入口工作区，并分阶段提交：`05a8ab8`（命令/确认/结果/安全关门）、`7d55411`（对话四列看板）、`6ceeee6`（过期/分页/计划修订/精确范围展示与证据）。最后补充提交包含未知请求路由终止、人工停止后的来源关联新建。
-- 目前完整三闸与打包：37 files / **307 tests**，typecheck/test/build/pack exit0；[完整日志](<../probes/kanban/supplement-20261118-221200/test.log>)、[构建](<../probes/kanban/supplement-20261118-221200/build.log>)、[打包](<../probes/kanban/supplement-20261118-221200/pack.log>)。后端还验证过精确暂存树，267tests/三闸/pack通过，非借未暂存UI掩盖阶段缺件：[暂存树测试](<../probes/kanban/s1-staged-20261118-212700/test.log>)。
+- 目前完整三闸与打包：37 files / **307 tests**；14:02后认证提示补丁的全量门禁与pack另见`web-auth-20261119-140200/`，typecheck/test/build/pack exit0；[完整日志](<../probes/kanban/supplement-20261118-221200/test.log>)、[构建](<../probes/kanban/supplement-20261118-221200/build.log>)、[打包](<../probes/kanban/supplement-20261118-221200/pack.log>)。后端还验证过精确暂存树，267tests/三闸/pack通过，非借未暂存UI掩盖阶段缺件：[暂存树测试](<../probes/kanban/s1-staged-20261118-212700/test.log>)。
 - 真实安装版 L1 spawn 父根、L2 同票未列/deny 可写反证已成立：[S0原始结果](<../probes/kanban/s0-20261118-202300-result.json>)。**真实生产Worker启动、恢复、工具执行全部关闭**，不是通过隔离验收。
 - 已完成真实Host“命令→特定计划→确认→建票→同会话唯一持久通知”，但Router为本地确定性适配器、通知为合成Channel fixture；**不是实际Worker报告完成链路**：[S1结果](<../probes/kanban/s1-20261118-211400-result.json>)。外部产品provider请求0，本地适配器3次/fixture，协作代理另计。
 - 无浏览器控制；没有当前GUI视觉/点击/IME/主题/console证据。没有部署Desktop、搜凭据、创建假DOM/截图或启动替代GUI。当前URL匿名401不等于已验证本插件界面。
@@ -44,7 +44,7 @@
 | SAFE-01 | 自动选定范围通过 | `05a8ab8/7d55411`；[store安全](<../tests/store/closeout-security.test.ts>)、[panel注入](<../tests/panel/kanban.test.ts>)、[文本投影](<../tests/workspace/conversation.test.ts>) | 固定错误/参数SQL/UTF8上限/文本React/secret-path；shell网络策略未强化，真实浏览器XSS/任意秘密编码未全面证明 |
 | REL-01 | 自动通过选定回归 | `05a8ab8`；[并发/背压](<../tests/closeout/concurrency.test.ts>)、[故障](<../tests/closeout/faults.test.ts>)、[容量并集](<../tests/workspace/adversarial.test.ts>) | paused/subscription容量、maxWorkers、clock/readonly/lock/orphan保留；真实高并发成本、长时间watchdog新运行未做 |
 | BUILD-01 | 自动通过 | `05a8ab8/7d55411`；[307tests](<../probes/kanban/supplement-20261118-221200/test.log>)、[typecheck](<../probes/kanban/supplement-20261118-221200/typecheck.log>)、[build](<../probes/kanban/supplement-20261118-221200/build.log>)、[pack](<../probes/kanban/supplement-20261118-221200/pack.log>) | Electron Node24.21.0/pnpm10.33.0；真artifact VM只做factory注册，无DOM替身 |
-| LIVE-01 | 真实Host合同通过；非浏览器认证证明 | [S4最终Host](<../probes/kanban/s4-20261118-221200-result.json>)、[artifact VM](<../tests/client/artifact.test.ts>) | 3preset无broken、current artifact资源200/字节匹配、3slots、owner200/真实unknown Peer403/Origin403；1main+1title本地调用/外部0。不是浏览器真实cookie认证或视觉证明 |
+| LIVE-01 | 真实Host合同通过；非浏览器认证证明 | [S4最终Host](<../probes/kanban/s4-20261119-140300-result.json>)、[artifact VM](<../tests/client/artifact.test.ts>) | 3preset无broken、current artifact资源200/字节匹配、3slots、owner200/真实unknown Peer403/Origin403；1main+1title本地调用/外部0。不是浏览器真实cookie认证或视觉证明 |
 | VIS-01 | 需人工；未验 | [人工步骤](<KANBAN-MANUAL.md>) | 深浅/中英/宽窄/IME/键盘/焦点/网络/console无证据；独立代码UI/UX审查不替代视觉 |
 | CLEAN-01 | 自动通过自有fixture范围 | [最终清理回执](<../probes/kanban/cleanup-20261118-221500.json>)、[S3 agents0](<../probes/kanban/s3-20261118-221200-result.json>)、[S4 agents0](<../probes/kanban/s4-20261118-221200-result.json>) | 13个Host SQLite只读非终态Assignment/Trigger/Eval/Outbox均0、锁无；自有dev进程0/无dev:web watcher；CLI无新GUI服务器。保留历史/sentinel/产物，不动用户服务；无浏览器视觉证明 |
 

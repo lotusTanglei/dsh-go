@@ -87,7 +87,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     })
     for (const route of ['workspace', 'conversation', 'command', 'command-status', 'board', 'ticket']) expect(routes.has(route), route).toBe(true)
     contains(section('perform'), ["value.kind === 'admission' ? 'admission'", "value.kind === 'approval' ? 'approval' : 'ticket-action'", 'epoch: value.epoch', 'requestId: value.item.requestId', 'planId: value.item.planId', 'fingerprint: value.item.fingerprint', 'decision: value.decision'])
-    contains(index, ["credentials: 'same-origin'", 'new URL(`/api/superagent/', "signal?.removeEventListener('abort', abort)", 'if (signal?.aborted) timeout.abort()'])
+    contains(index, ["credentials: 'same-origin'", 'new URL(`/api/superagent/', "response.status === 401 ? t('webAuthRequired')", "error.code = response.status === 401 ? 'web_auth_required'", "signal?.removeEventListener('abort', abort)", 'if (signal?.aborted) timeout.abort()'])
     expect(index).not.toMatch(/new Error\(value\?\.(?:message|error)/)
   })
 
@@ -121,7 +121,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('messageOrder'), ['Number(a.seq) - Number(b.seq)', 'String(a.id).localeCompare(String(b.id))'])
     contains(section('readConversation'), ["call('conversation', { epoch, limit: 30", "mode === 'before' ? { before }", '{ after: current.nextAfter }', 'i < 4', "['invalid_cursor', 'epoch_mismatch']", 'nextAfter: undefined'])
     contains(section('setConversationPage'), ['merge(old.items, array(page.items), messageOrder)', 'nextAfter: page.nextAfter', 'nextBefore: page.nextBefore', 'hasMore: page.hasMore'])
-    contains(workspace, ['workspace?.archiveEpochs', 'currentMessages.nextBefore', 'readConversation(historyEpoch, currentMessages.nextBefore)', 'anchor.top + node.scrollHeight - anchor.height', 'tr(\'ArchiveReadonly\')', 'message.text'])
+    contains(workspace, ["e?.code === 'web_auth_required' ? tr('WebAuthRequired')", 'workspace?.archiveEpochs', 'currentMessages.nextBefore', 'readConversation(historyEpoch, currentMessages.nextBefore)', 'anchor.top + node.scrollHeight - anchor.height', 'tr(\'ArchiveReadonly\')', 'message.text'])
     expect(section('readConversation')).not.toMatch(/setConversation\(\s*\{\s*\}\s*\)|conversations\.current\s*=\s*\{\s*\}/)
   })
 
@@ -192,7 +192,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
 
   it('covers literal and semantic dynamic translations without forcing obsolete pages or unrelated source strings', () => {
     const keys = translationKeys()
-    for (const key of ['title', 'channelNotice', 'wWorkspace', 'wRetrySameRequest', 'wPending', 'wCleanTree', 'wBudgets', 'wFingerprint', 'wOverview', 'wTimeline', 'wResults', 'wDatabase', 'wBoundaryBody']) expect(keys.has(key), key).toBe(true)
+    for (const key of ['title', 'channelNotice', 'wWebAuthRequired', 'wWorkspace', 'wRetrySameRequest', 'wPending', 'wCleanTree', 'wBudgets', 'wFingerprint', 'wOverview', 'wTimeline', 'wResults', 'wDatabase', 'wBoundaryBody']) expect(keys.has(key), key).toBe(true)
     for (const nonKey of ['wcommand-status', 'wsaw-draft', 'wstateDir', 'wticket-input', 'w/api/superagent/']) expect(keys.has(nonKey), nonKey).toBe(false)
     for (const key of keys) {
       expect(typeof en[key], `en:${key}`).toBe('string')

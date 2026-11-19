@@ -121,7 +121,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const messagesRef = React.useRef(null as HTMLElement | null)
     const historyAnchor = React.useRef(null as any)
     const autoScroll = React.useRef(true)
-    const messageOf = (e: any) => `${tr('RequestFailed')}${e?.code ? ` (${String(e.code)})` : ''}`
+    const messageOf = (e: any) => e?.code === 'web_auth_required' ? tr('WebAuthRequired') : `${tr('RequestFailed')}${e?.code ? ` (${String(e.code)})` : ''}`
     const saveComposer = (epoch: string, next: any) => {
       composerCache.current[epoch] = next
       try { sessionStorage.setItem(storageKey(epoch), JSON.stringify(next)) } catch { if (alive.current) setStorageError(true) }

@@ -24,10 +24,10 @@ export function createClientPlugin(React: any, dictionaries: Record<string, Reco
           const response = await fetch(new URL(`/api/superagent/${path.replace(/^\/+/, '')}`, document.baseURI), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: timeout.signal })
           const text = await response.text()
           let value: any
-          try { value = text ? JSON.parse(text) : {} } catch { const error: any = new Error(t('invalidResponse')); error.status = response.status; throw error }
+          try { value = text ? JSON.parse(text) : {} } catch { const error: any = new Error(response.status === 401 ? t('webAuthRequired') : t('invalidResponse')); error.code = response.status === 401 ? 'web_auth_required' : 'invalid_response'; error.status = response.status; throw error }
           if (!response.ok || !value?.ok) {
-            const error: any = new Error(t('requestFailed'))
-            error.code = value?.code || value?.error?.code
+            const error: any = new Error(response.status === 401 ? t('webAuthRequired') : t('requestFailed'))
+            error.code = response.status === 401 ? 'web_auth_required' : value?.code || value?.error?.code
             error.status = response.status
             throw error
           }

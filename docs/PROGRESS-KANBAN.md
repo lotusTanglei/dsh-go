@@ -126,6 +126,13 @@
 - `cleanup-20261118-221500.json` actual22:12:56，13自有Host SQLite非终态Assignment/Trigger/Eval/Outbox0、lock无、dev进程0、watcher0；保留历史/sentinel/数据库/pack，未开启新GUI服务器或修改Desktop。
 - 目标当前disarmed，尝试resume被Host拒绝“需direct human turn”；未重复绕过，未mark complete/blocked。源码冻结，最后文档同步/pack/提交后仅报告部分完成与明确执行安全/实际GUI阻断，剩首次项目选择等普通UX限制也单列。
 
+## 2026-11-19T14:02:00+08:00 · GUI认证失败诊断与明确提示
+
+- 用户提供截图显示工作区外壳已加载，但会话/四列都停在加载态。对当前 `127.0.0.1:52446` 裸地址实测：`POST /api/superagent/workspace`、`/board`、`/conversation` 均返回401，正文为 `dsh web authentication required`；因此不是空任务或SQLite数据为空，而是DSH Web认证层未放行。
+- 安装版源码核实：Web首次访问必须使用DSH打印的authenticated URL（根URL带launch token，之后换签名cookie）；只开裸URL不会自动认证。未读取/搜索token/cookie，未修改Desktop profile，也未绕过认证。
+- 为避免误导，客户端现在将HTTP401映射为`web_auth_required`，工作区明确提示“请从DSH打印的带认证URL重新打开”，而不是无限显示笼统连接失败。源码/locale/客户端合同focused **19/19**通过，构建成功；完整门禁/pack正在`web-auth-20261119-140200/`中收尾。
+- 此修复只改善错误可见性，不把401变成成功，不伪造数据；当前页面仍需通过支持的DSH认证URL重新打开后，才能继续人工验证实际GUI。浏览器视觉/IME/键盘和生产Worker L1/L2阻断保持不变。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

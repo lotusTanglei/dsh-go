@@ -1,0 +1,11 @@
+# Current artifact after explicit web_auth_required UX; resource/auth/cleanup proof only.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261119-140300
+    confirm: always
+- insert:
+    - id: kanban-s4-20261119-140300
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-state-20261119-140300/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-20261119-140300-result.json
