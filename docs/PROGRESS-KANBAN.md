@@ -130,7 +130,7 @@
 
 - 用户提供截图显示工作区外壳已加载，但会话/四列都停在加载态。对当前 `127.0.0.1:52446` 裸地址实测：`POST /api/superagent/workspace`、`/board`、`/conversation` 均返回401，正文为 `dsh web authentication required`；因此不是空任务或SQLite数据为空，而是DSH Web认证层未放行。
 - 安装版源码核实：Web首次访问必须使用DSH打印的authenticated URL（根URL带launch token，之后换签名cookie）；只开裸URL不会自动认证。未读取/搜索token/cookie，未修改Desktop profile，也未绕过认证。
-- 为避免误导，客户端现在将HTTP401映射为`web_auth_required`，工作区明确提示“请从DSH打印的带认证URL重新打开”，而不是无限显示笼统连接失败。源码/locale/客户端合同focused **19/19**通过，构建成功；完整门禁/pack正在`web-auth-20261119-140200/`中收尾。
+- 为避免误导，客户端现在将HTTP401映射为`web_auth_required`，工作区明确提示“请从DSH打印的带认证URL重新打开”，而不是无限显示笼统连接失败。源码/locale/客户端合同focused **19/19**通过；完整门禁307/307、typecheck/build/pack均已exit0，原始日志在`web-auth-20261119-140200/`。
 - 此修复只改善错误可见性，不把401变成成功，不伪造数据；当前页面仍需通过支持的DSH认证URL重新打开后，才能继续人工验证实际GUI。浏览器视觉/IME/键盘和生产Worker L1/L2阻断保持不变。
 
 ## 尚未通过的强制门禁
