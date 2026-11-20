@@ -138,6 +138,15 @@ exports.apply = function (ctx, config) {
         const brief = result.workspace.body.data.briefing
         requireProof(brief && typeof brief.snapshotAt === 'number' && ['decisions', 'active', 'results'].every(key => brief[key]?.total === 0 && Array.isArray(brief[key].items) && brief[key].items.length === 0), 'S4_BRIEFING_MISSING_OR_FALSE_EMPTY')
       }
+      if (config.requireCoverage) {
+        result.board = await post('board', {}, ctx.connection.browserPeer)
+        result.boardNonOwner = await post('board', {}, nonOwner)
+        result.boardOrigin = await post('board', {}, ctx.connection.browserPeer, 'https://hostile.invalid')
+        const board = result.board.body.data
+        requireProof(result.board.status === 200 && board?.scope?.kind === 'superagent-ledger' && board.scope.otherSessions === 'not-included' && ['pending', 'running', 'waiting', 'ended'].every(key => board.columns?.[key]?.total === 0), 'S4_BOARD_COVERAGE_MISSING')
+        requireProof(result.boardNonOwner.status === 403 && result.boardOrigin.status === 403, 'S4_BOARD_FENCE_FAILED')
+        requireProof(source.includes('OtherSessionsNotIncluded') && source.includes('统计范围待确认'), 'S4_COVERAGE_CLIENT_MISSING')
+      }
       const epoch = result.workspace.body.data.epoch
       const input = { epoch, requestId: randomUUID(), intent: 'message', text: 'S4 local conversation fixture. Reply once without tools or creating a task.' }
       result.command = await post('command', input, ctx.connection.browserPeer)

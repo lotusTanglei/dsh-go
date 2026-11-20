@@ -1,0 +1,13 @@
+# Fresh final compatibility/resource proof; synthetic owned state only.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-coverage-final-20261120-161900
+    confirm: always
+- insert:
+    - id: kanban-s4-coverage-final-20261120-161900
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        requireCoverage: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-coverage-final-20261120-161900/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-coverage-final-20261120-161900-result.json

@@ -1,0 +1,13 @@
+# Isolated synthetic Host proof; never scans personal conversation content.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-coverage-20261120-161600
+    confirm: always
+- insert:
+    - id: kanban-s4-coverage-20261120-161600
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        requireCoverage: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-coverage-20261120-161600/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-coverage-20261120-161600-result.json

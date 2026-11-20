@@ -52,5 +52,7 @@ export function readBoard(store: Store, input: { column?: BoardColumn; cursor?: 
     return [column, { total: entries.length, items: input.column && input.column !== column ? [] : page.map(row => boardTicket(store, row)), hasMore: start + page.length < entries.length,
       ...(start + page.length < entries.length && page.length ? { cursor: Buffer.from(JSON.stringify({ v: 1, column, filter, revision, after: page.at(-1)!.id })).toString('base64url') } : {}) }]
   }))
-  return { columns, snapshotAt: Date.now(), revision, filtered: Boolean(query || input.outcome), pendingApprovals: store.repos.approval.all().filter(row => row.state === 'pending').length }
+  // This is the plugin's durable ledger, not a projection of every DSH conversation.
+  // No current-session filter is applied; unregistered sessions are not observed here.
+  return { scope: { kind: 'superagent-ledger' as const, otherSessions: 'not-included' as const }, columns, snapshotAt: Date.now(), revision, filtered: Boolean(query || input.outcome), pendingApprovals: store.repos.approval.all().filter(row => row.state === 'pending').length }
 }

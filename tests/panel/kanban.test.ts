@@ -10,7 +10,7 @@ import { WorkspaceError } from '../../src/workspace/commands.js'
 import { conversationPage } from '../../src/workspace/conversation.js'
 
 type Column = typeof BOARD_COLUMNS[number]
-type BoardData = { columns: Record<Column, { total: number; items: Array<Record<string, any>>; hasMore: boolean; cursor?: string }>; revision: string; filtered: boolean; pendingApprovals: number }
+type BoardData = { scope: { kind: 'superagent-ledger'; otherSessions: 'not-included' }; columns: Record<Column, { total: number; items: Array<Record<string, any>>; hasMore: boolean; cursor?: string }>; revision: string; filtered: boolean; pendingApprovals: number }
 type Envelope = { ok: boolean; data: any; code?: string; error?: { code: string; message: string } }
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
@@ -157,6 +157,30 @@ describe('kanban panel handler contract with real SQLite', () => {
     expect(wrongEpoch.status).toBe(409); expect(wrongEpoch.body.code).toBe('epoch_mismatch')
   })
 
+  it('declares ledger-only coverage even for zero or filtered counts, never all DSH conversations', async () => {
+    const h = fixture()
+    const scope = { kind: 'superagent-ledger', otherSessions: 'not-included' }
+    const empty = await h.post('/board', {})
+    expect(empty.status).toBe(200); expect(empty.body.data.scope).toEqual(scope)
+    expect(BOARD_COLUMNS.map(column => empty.body.data.columns[column].total)).toEqual([0, 0, 0, 0])
+    // Durable tickets from distinct conversation lineages remain visible together.
+    // Neither a current epoch nor an arbitrary browser-selected session scopes this board.
+    h.ticket('older', { thread_key: 'session:old-binding', title: 'Old conversation task' })
+    h.ticket('newer', { thread_key: 'session:new-binding', title: 'New conversation task' })
+    const before = Number(h.store.db.prepare('SELECT total_changes() n').get()?.n)
+    const full = await h.post('/board', {})
+    const shown = full.body.data as BoardData
+    expect(shown.scope).toEqual(scope); expect(shown.filtered).toBe(false)
+    expect(new Set(shown.columns.pending.items.map(item => item.id))).toEqual(new Set(['older', 'newer']))
+    expect(shown.columns.pending.total).toBe(2)
+    const filtered = await h.post('/board', { query: 'not-a-registered-task' })
+    expect(filtered.body.data.scope).toEqual(scope); expect(filtered.body.data.filtered).toBe(true)
+    expect(filtered.body.data.columns.pending.total).toBe(0)
+    expect(Number(h.store.db.prepare('SELECT total_changes() n').get()?.n)).toBe(before)
+    expect((await h.post('/board', { sessionId: 'foreign' })).status).toBe(400)
+    expect((await h.post('/board', { epoch: 'foreign' })).status).toBe(400)
+  })
+
   it('pages every column beyond 100 cards with complete totals and round-trippable opaque cursors', async () => {
     const h = fixture(), states = { pending: 'open', running: 'running', waiting: 'waiting_human', ended: 'ended' }
     for (const column of BOARD_COLUMNS) for (let i = 0; i < 107; i++) {
@@ -184,6 +208,7 @@ describe('kanban panel handler contract with real SQLite', () => {
         const next = await h.post('/board', { column, cursor: page.cursor, limit: 37 })
         expect(next.status).toBe(200)
         const data = next.body.data as BoardData
+        expect(data.scope).toEqual(first.scope)
         for (const other of BOARD_COLUMNS) expect(data.columns[other].total).toBe(107)
         page = data.columns[column]; ids.push(...page.items.map(item => item.id))
       }

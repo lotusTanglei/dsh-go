@@ -152,7 +152,27 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     const more = section('loadMoreBoard')
     contains(more, ['!page?.hasMore || !page.cursor', "call('board', { ...filter, column, cursor: page.cursor, limit: 20 })", 'data.revision !== old.revision', 'merge(array(page.items), array(more.items)', 'loaded.current[column] = items.length'])
     expect(refresh + more).not.toMatch(/\.slice\(0,\s*100\)|Math\.min\(100,\s*(?:Number\()?loaded/)
-    contains(workspace, ["'aria-label': tr('ServerTotal')", "page ? page.total : '—'", "tr('FilteredCounts') : tr('AllCounts')", 'board?.snapshotAt', 'page?.hasMore ? button', 'void loadMoreBoard(column)'])
+    contains(workspace, ["'aria-label': tr(boardScopeKnown ? 'ServerTotal' : 'ServerTotalUnknownScope')", "page ? page.total : '—'", "tr('FilteredCounts') : tr('AllCounts')", 'board?.snapshotAt', 'page?.hasMore ? button', 'void loadMoreBoard(column)'])
+  })
+
+  it('makes the missing cross-conversation coverage visible without fabricating tasks or hiding it in diagnostics', () => {
+    contains(section('boardScopeKnown'), ["board?.scope?.kind === 'superagent-ledger'", "board.scope.otherSessions === 'not-included'"])
+    // Execute the actual coverage predicate without rendering or emulating a DOM.
+    const recognizes = new Function('board', `return (${section('boardScopeKnown')})`) as (board: unknown) => boolean
+    for (const old of [undefined, null, {}, { columns: {} }, { scope: { kind: 'all-sessions', otherSessions: 'not-included' } }, { scope: { kind: 'superagent-ledger' } }]) expect(recognizes(old)).toBe(false)
+    expect(recognizes({ scope: { kind: 'superagent-ledger', otherSessions: 'not-included' } })).toBe(true)
+    const top = workspace.slice(workspace.indexOf("h('header', { className: 'saw-top' }"), workspace.indexOf("h('details', { className: 'saw-boundary' }"))
+    expect(top).toContain("className: 'saw-coverage'") // not hidden with the mobile board
+    contains(workspace, ["className: 'saw-coverage'", "tr(boardScopeKnown ? 'OtherSessionsNotIncluded' : 'BoardScopeUnknown')", "!boardScopeKnown ? tr('CountsScopeUnknown')", "!boardScopeKnown ? 'CoveragePendingHint' : desk.idle ? 'DescribeOutcome' : 'ProgressOnBoard'", "!boardScopeKnown ? 'EmptyColumnUnknownScope'", "board?.filtered ? 'EmptyFilteredColumn' : 'EmptyColumn'", "'NoLoadedTasks'"])
+    expect(section('briefingView')).not.toContain('text(desk.recordTotal)') // plans are not Ticket counts
+    expect(zh.wAllCounts).toBe('超管已登记任务')
+    expect(zh.wFilteredCounts).toContain('已登记任务')
+    expect(zh.wOtherSessionsNotIncluded).toBe('未汇总其他会话')
+    expect(zh.wDescribeOutcome).toContain('其他会话尚未汇总')
+    expect(zh.wNothingToDecide).toContain('已登记任务')
+    expect(en.wAllCounts).toBe('Coordinator-registered tasks')
+    expect(en.wOtherSessionsNotIncluded).toBe('Other conversations not included')
+    expect(en.wEmptyFilteredColumn).toContain('filter')
   })
 
   it('uses ticket-scoped timelineCursor and complete report/delivery projections rather than a recent global slice', () => {
