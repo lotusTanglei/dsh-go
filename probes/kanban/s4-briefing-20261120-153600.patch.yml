@@ -1,0 +1,12 @@
+# Current task/decision brief; isolated Host resources, no browser/production Worker proof.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-briefing-20261120-153600
+    confirm: always
+- insert:
+    - id: kanban-s4-briefing-20261120-153600
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-briefing-20261120-153600/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-briefing-20261120-153600-result.json

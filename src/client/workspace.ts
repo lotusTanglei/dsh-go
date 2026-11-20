@@ -61,6 +61,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const [draftEpoch, setDraftEpoch] = React.useState('')
     const [mobileTab, setMobileTab] = React.useState('board')
     const [collapsed, setCollapsed] = React.useState(false)
+    const [activityView, setActivityView] = React.useState('briefing')
+    const [newReplies, setNewReplies] = React.useState(0)
+    const activityViewRef = React.useRef('briefing')
+    const replyWatermarks = React.useRef({} as Record<string, number>)
+    const lastActivityView = React.useRef('briefing')
+    const briefingScroll = React.useRef(0)
     const [query, setQuery] = React.useState('')
     const [outcome, setOutcome] = React.useState('')
     const [error, setError] = React.useState('')
@@ -144,6 +150,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const setConversationPage = (epoch: string, page: any, mode: string) => {
       const old = conversations.current[epoch] || { items: [] }
       const next = { ...old, items: merge(old.items, array(page.items), messageOrder), ...(mode !== 'before' ? { nextAfter: page.nextAfter, deltaMore: mode === 'after' && page.hasMore } : {}), ...(mode !== 'after' ? { nextBefore: page.nextBefore, hasMore: page.hasMore } : {}), error: '' }
+      next.latestAssistant = page.latestAssistant || old.latestAssistant
+      const replySeq = next.latestAssistant?.lastSeq
+      if (typeof replySeq === 'number' && mode !== 'before') {
+        if (replySeq > (replyWatermarks.current[epoch] ?? -1) && epoch === epochRef.current && activityViewRef.current !== 'history') setNewReplies(1)
+        replyWatermarks.current[epoch] = replySeq
+      }
       conversations.current = { ...conversations.current, [epoch]: next }
       setConversation(conversations.current)
     }
@@ -284,7 +296,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             const nextComposer = composerCache.current[composerEpoch] || readComposer(composerEpoch)
             composerCache.current[composerEpoch] = nextComposer; composerRef.current = nextComposer; setComposer(nextComposer)
             draftEpochRef.current = composerEpoch; setDraftEpoch(composerEpoch)
-            historyRef.current = epoch; setHistoryEpoch(epoch)
+            historyRef.current = epoch; setHistoryEpoch(epoch); setNewReplies(0)
             if (prior) { setNotice(tr('EpochChanged')); dialogRef.current?.close(); setConfirmation(null) }
           }
           workspaceRef.current = data; setWorkspace(data); setError('')
@@ -318,10 +330,15 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     React.useLayoutEffect(() => {
       const node = messagesRef.current
       if (!node) return
+      if (lastActivityView.current !== activityView) {
+        node.scrollTop = activityView === 'briefing' ? briefingScroll.current : node.scrollHeight
+        lastActivityView.current = activityView; historyAnchor.current = null
+        return
+      }
       const anchor = historyAnchor.current
-      if (anchor && anchor.epoch === historyEpoch) { node.scrollTop = anchor.top + node.scrollHeight - anchor.height; historyAnchor.current = null }
-      else if (autoScroll.current) node.scrollTop = node.scrollHeight
-    }, [conversation, historyEpoch])
+      if (activityView === 'history' && anchor && anchor.epoch === historyEpoch) { node.scrollTop = anchor.top + node.scrollHeight - anchor.height; historyAnchor.current = null }
+      else if (activityViewRef.current === 'history' && autoScroll.current) node.scrollTop = node.scrollHeight
+    }, [conversation, historyEpoch, activityView])
     React.useEffect(() => {
       if (!detailId) return
       detailCloseRef.current?.focus()
@@ -475,9 +492,19 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       pending ? h('div', { className: 'saw-row' }, button(tr('Approve'), () => askConfirm('approval', item, 'approve'), !canApprove, { title: !canApprove ? tr('CannotApprove') : undefined }), button(tr('Reject'), () => askConfirm('approval', item, 'deny'), expired || item.allowed?.deny !== true || !item.fingerprint)) : null)
     }
     const admissionView = (plan: any, confirm = false) => h('article', { className: 'saw-box', key: plan.planId }, h('h3', null, tr('Admission')), h('p', { className: 'saw-meta' }, tr('AdmissionHint')), fields([
-      ['State', stateName(plan.state)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(plan.fingerprint))], ['Expiry', time(plan.expiresAt)], ['PolicyVersion', text(plan.policyVersion)],
+      ['State', stateName(plan.expiresAt <= Date.now() ? 'expired' : plan.state)], ['Fingerprint', h('code', { className: 'saw-fingerprint' }, text(plan.fingerprint))], ['Expiry', time(plan.expiresAt)], ['PolicyVersion', text(plan.policyVersion)],
     ]), briefView(plan.brief), plan.originTicket ? fields([['RecreatedFrom', text(plan.originTicket)]]) : null, plan.scopeIdentity === 'host-owner-home-relative' ? h('p', { className: 'saw-meta' }, tr('HomeRelativeScope')) : null, !completeBrief(plan) ? h('p', { className: 'saw-error' }, tr('ScopeHidden')) : null, plan.blockedReason ? h('p', { className: 'saw-error' }, plan.blockedReason) : null,
     !confirm && plan.state === 'pending' ? h('div', { className: 'saw-row' }, button(tr('ApprovePlan'), () => askConfirm('admission', plan, 'approve'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint || !completeBrief(plan)), button(tr('RejectPlan'), () => askConfirm('admission', plan, 'reject'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint), button(tr('RevisePlan'), () => askConfirm('revision', plan, 'revise'), plan.epoch !== epochRef.current || plan.expiresAt <= Date.now() || !plan.fingerprint || !completeBrief(plan))) : null)
+    const chooseActivity = (view: string) => {
+      if (activityViewRef.current === 'briefing' && messagesRef.current) briefingScroll.current = messagesRef.current.scrollTop
+      activityViewRef.current = view; setActivityView(view)
+      if (view === 'history') { setNewReplies(0); autoScroll.current = true }
+      // Returning to the brief uses the current interaction context, never moves an old draft/request.
+      if (view === 'briefing' && epochRef.current && historyRef.current !== epochRef.current) {
+        historyRef.current = epochRef.current; setHistoryEpoch(epochRef.current); setHistoryError('')
+        void readConversation(epochRef.current)
+      }
+    }
     const chooseDraftEpoch = (epoch: string) => {
       if (sendBusy.current) return
       draftEpochRef.current = epoch; setDraftEpoch(epoch)
@@ -488,14 +515,40 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const archive = !!historyEpoch && historyEpoch !== workspace?.epoch
     const currentMessages = conversation[historyEpoch]
     const pendingPlans = array(workspace?.admissions).filter(plan => plan.state === 'pending' || plan.state === 'approved')
-    const todoCount = typeof workspace?.pendingApprovals === 'number' ? workspace.pendingApprovals + pendingPlans.filter(plan => plan.state === 'pending').length : null
+    const decisionTotal = workspace?.briefing?.decisions?.total ?? workspace?.pendingApprovals
+    const todoCount = typeof decisionTotal === 'number' ? decisionTotal + pendingPlans.filter(plan => plan.state === 'pending' && plan.expiresAt > Date.now()).length : null
     const latest = composer.receipt
     const pendingRequest = composer.pending
     const item = detail?.ticket
+    const briefing = workspace?.briefing
+    const latestAssistant = conversation[workspace?.epoch]?.latestAssistant
+    const openTaskRecord = (record: any, tab = 'overview') => {
+      closeSystem(); setMobileTab('board'); openDetail({ id: record.ticketId || record.id }); setDetailTab(tab)
+    }
+    const showAllTasks = () => { closeSystem(); changeFilter('', ''); setMobileTab('board'); setNotice(tr('AllTasksUnfiltered')) }
+    const recordView = (record: any, result = false) => h('article', { className: 'saw-record', key: record.id },
+      h('div', { className: 'saw-message-head' }, h('span', { className: 'saw-badge' }, record.anomaly ? tr('StateConflict') : stateName(record.state === 'ended' ? record.outcome : record.state)), h('time', null, time(record.at))),
+      h('h4', null, record.title || tr('Untitled')),
+      record.disabledReason ? h('p', { className: 'saw-meta' }, tr('ExecutionBlocked')) : null,
+      record.progress ? h('p', null, record.progress) : h('p', { className: 'saw-meta' }, tr(result ? 'NoResultSummary' : 'NoProgressSummary')),
+      !result && record.nextAction ? h('p', null, `${tr('PlannedNext')}: ${record.nextAction}`) : null,
+      result && array(record.risks).length ? h('p', { className: 'saw-meta' }, `${tr('Risks')}: ${record.risks.join(' · ')}`) : null,
+      button(tr(result ? 'ViewResult' : 'OpenTask'), () => openTaskRecord(record, result ? 'results' : 'overview')))
+    const briefingView = () => !briefing ? h('p', { className: 'saw-meta' }, workspace ? tr('BriefingUnavailable') : tr('Loading')) : h(React.Fragment, null,
+      h('p', { className: 'saw-meta' }, `${tr('BriefingScope')} · ${time(briefing.snapshotAt)}`),
+      h('p', { className: 'saw-meta' }, tr('BriefingRecordHint')),
+      h('section', { className: 'saw-briefing-group', 'aria-label': tr('YourDecisions') }, h('h3', null, tr('YourDecisions')),
+        ...pendingPlans.map(plan => h('details', { className: 'saw-record', key: plan.planId }, h('summary', null, h('strong', null, tr(plan.expiresAt <= Date.now() ? 'Expired' : plan.state === 'pending' ? 'ReviewPlan' : 'PlanApprovedBlocked')), h('span', { className: 'saw-card-line' }, plan.brief?.goal || tr('Untitled'))), admissionView(plan))),
+        ...array(briefing.decisions?.items).map((decision: any) => h('article', { className: 'saw-record', key: decision.id }, h('span', { className: 'saw-badge' }, tr(decision.kind === 'approval' ? 'Approval' : decision.kind === 'anomaly' ? 'StateConflict' : 'InformationNeeded')), h('h4', null, decision.title || tr('Untitled')), h('p', null, decision.kind === 'anomaly' ? tr('StateConflict') : decision.summary || tr('InformationNeeded')), button(tr(decision.kind === 'approval' ? 'ReviewApproval' : 'ReviewDetails'), () => decision.ticketId ? openTaskRecord(decision, decision.kind === 'approval' ? 'approvals' : 'overview') : openSystem('todo')))),
+        !pendingPlans.length && briefing.decisions?.total === 0 ? h('p', { className: 'saw-meta' }, tr('NoStructuredDecisions')) : null,
+        h('p', { className: 'saw-meta' }, `${tr('WindowCount')}: ${array(briefing.decisions?.items).length} / ${text(briefing.decisions?.total)} · ${tr('Plans')}: ${pendingPlans.length}`),
+        button(tr('AllDecisions'), () => openSystem('todo')), button(tr('AllTasks'), showAllTasks)),
+      h('section', { className: 'saw-briefing-group', 'aria-label': tr('TaskRecords') }, h('h3', null, tr('TaskRecords')), ...array(briefing.active?.items).map(record => recordView(record)), briefing.active?.total === 0 ? h('p', { className: 'saw-meta' }, tr('NoActiveRecords')) : null, h('p', { className: 'saw-meta' }, `${tr('WindowCount')}: ${array(briefing.active?.items).length} / ${text(briefing.active?.total)}`), button(tr('AllTasks'), showAllTasks)),
+      h('section', { className: 'saw-briefing-group', 'aria-label': tr('ResultRecords') }, h('h3', null, tr('ResultRecords')), ...array(briefing.results?.items).map(record => recordView(record, true)), briefing.results?.total === 0 ? h('p', { className: 'saw-meta' }, tr('NoResultRecords')) : null, h('p', { className: 'saw-meta' }, `${tr('WindowCount')}: ${array(briefing.results?.items).length} / ${text(briefing.results?.total)}`), button(tr('AllTasks'), showAllTasks)))
     const systemContent = () => {
       const data = systemData[system]
       if (!data) return h('p', null, tr('Loading'))
-      if (system === 'todo') return h(React.Fragment, null, h('h3', null, tr('Admission')), ...pendingPlans.map(plan => admissionView(plan)), !pendingPlans.length ? h('p', null, tr('NoPlans')) : null, h('h3', null, tr('Approvals')), h('p', { className: 'saw-meta' }, tr('ApprovalWindow')), ...array(data.items).map(approvalView), !array(data.items).length ? h('p', null, tr('NoApprovals')) : null, data.next ? button(tr('MoreApprovals'), () => { void readSystem(true) }, systemBusy.current) : null)
+      if (system === 'todo') return h(React.Fragment, null, h('h3', null, tr('Admission')), ...pendingPlans.map(plan => admissionView(plan)), !pendingPlans.length ? h('p', null, tr('NoPlans')) : null, h('h3', null, tr('InformationNeeded')), h('p', { className: 'saw-meta' }, tr('QuestionsOnBoard')), button(tr('AllTasks'), showAllTasks), h('h3', null, tr('Approvals')), h('p', { className: 'saw-meta' }, tr('ApprovalWindow')), ...array(data.items).map(approvalView), !array(data.items).length ? h('p', null, tr('NoApprovals')) : null, data.next ? button(tr('MoreApprovals'), () => { void readSystem(true) }, systemBusy.current) : null)
       if (system === 'sources') return h(React.Fragment, null, h('p', null, tr('Readonly')), ...array(data.sources).map((source: any, i: number) => h('article', { className: 'saw-box', key: source.id || i }, h('h3', null, source.id || tr('Source')), fields([['Kind', text(source.kind)], ['Health', source.ok === true ? tr('Healthy') : source.ok === false ? tr('Unhealthy') : tr('Unknown')], ['LastEvent', time(source.lastAt)], ['Paused', source.paused === true ? tr('Yes') : source.paused === false ? tr('No') : tr('Unknown')], ['Attended', source.attended === true ? tr('Yes') : source.attended === false ? tr('No') : tr('Unknown')]]))), !array(data.sources).length ? h('p', null, tr('NoSources')) : null)
       if (system === 'settings') {
         const groups: Record<string, any[]> = {}
@@ -517,17 +570,26 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       error ? h('div', { className: 'saw-error saw-banner', role: 'alert' }, error, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => poke.current())) : null,
       storageError ? h('div', { className: 'saw-error saw-banner' }, tr('StorageUnavailable')) : null,
       h('div', { className: 'saw-sr', role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, notice),
-      h('nav', { className: 'saw-mobile-tabs', 'aria-label': tr('WorkspaceView') }, ...['board', 'chat'].map(tab => button(tr(tab === 'board' ? 'Board' : 'Conversation'), () => setMobileTab(tab), false, { key: tab, 'aria-pressed': mobileTab === tab }))),
+      h('nav', { className: 'saw-mobile-tabs', 'aria-label': tr('WorkspaceView') }, ...['board', 'chat'].map(tab => button(tr(tab === 'board' ? 'Board' : 'TaskBriefing'), () => setMobileTab(tab), false, { key: tab, 'aria-pressed': mobileTab === tab }))),
       h('div', { className: `saw-workspace${collapsed ? ' saw-collapsed' : ''}`, 'data-mobile-tab': mobileTab },
-        h('section', { className: 'saw-chat', 'aria-label': tr('Conversation') }, h('div', { className: 'saw-section-head' }, h('h2', null, tr('Conversation')), button(collapsed ? tr('ExpandChat') : tr('CollapseChat'), () => setCollapsed(!collapsed), false, { className: 'saw-btn saw-collapse' })),
-          h('div', { className: 'saw-chat-inner' }, array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('HistoryGroup'), h('select', { value: historyEpoch, onChange: (e: any) => { const epoch = e.target.value; historyRef.current = epoch; setHistoryEpoch(epoch); autoScroll.current = true; setHistoryError(''); void readConversation(epoch) } }, h('option', { value: workspace.epoch }, tr('CurrentConversation')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedConversation')} ${index + 1} · ${time(row.createdAt)}`)))) : null,
+        h('section', { className: 'saw-chat', 'aria-label': tr('TaskBriefing') }, h('div', { className: 'saw-section-head' }, h('h2', null, tr('TaskBriefing')), button(collapsed ? tr('ExpandChat') : tr('CollapseChat'), () => setCollapsed(!collapsed), false, { className: 'saw-btn saw-collapse' })),
+          h('div', { className: 'saw-chat-inner' },
+            h('nav', { className: 'saw-activity-tabs', 'aria-label': tr('ActivityView') }, button(tr('TaskBriefing'), () => chooseActivity('briefing'), false, { 'aria-pressed': activityView === 'briefing' }), button(`${tr('DialogueHistory')}${newReplies ? ` · ${tr('NewReply')}` : ''}`, () => chooseActivity('history'), false, { 'aria-pressed': activityView === 'history' })),
+            activityView === 'history' && array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('HistoryGroup'), h('select', { value: historyEpoch, onChange: (e: any) => { const epoch = e.target.value; historyRef.current = epoch; setHistoryEpoch(epoch); autoScroll.current = true; setHistoryError(''); void readConversation(epoch) } }, h('option', { value: workspace.epoch }, tr('CurrentConversation')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedConversation')} ${index + 1} · ${time(row.createdAt)}`)))) : null,
           archive ? h('p', { className: 'saw-banner' }, tr('ArchiveReadonly')) : null,
           historyError ? h('p', { className: 'saw-error' }, historyError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readConversation(historyEpoch) })) : null,
-          h('div', { className: 'saw-messages', ref: messagesRef, onScroll: (e: any) => { const node = e.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80 }, 'aria-label': tr('ConversationHistory') },
+          h('div', { className: 'saw-messages', ref: messagesRef, onScroll: (e: any) => { const node = e.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80 }, 'aria-label': tr(activityView === 'briefing' ? 'TaskBriefing' : 'ConversationHistory') },
+            activityView === 'briefing' ? h(React.Fragment, null,
+              h('p', { className: 'saw-meta saw-view-marker' }, tr('BriefingVersion')),
+              historyError ? h('p', { className: 'saw-error' }, tr('RepliesUnavailable')) : null,
+              latestAssistant ? h('details', { className: 'saw-reply', key: latestAssistant.id }, h('summary', null, newReplies ? tr('NewReply') : tr('LatestReply'), h('time', { className: 'saw-meta' }, ` · ${time(latestAssistant.at)}`)), h('p', { className: 'saw-meta' }, tr('ReplyNotDecision')), h('p', { className: 'saw-pre' }, latestAssistant.text), button(tr('DialogueHistory'), () => chooseActivity('history'))) : null,
+              button(tr('DialogueHistory'), () => chooseActivity('history')),
+              briefingView()) : h(React.Fragment, null,
+            h('p', { className: 'saw-meta' }, tr('HistoryRecordHint')),
             currentMessages?.hasMore && currentMessages.nextBefore ? button(tr('OlderMessages'), () => { const node = messagesRef.current; if (node) historyAnchor.current = { epoch: historyEpoch, top: node.scrollTop, height: node.scrollHeight }; void readConversation(historyEpoch, currentMessages.nextBefore) }, historyBusy.current) : null,
             !currentMessages ? h('p', { className: 'saw-meta' }, historyError ? tr('HistoryUnavailable') : tr('Connecting')) : !array(currentMessages.items).length ? h('div', { className: 'saw-empty' }, h('h3', null, tr('StartHere')), h('p', null, tr('StartHint'))) : null,
-            ...array(currentMessages?.items).map((message: any) => h('article', { className: `saw-message saw-message-${message.kind}`, key: message.id }, h('div', { className: 'saw-message-head' }, h('strong', null, stateName(message.kind)), h('time', null, time(message.at))), h('p', { className: 'saw-pre' }, message.text), message.stage ? h('small', { className: 'saw-meta' }, `${tr('DeliveryStage')}: ${stateName(message.stage)}`) : null)),
-            !archive ? pendingPlans.map(plan => admissionView(plan)) : null),
+            ...array(currentMessages?.items).map((message: any) => h('article', { className: `saw-message saw-message-${message.kind}`, key: message.id }, h('div', { className: 'saw-message-head' }, h('strong', null, stateName(message.kind)), h('time', null, time(message.at))), h('p', { className: 'saw-pre' }, message.text), message.stage ? h('details', { className: 'saw-message-technical' }, h('summary', null, tr('TechnicalDetails')), h('small', { className: 'saw-meta' }, `${tr('DeliveryStage')}: ${stateName(message.stage)}`)) : null)),
+            !archive ? pendingPlans.map(plan => admissionView(plan)) : null)),
           h('form', { className: 'saw-composer', onSubmit: (e: any) => { e.preventDefault(); void submit() } },
             array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('DraftGroup'), h('select', { value: draftEpoch, disabled: sending, onChange: (e: any) => chooseDraftEpoch(e.target.value) }, h('option', { value: workspace.epoch }, tr('CurrentDraft')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedDraft')} ${index + 1}`)))) : null,
             oldDraft ? h('p', { className: 'saw-banner' }, tr('OldDraftHint')) : null,

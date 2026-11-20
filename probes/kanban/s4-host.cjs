@@ -86,7 +86,7 @@ exports.apply = function (ctx, config) {
       const served = await response.text()
       result.client = { graphRev: graph.rev, entry, clientPath, expectedPath, bytes: bytes.length, sha256: digest(bytes), bundleUrl: bundleUrl.href, bundleStatus: response.status, bundleSha256: digest(served), servedContainsExactArtifact: served.includes(source.trim()), proof: 'factory-and-slot registration only; no React render or DOM' }
       requireProof(response.status === 200 && result.client.servedContainsExactArtifact, 'S4_SERVED_ARTIFACT_MISMATCH')
-      const requiredSeams = ['function WorkspacePage', 'saw-workspace', 'command-status', 'timelineCursor', 'RetrySameRequest', 'BoundaryTitle']
+      const requiredSeams = ['function WorkspacePage', 'saw-workspace', 'command-status', 'timelineCursor', 'RetrySameRequest', 'BoundaryTitle', ...(config.requireBriefing ? ['TaskBriefing', 'DialogueHistory', 'briefingView', 'latestAssistant', '业务摘要视图 · v2'] : [])]
       result.client.workspaceSeams = Object.fromEntries(requiredSeams.map(term => [term, source.includes(term)]))
       requireProof(Object.values(result.client.workspaceSeams).every(Boolean), 'S4_SINGLE_WORKSPACE_SEAM_MISSING')
       requireProof(!/function\s+SevenPages\b|function\s+Page\s*\(|createRoot\s*\(|ReactDOM|document\.body|dangerouslySetInnerHTML|\binnerHTML\b|\bouterHTML\b/.test(source), 'S4_OLD_OR_ROOT_OWNING_CLIENT')
@@ -134,6 +134,10 @@ exports.apply = function (ctx, config) {
       result.workspace = await post('workspace', {}, ctx.connection.browserPeer)
       requireProof(result.nonOwnerDenied.status === 403 && result.originDenied.status === 403, 'S4_ROUTE_FENCE_FAILED')
       requireProof(result.workspace.status === 200 && result.workspace.body.ok === true && result.workspace.body.data.model.available === true && result.workspace.body.data.capabilities.workerExecution === false, 'S4_WORKSPACE_NOT_READY_OR_WORKER_OPEN')
+      if (config.requireBriefing) {
+        const brief = result.workspace.body.data.briefing
+        requireProof(brief && typeof brief.snapshotAt === 'number' && ['decisions', 'active', 'results'].every(key => brief[key]?.total === 0 && Array.isArray(brief[key].items) && brief[key].items.length === 0), 'S4_BRIEFING_MISSING_OR_FALSE_EMPTY')
+      }
       const epoch = result.workspace.body.data.epoch
       const input = { epoch, requestId: randomUUID(), intent: 'message', text: 'S4 local conversation fixture. Reply once without tools or creating a task.' }
       result.command = await post('command', input, ctx.connection.browserPeer)
@@ -148,6 +152,10 @@ exports.apply = function (ctx, config) {
       result.conversationProof = { user: items.filter(row => row.id === `workspace:${input.requestId}` && row.text === input.text).length, assistant: items.filter(row => row.kind === 'assistant' && row.text === reply).length }
       requireProof(result.command.status === 200 && result.command.body.data.accepted === true && result.status.status === 200 && result.status.body.data.accepted === true && result.status.body.data.requestId === input.requestId && ['processing', 'published'].includes(result.status.body.data.stage), 'S4_COMMAND_RECEIPT_FAILED')
       requireProof(result.flush === true && result.userMessageEvents === 1 && result.conversation.status === 200 && result.conversationProof.user === 1 && result.conversationProof.assistant === 1, 'S4_DURABLE_CONVERSATION_FAILED')
+      if (config.requireBriefing) {
+        result.briefingProof = { groups: Object.keys(result.workspace.body.data.briefing), latestReplyIndependent: result.conversation.body.data.latestAssistant?.text === reply }
+        requireProof(result.briefingProof.latestReplyIndependent, 'S4_BRIEFING_ASSISTANT_MISSING')
+      }
       requireProof(result.mainCalls === 1 && result.localAdapterCalls === result.mainCalls + result.titleCalls && result.titleCalls <= 1 && result.externalProviderRequests === 0, 'S4_PROVIDER_BOUNDARY_FAILED')
       result.state = 'passed'
     } catch (error) { recordError('error', error) }

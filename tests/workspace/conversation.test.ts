@@ -272,6 +272,27 @@ describe('Conversation pagination', () => {
     expect(conversationPage(concurrent, { epoch, after: second.nextAfter }).items).toEqual([])
   })
 
+  it('keeps the real latest assistant reply discoverable when notices fill the bounded history window', () => {
+    const events = [event(0, 'assistant/message', { message: assistant('reply', 'Which scope should I use?') }), ...Array.from({ length: 45 }, (_, i) => event(i + 1, 'user/message', notice(`notice-${i}`)))]
+    const page = conversationPage(events, { epoch, limit: 5 })
+    expect(page.items.every(row => row.kind === 'notice')).toBe(true)
+    expect(page.latestAssistant).toMatchObject({ id: 'reply', kind: 'assistant', text: 'Which scope should I use?', lastSeq: 0 })
+    const delta = conversationPage([...events, event(46, 'tool/call', { text: 'not a reply' })], { epoch, after: page.nextAfter })
+    expect(delta.items).toEqual([])
+    expect(delta.latestAssistant).toEqual(page.latestAssistant)
+    expect(conversationPage(events, { epoch, before: page.nextBefore!, limit: 5 }).latestAssistant).toEqual(page.latestAssistant)
+  })
+
+  it('never upgrades internal/producer summaries to replies, and redacts the independently surfaced reply', () => {
+    const events = [event(0, 'assistant/message', { message: assistant('real', 'Inspect /Users/private-owner/secret.txt') }), event(1, 'user/message', notice('notice', 'Approve now')), event(2, 'assistant/message', { message: { ...assistant('internal', 'hidden'), source: { kind: 'superagent' } } }), event(3, 'assistant/message', { message: assistant('real', 'Corrected question') })]
+    const page = conversationPage(events, { epoch, limit: 1 })
+    expect(page.latestAssistant).toMatchObject({ id: 'real', text: 'Corrected question', lastSeq: 3 })
+    const earlier = conversationPage(events.slice(0, 3), { epoch, limit: 1 })
+    expect(earlier.latestAssistant?.id).toBe('real')
+    expect(earlier.latestAssistant?.text).not.toContain('/Users/private-owner')
+    expect(conversationPage([event(0, 'user/message', notice('notice'))], { epoch }).latestAssistant).toBeUndefined()
+  })
+
   it('rejects cross-epoch, direction-confused, future/truncated, and malformed cursors with fixed errors', () => {
     const current = conversationPage(history, { epoch, limit: 1 })
     errorCode(() => conversationPage(history, { epoch: 'foreign-private-epoch', after: current.nextAfter }), 'epoch_mismatch', 'foreign-private-epoch')

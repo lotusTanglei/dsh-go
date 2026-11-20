@@ -4,14 +4,14 @@
 
 - **L1/L2未通过，真实Worker关闭**：安装版真实spawn仍用父Session sandbox根；正确Ticket根下native/shell对同票未列/deny路径均写入成功。证据见[能力边界](<KANBAN-CAPABILITY.md>)与[本轮进度](<PROGRESS-KANBAN.md>)。生产新启动、旧live恢复、工具guard均fail-closed；不能把fake Spawner测试或看板流转当成真实工作完成。
 - **授权范围不可完整审阅时禁批准**：当前Host owner主目录内、无敏感后缀的规范repo可用`~/完整项目后缀`无损审阅（UI明确`~`定义），不改变执行契约、不以opaque hash代替授权；其他用户/非规范/含秘密路径或action仍被脱敏时只能拒绝。首次安全项目选择、跨机器路径映射仍未闭合。
-- **GUI认证与视觉验收**：单一对话+四列工作区源码/构建/真实Host资源已验证；若当前标签页不是由DSH打印的带认证URL打开，API会返回401并无法加载数据。客户端现明确提示认证过期/缺失，但不会绕过DSH Web认证。实际浏览器渲染、焦点、主题、IME仍未验。旧七页证据按原版本保留。
+- **GUI展示与重载**：2026-11-20用户截图已显示“已连接”及历史；此前匿名401不足以证明用户页认证失败，旧诊断已撤回。新版默认“任务与决策”，原始流水收进“对话历史”，从未筛选账本读取最多6条/组、完整计数；测试记录仍保留原名。用户授权插件重载后，管理器返回`restart-required / unmanaged-plugin`，已恢复启用，必须重启DSH后加载新版。实际布局、焦点、主题、IME仍未完整验收；401提示仅对实际401适用。
 - **产品UX仍有未闭合项**：首次安全项目选择仍需补；unknown/false的精确版本已可显式终止路由，Host重新对账后有受理证据则拒绝，不能当停止模型/已受理任务。人工停止后禁止原地resume，可“以此需求新建任务”铺新草稿并保留来源，必须重新发送/审阅新计划，不继承旧审批。同一pending计划已可显式修改目标/第一步并重新确认，API另支持allow/deny/验收等受限patch；范围/runtime/base不可借修订改变。过期计划已终态释放容量（含跨epoch），103计划分页/第101审批有回归。不能以执行安全阻断掩盖其余普通功能缺项。
 
 ## 交付限制
 
-- **视觉验收未做**：当前连接 GUI 未安装/挂载此 bundle；侧栏点击、React/DOM渲染、console slot crash、焦点、浅/深主题对比度、浏览器通知实际显示均未验证。见[P5-VISUAL-CHECKLIST](P5-VISUAL-CHECKLIST.md)。
+- **视觉验收未闭合**：用户截图证明旧工作区已挂载并显示历史，不是新版任务摘要或全部交互通过。新版资源须重启后验证；console、焦点、浅/深主题对比度、窄屏/短高度均未实测。见[P5-VISUAL-CHECKLIST](P5-VISUAL-CHECKLIST.md)。
 - **v2 Source 未接入**：GitHub/飞书等外部源、验签、持续连接不在 v1；当前主要是 attended session source。
-- **desktop profile 未安装**：本轮只使用 superagent-dev/命令行临时 overlay；没有修改 Desktop profile 或 DSH 安装包。安装说明见[RELEASE](RELEASE.md)。
+- **Desktop当前应用边界**：插件已在desktop启用，源码链接本工作区；本次经用户授权由插件管理器关闭再启用，最终保持启用，但结果为需重启。未手工修改profile/安装包或解除Worker阻断。安装说明见[RELEASE](RELEASE.md)。
 - **P4 完整生产链路边界**：真实受控单 Worker 已通过 stall nudge→cancel→escalate；不是自然长任务、多 Worker、完整 Router 模型规划或崩溃窗口恢复证明。20分钟进展反例沿用旧证据，不冒称新实跑。
 - **客户端构建预设是自建的**：`scripts/build-client.mjs` 是当前 bundle 构建适配；DSH 升级可能改变 ModuleLoader/Slot/React装配，需重新做静态与人工验收。
 

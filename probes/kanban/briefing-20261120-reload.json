@@ -1,0 +1,11 @@
+{
+  "kind": "superagent-plugin-reload-attempt",
+  "date": "2026-11-20",
+  "authorization": "User selected: 允许，仅重载超管插件（推荐）",
+  "target": "include:superagent-foundation",
+  "disableReceipt": {"stage":"enable","target":"include:superagent-foundation","enabled":false,"changed":true,"application":"restart-required","warnings":[],"restartReason":"unmanaged-plugin","nextStep":"Tell the user to restart DSH to apply this change: the change reaches a plugin running outside the plugin list."},
+  "enableReceipt": {"stage":"enable","target":"include:superagent-foundation","enabled":true,"changed":true,"application":"restart-required","warnings":[],"restartReason":"unmanaged-plugin","nextStep":"Tell the user to restart DSH to apply this change: the change reaches a plugin running outside the plugin list."},
+  "freshListEvidence": {"entryId":"include:superagent-foundation","moduleName":"dsh-superagent","enabled":true,"fiberPhase":"active","patchId":"superagent-foundation"},
+  "applicationClaim": "Not hot-applied; current process needs DSH restart. Enabled state restored.",
+  "boundaries": "No DSH restart, token search, unrelated plugin mutation, permission expansion, or Worker gate opening. This receipt records actual tool results; it is not browser verification."
+}

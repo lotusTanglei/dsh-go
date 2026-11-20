@@ -73,7 +73,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(index, ["import { createWorkspacePage } from './workspace.js'", "import { workspaceStyles } from './workspace-style.js'", 'workspaceFactory = createWorkspacePage', 'styleFactory = workspaceStyles', 'workspaceFactory(React, request, t, styleFactory())', "name: 'main', key: 'superagent'", '}, Page)'])
     expect(index).not.toMatch(/\bconst pages\b|\bsetPage\b|\bselected\b|h\(['"]nav['"]|sa-tabs/)
     expect([...index.matchAll(/name:\s*['"]main['"]/g)]).toHaveLength(1)
-    contains(workspace, ["['pending', 'running', 'waiting', 'ended']", "tr('Workspace')", "tr('Conversation')", "tr('Board')", 'saw-workspace'])
+    contains(workspace, ["['pending', 'running', 'waiting', 'ended']", "tr('Workspace')", "tr('TaskBriefing')", "tr('Board')", 'saw-workspace'])
   })
 
   it('wires workspace commands, receipts, admission, conversation, and board without arbitrary actor/session targeting', () => {
@@ -123,6 +123,22 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('setConversationPage'), ['merge(old.items, array(page.items), messageOrder)', 'nextAfter: page.nextAfter', 'nextBefore: page.nextBefore', 'hasMore: page.hasMore'])
     contains(workspace, ["e?.code === 'web_auth_required' ? tr('WebAuthRequired')", 'workspace?.archiveEpochs', 'currentMessages.nextBefore', 'readConversation(historyEpoch, currentMessages.nextBefore)', 'anchor.top + node.scrollHeight - anchor.height', 'tr(\'ArchiveReadonly\')', 'message.text'])
     expect(section('readConversation')).not.toMatch(/setConversation\(\s*\{\s*\}\s*\)|conversations\.current\s*=\s*\{\s*\}/)
+  })
+
+  it('defaults to ledger tasks and decisions, keeping raw history and technical receipts behind explicit controls', () => {
+    contains(workspace, ["React.useState('briefing')", "setActivityView(view)", "activityView === 'briefing' ? h(React.Fragment", "tr('TaskBriefing')", "tr('DialogueHistory')", "tr('BriefingVersion')"])
+    contains(section('briefingView'), ['briefing.decisions?.items', 'briefing.active?.items', 'briefing.results?.items', 'briefing.decisions?.total', 'briefing.active?.total', 'briefing.results?.total', "tr('NoStructuredDecisions')", "plan.state === 'pending' ? 'ReviewPlan' : 'PlanApprovedBlocked'", 'admissionView(plan)', "openTaskRecord(decision, decision.kind === 'approval' ? 'approvals' : 'overview')"])
+    expect(section('briefingView')).not.toMatch(/currentMessages|message\.text|askConfirm\(/)
+    contains(section('showAllTasks'), ["changeFilter('', '')", "setMobileTab('board')"])
+    expect(section('briefing')).not.toContain('board')
+    contains(section('decisionTotal'), ['workspace?.briefing?.decisions?.total', 'workspace?.pendingApprovals'])
+    contains(section('todoCount'), ['decisionTotal', "plan.state === 'pending' && plan.expiresAt > Date.now()"])
+    contains(section('briefingView'), ["plan.expiresAt <= Date.now() ? 'Expired'", 'plan.brief?.goal'])
+    contains(section('chooseActivity'), ["view === 'briefing'", 'historyRef.current = epochRef.current', 'setHistoryEpoch(epochRef.current)', 'readConversation(epochRef.current)'])
+    expect(section('chooseActivity')).not.toMatch(/updateComposer|saveComposer|target:/)
+    contains(section('setConversationPage'), ['page.latestAssistant', 'next.latestAssistant?.lastSeq', 'replyWatermarks.current[epoch]', "activityViewRef.current !== 'history'", 'setNewReplies(1)'])
+    contains(workspace, ['latestAssistant.text', "tr('ReplyNotDecision')", "className: 'saw-message-technical'", "h('summary', null, tr('TechnicalDetails'))", "activityViewRef.current === 'history' && autoScroll.current"])
+    contains(section('recordView'), ["record.anomaly ? tr('StateConflict')", 'record.disabledReason', "record.state === 'ended' ? record.outcome : record.state", "tr('PlannedNext')", "result ? 'results' : 'overview'"])
   })
 
   it('keeps per-column cursors, server totals, and revision checks when paging beyond 100 cards', () => {

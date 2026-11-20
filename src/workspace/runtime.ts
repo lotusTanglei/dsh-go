@@ -8,6 +8,7 @@ import { bindWorkspace, commandError, validateCommand, type CommandRecord, type 
 import { createWorkspaceIngress } from './ingress.js'
 import { conversationPage } from './conversation.js'
 import { createAdmissionService } from './admission.js'
+import { readWorkspaceBriefing } from './briefing.js'
 
 /** Host-only facade. Browser clients never select an Agent, role, actor or Session. */
 export function createWorkspaceRuntime(store: Store, config: Config, policy: Policy, ports: {
@@ -93,6 +94,7 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
       return { epoch: current.epoch, archiveEpochs: bindings.archives.map(row => ({ epoch: row.epoch, createdAt: row.createdAt })),
         state: active() ? 'ready' : 'unavailable', model: { available, ...(available ? {} : { code: 'model_unavailable' }) }, serverTime: Date.now(),
         capabilities: { conversation: true, send: available && !config.paused && !engine.paused(), workerExecution: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' },
+        briefing: readWorkspaceBriefing(store),
         admissions: page, admissionsTotal: plans.length, pendingPlans: plans.filter(row => row.state === 'pending').length, ...(offset + page.length < plans.length ? { admissionsNext: page.at(-1)!.planId } : {}), pendingApprovals: Number(store.db.prepare("SELECT COUNT(*) n FROM approval WHERE state='pending'").get()?.n ?? 0) }
     },
     async conversation(input: { epoch: string; after?: string; before?: string; limit?: number }) {

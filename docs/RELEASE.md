@@ -2,7 +2,7 @@
 
 ## 发布判定（2026-11-18）
 
-当前版本是**部分完成／不可交付，非生产就绪**：本轮安装版真实native/shell探针确认L1 spawn父根与L2逐路径授权缺口，生产Worker启动/恢复/工具执行均已关闭。后端工作区命令/特定计划/持久通知已用真实Host本地适配器验证，外部provider0；不是实际Worker完成。看板UI源码/构建/Host资源合同已通过，但真实GUI验收仍未做；owner主目录内无敏感后缀的规范repo以`~/完整项目后缀`可审阅，不改变实际路径；其他范围被隐私脱敏无法完整审阅时仍禁止批准。发布前必须解决执行安全与知情授权阻断并完成人工清单，历史A/B/C证据不外推本轮。最终全量307tests/typecheck/build/pack通过，最新bundle、显式计划修改与旧指纹拒绝、owner/Origin合同及清理已复测；401认证提示补丁也已重新打包。当前裸GUI仍返回401，必须由DSH带认证URL重新打开；不代表真实Worker或浏览器验收通过。详见[逐项验收](<KANBAN-ACCEPTANCE.md>)、[人工清单](<KANBAN-MANUAL.md>)、[能力边界](<KANBAN-CAPABILITY.md>)与[本轮进度](<PROGRESS-KANBAN.md>)。
+当前版本是**部分完成／不可交付，非生产就绪**：本轮安装版真实native/shell探针确认L1 spawn父根与L2逐路径授权缺口，生产Worker启动/恢复/工具执行均已关闭。后端工作区命令/特定计划/持久通知已用真实Host本地适配器验证，外部provider0；不是实际Worker完成。看板UI源码/构建/Host资源合同已通过，但真实GUI验收仍未做；owner主目录内无敏感后缀的规范repo以`~/完整项目后缀`可审阅，不改变实际路径；其他范围被隐私脱敏无法完整审阅时仍禁止批准。发布前必须解决执行安全与知情授权阻断并完成人工清单，历史A/B/C证据不外推本轮。最终全量307tests/typecheck/build/pack通过，最新bundle、显式计划修改与旧指纹拒绝、owner/Origin合同及清理已复测；401认证提示补丁也已重新打包。2026-11-20用户截图已证实旧页连接；匿名401不是用户页故障证明。任务与决策摘要已替换默认流水视图，319tests门禁通过；用户授权插件重载但管理器报告restart-required，须重启DSH并核实v2标志。不代表真实Worker或浏览器验收通过。详见[逐项验收](<KANBAN-ACCEPTANCE.md>)、[人工清单](<KANBAN-MANUAL.md>)、[能力边界](<KANBAN-CAPABILITY.md>)与[本轮进度](<PROGRESS-KANBAN.md>)。
 
 ## 安装
 

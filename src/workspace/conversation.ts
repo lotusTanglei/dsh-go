@@ -26,6 +26,8 @@ export interface ConversationPage {
   nextBefore?: string
   nextAfter: string
   hasMore: boolean
+  /** Latest real model reply, independent of the bounded notice/history window. */
+  latestAssistant?: ConversationItem
 }
 
 export type ConversationErrorCode = 'invalid_input' | 'invalid_cursor' | 'epoch_mismatch'
@@ -281,6 +283,8 @@ export function conversationPage(events: readonly any[], options: ConversationPa
   }
   const limit = options.limit ?? DEFAULT_LIMIT
   const { rows, watermark } = fold(events)
+  const latestAssistant = rows.filter(row => row.item.kind === 'assistant').sort((a, b) => b.item.lastSeq - a.item.lastSeq)[0]?.item
+  const reply = latestAssistant ? { latestAssistant } : {}
   const tail: Position = { seq: watermark, slot: END_SLOT }
   if (options.after !== undefined) {
     const after = decodeCursor(options.after, options.epoch, 'after', watermark)
@@ -288,7 +292,7 @@ export function conversationPage(events: readonly any[], options: ConversationPa
     const selected = updates.slice(0, limit)
     const hasMore = updates.length > selected.length
     const next = hasMore ? lastPosition(selected[selected.length - 1]!) : tail
-    return { items: selected.map(row => row.item), nextAfter: encodeCursor(options.epoch, 'after', next, watermark), hasMore }
+    return { ...reply, items: selected.map(row => row.item), nextAfter: encodeCursor(options.epoch, 'after', next, watermark), hasMore }
   }
   const before = options.before === undefined ? undefined : decodeCursor(options.before, options.epoch, 'before', watermark)
   const history = before === undefined ? rows : rows.filter(row => compare(firstPosition(row), before) < 0)
@@ -299,6 +303,7 @@ export function conversationPage(events: readonly any[], options: ConversationPa
   // window. Preserve its original delta baseline instead of skipping them.
   const through = before?.through ?? watermark
   return {
+    ...reply,
     items: selected.map(row => row.item),
     ...(hasMore && first ? { nextBefore: encodeCursor(options.epoch, 'before', firstPosition(first), through) } : {}),
     nextAfter: encodeCursor(options.epoch, 'after', { seq: through, slot: END_SLOT }, through),
