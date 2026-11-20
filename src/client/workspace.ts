@@ -8,7 +8,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
   const array = (value: any): any[] => Array.isArray(value) ? value : []
   const text = (value: any) => value === undefined || value === null || value === '' ? tr('Unknown') : String(value)
   const time = (value: any) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? new Date(value).toLocaleString() : tr('Unknown')
-  const names: Record<string, string> = { open: 'Pending', pending: 'Pending', running: 'Running', waiting: 'Waiting', waiting_human: 'Waiting', ended: 'Ended', completed: 'Completed', failed: 'Failed', stopped: 'Stopped', dropped: 'Dropped', unknown: 'Unknown', received: 'Received', queued: 'Queued', claimed: 'Claimed', admitted: 'Admitted', processing: 'Processing', published: 'Published', canceled: 'Canceled', rejected: 'Rejected', approved: 'Approved', denied: 'Denied', expired: 'Expired', superseded: 'Superseded', consumed: 'Consumed', user: 'You', assistant: 'Title', notice: 'Notice' }
+  const names: Record<string, string> = { open: 'Pending', pending: 'Pending', running: 'Running', waiting: 'Waiting', waiting_human: 'Waiting', ended: 'Ended', completed: 'Completed', failed: 'Failed', stopped: 'Stopped', dropped: 'Dropped', unknown: 'Unknown', candidate: 'DocumentCandidate', blocked: 'DocumentBlocked', linked: 'DocumentLinked', received: 'Received', queued: 'Queued', claimed: 'Claimed', admitted: 'Admitted', processing: 'Processing', published: 'Published', canceled: 'Canceled', rejected: 'Rejected', approved: 'Approved', denied: 'Denied', expired: 'Expired', superseded: 'Superseded', consumed: 'Consumed', user: 'You', assistant: 'Title', notice: 'Notice' }
   const stateName = (value: any) => names[value] ? tr(names[value]) : text(value)
   const fieldNames: Record<string, string> = { goal: 'Goal', scope: 'Scope', repo: 'Project', subdirs: 'Subdirs', base: 'Base', ref: 'Ref', requireCleanTree: 'CleanTree', allowWrite: 'AllowWrite', denyWrite: 'DenyWrite', runtime: 'Runtime', acceptance: 'Acceptance', outOfScope: 'OutOfScope', blockers: 'Blockers', firstAction: 'FirstAction', approvalsRequired: 'ApprovalsRequired', done: 'Done', changedPaths: 'ChangedFiles', changedFiles: 'ChangedFiles', risks: 'Risks', needHuman: 'NeedHuman', result: 'Result', check: 'Check', evidence: 'Evidence', reason: 'Reason', description: 'Description', repository: 'Project', branch: 'Branch', commit: 'Commit', pr: 'PullRequest', recipient: 'Recipient', body: 'Body', subject: 'Subject', amount: 'Amount', currency: 'Currency', purpose: 'Purpose', operation: 'Operation', impact: 'Impact', state: 'State', ok: 'Health', paused: 'Paused', available: 'Available', active: 'Active', workers: 'Workers', maxWorkers: 'WorkerLimit', pending: 'Pending', dropped: 'Dropped', attempts: 'Attempts', nextAt: 'NextRetry', error: 'Error', version: 'Version', sizeBytes: 'SizeBytes', lastAt: 'LastEvent', lastProgressAt: 'LastProgress', startedAt: 'Started', endedAt: 'EndedAt', steps: 'Steps', usage: 'Tokens', tokens: 'Tokens', durationMs: 'Duration', at: 'Time', rule: 'Rule', action: 'Action', outcome: 'Outcome', decisions: 'Decisions', metrics: 'Metrics', repeatedCalls: 'RepeatedCalls', stallMs: 'Stall', waitingMs: 'WaitingMs', code: 'Code', count: 'Count', kind: 'Kind', attended: 'Attended', current: 'Current', limit: 'Limit' }
   const label = (key: string) => fieldNames[key] ? tr(fieldNames[key]) : key
@@ -63,14 +63,17 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       done: strings(report?.done), todo: strings(report?.todo), risks: strings(report?.risks), needHuman: strings(report?.needHuman) }
   }
   const storageKey = (epoch: string) => `superagent.workspace.v1:${encodeURIComponent(epoch)}`
-  const blankComposer = () => ({ draft: '', intent: 'new-task', target: null, origin: null, pending: null, receipt: null })
+  const validDocumentOrigin = (value: any) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 5 && value.kind === 'wecom-document' && ['itemKey', 'revision', 'evidenceDigest', 'configVersion'].every(key => typeof value[key] === 'string' && /^[a-f0-9]{64}$/.test(value[key]))
+  const validDocumentLink = (value: any) => typeof value === 'string' && /^https:\/\/doc\.weixin\.qq\.com\/sheet\/[A-Za-z0-9_-]+\?tab=[A-Za-z0-9_-]+$/.test(value)
+  const documentInstruction = '请为所选外部文档条目生成待审阅计划；先调用 task_source_context 读取不可信来源证据。尚未授权执行。'
+  const blankComposer = () => ({ draft: '', intent: 'new-task', target: null, origin: null, documentOrigin: null, pending: null, receipt: null })
   const readComposer = (epoch: string) => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(storageKey(epoch)) || 'null')
       if (!saved || typeof saved.draft !== 'string') return blankComposer()
       const pending = saved.pending
-      const validPending = pending && pending.epoch === epoch && typeof pending.requestId === 'string' && typeof pending.text === 'string' && ['message', 'new-task', 'ticket-input'].includes(pending.intent) && (pending.intent !== 'ticket-input' || typeof pending.ticketId === 'string')
-      return { draft: saved.draft, intent: saved.intent === 'new-task' ? 'new-task' : 'message', target: saved.target && typeof saved.target.id === 'string' ? saved.target : null, origin: saved.origin && typeof saved.origin.id === 'string' ? saved.origin : null, pending: validPending ? pending : null, receipt: saved.receipt || null }
+      const validPending = pending && pending.epoch === epoch && typeof pending.requestId === 'string' && typeof pending.text === 'string' && ['message', 'new-task', 'ticket-input'].includes(pending.intent) && (pending.intent !== 'ticket-input' || typeof pending.ticketId === 'string') && (pending.documentOrigin === undefined || pending.intent === 'new-task' && !pending.ticketId && !pending.recreateFrom && validDocumentOrigin(pending.documentOrigin))
+      return { draft: saved.draft, intent: saved.intent === 'new-task' ? 'new-task' : 'message', target: saved.target && typeof saved.target.id === 'string' ? saved.target : null, origin: saved.origin && typeof saved.origin.id === 'string' ? saved.origin : null, documentOrigin: saved.intent === 'new-task' && !saved.target && !saved.origin && validDocumentOrigin(saved.documentOrigin) ? saved.documentOrigin : null, pending: validPending ? pending : null, receipt: saved.receipt || null }
     } catch { return blankComposer() }
   }
   const completeBrief = (plan: any) => {
@@ -127,6 +130,18 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const [system, setSystem] = React.useState('')
     const [systemData, setSystemData] = React.useState({} as any)
     const [systemError, setSystemError] = React.useState('')
+    const [documents, setDocuments] = React.useState(null as any)
+    const [documentBusy, setDocumentBusy] = React.useState('')
+    const [documentError, setDocumentError] = React.useState('')
+    const [documentScanResult, setDocumentScanResult] = React.useState(null as any)
+    const [documentDetail, setDocumentDetail] = React.useState(null as any)
+    const [documentImages, setDocumentImages] = React.useState({} as any)
+    const [documentReviewed, setDocumentReviewed] = React.useState(false)
+    const documentBusyRef = React.useRef(false)
+    const documentDetailRef = React.useRef(null as any)
+    const documentEvidenceVersion = React.useRef(0)
+    const documentImagesRef = React.useRef({} as any)
+    const documentReviewedRef = React.useRef(false)
     const [confirmation, setConfirmation] = React.useState(null as any)
     const [reason, setReason] = React.useState('')
     const [revisionGoal, setRevisionGoal] = React.useState('')
@@ -178,7 +193,9 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     }
     const updateComposer = (patch: any, epoch = draftEpochRef.current) => {
       if (!epoch) return
-      saveComposer(epoch, { ...(composerCache.current[epoch] || readComposer(epoch)), ...patch })
+      const next = { ...(composerCache.current[epoch] || readComposer(epoch)), ...patch }
+      if (next.intent !== 'new-task' || next.target || next.origin) next.documentOrigin = null
+      saveComposer(epoch, next)
     }
     const call = async (path: string, body: any = {}, own?: AbortController) => {
       const controller = own || new AbortController()
@@ -313,6 +330,91 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       } catch (e: any) { if (alive.current && systemRef.current === tab) { setSystemError(e?.status === 409 ? tr('DecisionConflict') : messageOf(e)); if (e?.status === 409) poke.current() } }
       finally { systemBusy.current = false }
     }
+    const resetDocumentEvidence = () => {
+      documentEvidenceVersion.current++
+      documentDetailRef.current = null; documentImagesRef.current = {}; documentReviewedRef.current = false
+      setDocumentDetail(null); setDocumentImages({}); setDocumentReviewed(false)
+    }
+    // Only explicit UI events call these functions. Never part of readSystem/tick/effects.
+    const readDocuments = async (sourceId?: string, more = false) => {
+      if (documentBusyRef.current || !epochRef.current || !array(workspaceRef.current?.documentSources).length) return
+      const epoch = epochRef.current
+      const cursor = more ? documents?.cursor : undefined
+      if (more && (!documents?.hasMore || typeof cursor !== 'string')) return
+      documentBusyRef.current = true; setDocumentBusy(sourceId || 'list'); setDocumentError(''); resetDocumentEvidence()
+      try {
+        if (sourceId) {
+          const result = await call('document-source', { action: 'scan', epoch, sourceId })
+          if (epochRef.current !== epoch) return
+          setDocumentScanResult(result)
+        }
+        const result = await call('document-source', { action: 'list', epoch, ...(cursor ? { cursor } : {}) })
+        if (epochRef.current === epoch) setDocuments(more ? { ...result, items: [...new Map([...array(documents?.items), ...array(result.items)].map(row => [row.itemKey, row])).values()] } : result)
+      } catch (e: any) {
+        if (alive.current && epochRef.current === epoch) setDocumentError(sourceId ? tr('DocumentReadUncertain') : messageOf(e))
+      } finally { documentBusyRef.current = false; if (alive.current) setDocumentBusy('') }
+    }
+    const openDocument = async (entry: any) => {
+      if (documentBusyRef.current || !epochRef.current) return
+      const epoch = epochRef.current
+      documentBusyRef.current = true; setDocumentBusy(entry.itemKey); setDocumentError(''); resetDocumentEvidence()
+      const evidenceVersion = documentEvidenceVersion.current
+      try {
+        const result = await call('document-source', { action: 'detail', epoch, itemKey: entry.itemKey, revision: entry.revision })
+        if (epochRef.current !== epoch || documentEvidenceVersion.current !== evidenceVersion || !validDocumentOrigin(result?.documentOrigin) || result.documentOrigin.itemKey !== entry.itemKey || result.documentOrigin.revision !== entry.revision) return
+        const next = { ...result, epoch }
+        documentDetailRef.current = next; setDocumentDetail(next)
+      } catch (e: any) { if (alive.current && epochRef.current === epoch) setDocumentError(messageOf(e)) }
+      finally { documentBusyRef.current = false; if (alive.current) setDocumentBusy('') }
+    }
+    const loadDocumentImages = async () => {
+      const detail = documentDetailRef.current, epoch = epochRef.current
+      if (!detail || detail.epoch !== epoch || documentBusyRef.current) return
+      documentBusyRef.current = true; setDocumentBusy('images'); setDocumentError('')
+      documentReviewedRef.current = false; setDocumentReviewed(false); documentImagesRef.current = {}; setDocumentImages({})
+      try {
+        for (const image of array(detail.screenshots)) {
+          const result = await call('document-image', { epoch, itemKey: detail.documentOrigin.itemKey, revision: detail.documentOrigin.revision, digest: image.digest })
+          if (epochRef.current !== epoch || documentDetailRef.current !== detail) return
+          if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(result?.mediaType) || result.mediaType !== image.mediaType || typeof result.encoded !== 'string' || result.encoded.length > 11184812 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(result.encoded) || !result.encoded) throw new Error('invalid_image')
+          const next = { ...documentImagesRef.current, [image.digest]: { src: `data:${result.mediaType};base64,${result.encoded}`, loaded: false } }
+          documentImagesRef.current = next; setDocumentImages(next)
+        }
+      } catch (e: any) { if (alive.current && epochRef.current === epoch) setDocumentError(tr('DocumentImagesFailed')) }
+      finally { documentBusyRef.current = false; if (alive.current) setDocumentBusy('') }
+    }
+    const documentImageRendered = (detail: any, digest: string, loaded: boolean) => {
+      if (documentDetailRef.current !== detail || detail.epoch !== epochRef.current || !documentImagesRef.current[digest]) return
+      const next = { ...documentImagesRef.current, [digest]: { ...documentImagesRef.current[digest], loaded } }
+      documentImagesRef.current = next; setDocumentImages(next)
+      if (!loaded) { documentReviewedRef.current = false; setDocumentReviewed(false); setDocumentError(tr('DocumentImagesFailed')) }
+    }
+    const documentCanPlan = (entry: any, detail: any) => entry?.state === 'candidate' && entry.eligible === true && detail?.eligible === true && detail.epoch === epochRef.current && validDocumentOrigin(entry.documentOrigin) && validDocumentOrigin(detail.documentOrigin) && ['itemKey', 'revision', 'evidenceDigest', 'configVersion'].every(key => entry.documentOrigin[key] === detail.documentOrigin[key]) && array(detail.screenshots).every(image => documentImagesRef.current[image.digest]?.loaded === true) && documentReviewedRef.current
+    const documentCanReview = (entry: any, detail: any) => entry?.state === 'blocked' && entry.reviewable === true && entry.eligible === false && detail?.reviewable === true && detail.eligible === false && detail.epoch === epochRef.current && validDocumentLink(detail.documentLink) && validDocumentOrigin(entry.documentOrigin) && validDocumentOrigin(detail.documentOrigin) && ['itemKey', 'revision', 'evidenceDigest', 'configVersion'].every(key => entry.documentOrigin[key] === detail.documentOrigin[key]) && array(detail.screenshots).every(image => documentImagesRef.current[image.digest]?.loaded === true) && documentReviewedRef.current
+    const reviewDocument = async (entry: any) => {
+      const detail = documentDetailRef.current, epoch = epochRef.current, saved = composerRef.current
+      if (documentBusyRef.current || !documentCanReview(entry, detail)) return
+      if (saved.pending || saved.draft.trim() || saved.target || saved.origin || saved.documentOrigin || draftEpochRef.current !== epoch || historyRef.current !== epoch) { setNotice(tr('ResolveDraftFirst')); return }
+      documentBusyRef.current = true; setDocumentBusy('review'); setDocumentError('')
+      const origin = detail.documentOrigin
+      try {
+        const result = await call('document-source', { action: 'review', epoch, itemKey: origin.itemKey, revision: origin.revision, evidenceDigest: origin.evidenceDigest, decision: 'reviewed-not-struck' })
+        if (epochRef.current !== epoch || documentDetailRef.current !== detail || result?.eligible !== true || result?.reviewable !== false || result?.state !== 'candidate' || !validDocumentOrigin(result.documentOrigin) || !['itemKey', 'revision', 'evidenceDigest', 'configVersion'].every(key => result.documentOrigin[key] === origin[key])) return
+        const next = { ...detail, eligible: true, reviewable: false }
+        documentDetailRef.current = next; setDocumentDetail(next)
+        setDocuments((previous: any) => previous ? { ...previous, items: array(previous.items).map(row => row.itemKey === origin.itemKey && row.revision === origin.revision ? { ...row, eligible: true, reviewable: false, state: 'candidate' } : row) } : previous)
+        // Owner attestation is not a machine strike determination or execution authorization.
+        setNotice(tr('DocumentReviewSaved'))
+      } catch (e: any) { if (alive.current && epochRef.current === epoch) setDocumentError(tr('DocumentReviewUncertain')) }
+      finally { documentBusyRef.current = false; if (alive.current) setDocumentBusy('') }
+    }
+    const prepareDocumentPlan = (entry: any) => {
+      const detail = documentDetailRef.current, saved = composerRef.current
+      if (!documentCanPlan(entry, detail)) return
+      if (saved.pending || saved.draft.trim() || saved.target || saved.origin || saved.documentOrigin || draftEpochRef.current !== epochRef.current || historyRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); return }
+      updateComposer({ draft: documentInstruction, intent: 'new-task', target: null, origin: null, documentOrigin: detail.documentOrigin })
+      closeSystem(); setMobileTab('chat'); setCollapsed(false); setNotice(tr('DocumentPlanDraft')); inputRef.current?.focus()
+    }
     React.useEffect(() => {
       alive.current = true
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -342,6 +444,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             sendController.current?.abort()
             sendController.current = null
             epochRef.current = epoch
+            setDocuments(null); setDocumentScanResult(null); setDocumentError(''); resetDocumentEvidence()
             const composerEpoch = prior || epoch
             const nextComposer = composerCache.current[composerEpoch] || readComposer(composerEpoch)
             composerCache.current[composerEpoch] = nextComposer; composerRef.current = nextComposer; setComposer(nextComposer)
@@ -422,12 +525,13 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       const current = composerCache.current[epoch] || readComposer(epoch)
       // An older response must not erase a different/newer draft or request.
       const matches = current.pending?.requestId === payload.requestId
-      saveComposer(epoch, { ...current, receipt, ...(matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage)) ? { pending: null, ...(receipt.accepted === true && current.draft === payload.text ? { draft: '', origin: null } : {}) } : {}) })
+      saveComposer(epoch, { ...current, receipt, ...(matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage)) ? { pending: null, ...(receipt.accepted === true && current.draft === payload.text ? { draft: '', origin: null, documentOrigin: null } : {}) } : {}) })
       if (alive.current && epoch === draftEpochRef.current) setNotice(receipt.accepted === true ? tr('AcceptedNotice') : tr('UnknownNotice'))
     }
     const submit = async (checkOnly = false) => {
       if (sendBusy.current || !epochRef.current) return
       const saved = composerRef.current
+      if (saved.documentOrigin && (!validDocumentOrigin(saved.documentOrigin) || saved.intent !== 'new-task' || saved.target || saved.origin)) { setNotice(tr('ResolveDraftFirst')); return }
       const existing = saved.pending
       const epoch = existing?.epoch || draftEpochRef.current
       if (!existing && epoch !== epochRef.current) return
@@ -435,7 +539,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       if (!existing && (new TextEncoder().encode(saved.draft).length > 16384 || saved.draft.includes('\0'))) { setNotice(tr('TextLimit')); return }
       let payload: any = existing
       try {
-        if (!payload) payload = { epoch, requestId: mintId(), intent: saved.target ? 'ticket-input' : saved.intent, text: saved.draft, ...(saved.target ? { ticketId: saved.target.id } : saved.origin ? { recreateFrom: saved.origin.id } : {}) }
+        if (!payload) payload = { epoch, requestId: mintId(), intent: saved.target ? 'ticket-input' : saved.intent, text: saved.draft, ...(saved.target ? { ticketId: saved.target.id } : saved.origin ? { recreateFrom: saved.origin.id } : saved.intent === 'new-task' && validDocumentOrigin(saved.documentOrigin) ? { documentOrigin: saved.documentOrigin } : {}) }
       } catch { setNotice(tr('SecureIdUnavailable')); return }
       // A send may race the first history read; its first real reply must still be discoverable.
       if (!replyBaselineReady.current[epoch]) {
@@ -461,7 +565,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         }
         if (controller.signal.aborted || epochRef.current !== epoch || historyRef.current !== epoch) return
         // Never send the local recovery metadata; replay exactly the immutable command.
-        const exact = { epoch: payload.epoch, requestId: payload.requestId, intent: payload.intent, text: payload.text, ...(payload.ticketId ? { ticketId: payload.ticketId } : {}), ...(payload.recreateFrom ? { recreateFrom: payload.recreateFrom } : {}) }
+        const exact = { epoch: payload.epoch, requestId: payload.requestId, intent: payload.intent, text: payload.text, ...(payload.ticketId ? { ticketId: payload.ticketId } : {}), ...(payload.recreateFrom ? { recreateFrom: payload.recreateFrom } : {}), ...(payload.intent === 'new-task' && !payload.ticketId && !payload.recreateFrom && validDocumentOrigin(payload.documentOrigin) ? { documentOrigin: payload.documentOrigin } : {}) }
         const receipt = await call('command', exact, controller)
         applyReceipt(epoch, payload, receipt)
         if (alive.current && epochRef.current === epoch) poke.current()
@@ -507,9 +611,10 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const closeDetail = () => { detailIdRef.current = ''; setDetailId('') }
     const openSystem = (tab: string) => {
       if (!systemRef.current) systemFocus.current = document.activeElement as HTMLElement
+      if (systemRef.current !== tab) resetDocumentEvidence()
       systemRef.current = tab; setSystem(tab); setSystemError(''); void readSystem()
     }
-    const closeSystem = () => { systemRef.current = ''; setSystem('') }
+    const closeSystem = () => { systemRef.current = ''; setSystem(''); resetDocumentEvidence() }
     const askConfirm = (kind: string, item: any, decision: string) => { setActionError(''); setReason(''); setRevisionGoal(item.brief?.goal || ''); setRevisionFirstAction(item.brief?.firstAction || ''); setConfirmation({ kind, item, decision, epoch: epochRef.current }) }
     const closeConfirm = () => { if (actionBusy.current) return; dialogRef.current?.close(); setConfirmation(null); setActionError(''); setReason('') }
     const perform = async () => {
@@ -539,7 +644,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     }
     const supplement = (item: any) => {
       if (composerRef.current.pending || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveRequestFirst')); return }
-      updateComposer({ target: { id: item.id, title: item.title || tr('Untitled') }, origin: null }); setMobileTab('chat'); setCollapsed(false)
+      updateComposer({ target: { id: item.id, title: item.title || tr('Untitled') }, origin: null, documentOrigin: null }); setMobileTab('chat'); setCollapsed(false)
       inputRef.current?.focus()
     }
     const recreate = (item: any) => {
@@ -586,11 +691,11 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const startTask = () => {
       chooseActivity('briefing'); setMobileTab('chat'); setCollapsed(false)
       if (composerRef.current.pending || composerRef.current.target || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); inputRef.current?.focus(); return }
-      updateComposer({ intent: 'new-task', origin: null }); inputRef.current?.focus()
+      updateComposer({ intent: 'new-task', origin: null, documentOrigin: null }); inputRef.current?.focus()
     }
     const replyToCoordinator = () => {
       if (composerRef.current.pending || composerRef.current.target || composerRef.current.draft.trim() || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); return }
-      chooseActivity('briefing'); setMobileTab('chat'); setCollapsed(false); updateComposer({ intent: 'message', origin: null }); inputRef.current?.focus()
+      chooseActivity('briefing'); setMobileTab('chat'); setCollapsed(false); updateComposer({ intent: 'message', origin: null, documentOrigin: null }); inputRef.current?.focus()
     }
     const chooseDraftEpoch = (epoch: string) => {
       if (sendBusy.current) return
@@ -651,16 +756,57 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         h('details', { className: 'saw-result-technical', key: `${detailId}:delivery` }, h('summary', null, tr('Delivery')), valueView(detail.delivery), h('p', { className: 'saw-meta' }, tr('NoReadAck'))))
     }
     const briefingView = () => h(React.Fragment, null,
+      array(workspace?.documentSources).length ? button(tr('DocumentReadEntry'), () => openSystem('sources'), false, { className: 'saw-btn saw-text-btn' }) : null,
       !workspace ? h('p', { className: 'saw-meta' }, tr(error ? 'SyncFailed' : 'Loading')) : !desk.ready ? h('div', { className: 'saw-inline-state' }, h('p', null, tr('BriefingUnavailable')), button(tr('Retry'), () => poke.current())) : null,
       error && workspace ? h('p', { className: 'saw-meta' }, tr('RecordsStale')) : null,
       newReplies && latestAssistant ? h('article', { className: 'saw-new-reply' }, h('strong', null, tr('CoordinatorReplied')), h('p', { className: 'saw-line-clamp' }, latestAssistant.text), button(tr('ReadAndReply'), openReply)) : null,
       (desk.actions.length || (desk.actionTotal ?? 0) > 0) ? h('section', { className: 'saw-briefing-group', 'aria-label': tr('YourDecisions') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('YourDecisions')), h('span', { className: 'saw-count' }, text(desk.actionTotal))), ...desk.actions.map(decisionView), desk.moreActions ? h('div', { className: 'saw-row' }, button(tr('MorePlansApprovals'), () => openSystem('todo')), button(tr('MoreQuestions'), showAllTasks)) : null) : desk.ready && desk.actionTotal === 0 && !error && !newReplies ? h('div', { className: 'saw-idle' }, h('span', { className: 'saw-idle-icon', 'aria-hidden': true }, '+'), h('h3', null, tr(desk.idle ? 'ReadyForTask' : 'NothingToDecide')), h('p', null, tr(!boardScopeKnown ? 'CoveragePendingHint' : desk.idle ? 'DescribeOutcome' : 'ProgressOnBoard')), button(tr('StartPlanning'), startTask, !!pendingRequest || !!composer.target || oldDraft), h('small', { className: 'saw-meta' }, tr('PlanningSteps'))) : null,
       (desk.records.length || (desk.recordTotal ?? 0) > 0) ? h('section', { className: 'saw-recent', 'aria-label': tr('RecentActivity') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('RecentActivity')), desk.moreRecords ? button(tr('AllTasks'), showAllTasks) : null), ...desk.records.map(recordView), pendingPlans.some(plan => plan.state === 'approved' && plan.expiresAt > Date.now()) && desk.moreRecords ? button(tr('MorePlansApprovals'), () => openSystem('todo')) : null) : null)
+    const documentEvidenceView = (entry: any, detail: any) => {
+      const allRendered = array(detail.screenshots).every(image => documentImages[image.digest]?.loaded === true)
+      const canPlan = documentCanPlan(entry, detail)
+      const reviewable = entry.reviewable === true && detail.reviewable === true && entry.state === 'blocked' && entry.eligible === false && detail.eligible === false
+      const canReview = documentCanReview(entry, detail)
+      const draftOccupied = !!pendingRequest || !!composer.draft.trim() || !!composer.target || !!composer.origin || !!composer.documentOrigin || oldDraft || archive
+      return h('section', { className: 'saw-document-evidence' }, h('h4', null, tr('DocumentOriginal')), h('p', { className: 'saw-pre' }, detail.text),
+        h('p', { className: 'saw-meta' }, `${text(detail.location?.sourceId)} · ${text(detail.location?.sheet)} · ${text(detail.location?.row)} · ${text(detail.location?.range)}`),
+        ...array(detail.cells).map((cell: any, i: number) => h('div', { className: 'saw-document-cell', key: i }, h('strong', null, text(cell.column)), h('span', { className: 'saw-badge' }, tr(cell.strike === 'no' ? 'DocumentNotStruck' : cell.strike === 'yes' ? 'DocumentStruck' : 'DocumentStrikeUnknown')), h('p', { className: 'saw-pre' }, cell.text))),
+        h('p', { className: 'saw-meta' }, tr('DocumentSnapshotWarning')), h('p', { className: 'saw-meta' }, `${tr('Snapshot')}: ${time(detail.at)}`),
+        ...array(detail.warnings).map((warning: any, i: number) => h('p', { key: i, className: 'saw-error' }, text(warning))),
+        reviewable ? h('div', { className: 'saw-banner' }, h('p', null, tr('DocumentUnknownReviewWarning')), validDocumentLink(detail.documentLink) ? h('a', { href: detail.documentLink, target: '_blank', rel: 'noopener noreferrer' }, tr('DocumentOpenOfficial')) : h('p', { className: 'saw-error' }, tr('DocumentOfficialUnavailable'))) : null,
+        button(tr('DocumentLoadImages'), () => { void loadDocumentImages() }, !!documentBusy || !array(detail.screenshots).length),
+        !array(detail.screenshots).length ? h('p', { className: 'saw-error' }, tr('DocumentNoImages')) : null,
+        ...array(detail.screenshots).map((image: any, i: number) => h('figure', { key: `${detail.documentOrigin.revision}:${image.digest}:${i}`, className: 'saw-document-image' }, h('figcaption', null, `${tr('DocumentCell')}: ${text(image.cell)}`),
+          documentImages[image.digest]?.src ? h('img', { src: documentImages[image.digest].src, alt: `${tr('DocumentCell')}: ${text(image.cell)}`, onLoad: () => documentImageRendered(detail, image.digest, true), onError: () => documentImageRendered(detail, image.digest, false) }) : h('p', { className: 'saw-meta' }, tr('DocumentImageNotLoaded')))),
+        h('label', { className: 'saw-document-review' }, h('input', { type: 'checkbox', checked: documentReviewed, disabled: !allRendered || !!documentBusy, onChange: (e: any) => { documentReviewedRef.current = e.target.checked === true; setDocumentReviewed(e.target.checked === true) } }), tr(reviewable ? 'DocumentVerifyOriginalNotStruck' : 'DocumentReviewed')),
+        reviewable ? button(tr('DocumentConfirmNotStruck'), () => { void reviewDocument(entry) }, !canReview || draftOccupied || !!documentBusy || workspace?.capabilities?.send !== true, { title: tr('DocumentPlanOnly') }) : null,
+        h('p', { className: 'saw-meta' }, tr('DocumentReviewHint')), button(tr('DocumentGeneratePlan'), () => prepareDocumentPlan(entry), !canPlan || draftOccupied || !!documentBusy || workspace?.capabilities?.send !== true, { title: tr('DocumentPlanOnly') }),
+        h('p', { className: 'saw-meta' }, tr('DocumentPlanOnly')))
+    }
+    const documentSourcesView = () => {
+      const configured = array(workspace?.documentSources).map(source => ({ ...source, ...array(documents?.sources).find(row => row.id === source.id) }))
+      if (!configured.length) return null
+      return h('section', { className: 'saw-document-sources' }, h('h3', null, tr('DocumentSources')), h('p', { className: 'saw-meta' }, tr('DocumentConfigHint')),
+        h('div', { className: 'saw-row' }, button(tr('DocumentLocalList'), () => { void readDocuments() }, !!documentBusy), documentBusy ? h('span', { role: 'status' }, tr('Loading')) : null),
+        documentError ? h('p', { className: 'saw-error', role: 'alert' }, documentError) : null,
+        ...configured.map((source: any) => h('article', { key: source.id, className: 'saw-box' }, h('h4', null, source.id), h('p', { className: 'saw-meta' }, `${text(source.sheet)} · ${text(source.range)}`), button(tr('DocumentReadOnce'), () => { void readDocuments(source.id) }, !!documentBusy))),
+        documentScanResult ? h('section', { className: 'saw-box' }, h('p', null, `${text(documentScanResult.sourceId)} · ${time(documentScanResult.at)}`), fields([['DocumentRead', text(documentScanResult.read)], ['DocumentEligible', text(documentScanResult.eligible)], ['DocumentBlocked', text(documentScanResult.blocked)]]), valueView(documentScanResult.issues)) : null,
+        documents?.hasMore === true || Number(documents?.total) > array(documents?.items).length ? h('div', { className: 'saw-row' }, h('p', { className: 'saw-meta' }, tr('DocumentListPartial')), documents?.hasMore && documents?.cursor ? button(tr('DocumentMoreCandidates'), () => { void readDocuments(undefined, true) }, !!documentBusy) : null) : null,
+        documents && !array(documents.items).length ? h('p', { className: 'saw-meta' }, tr('DocumentNoCandidates')) : null,
+        ...array(documents?.items).map((entry: any) => {
+          const selected = documentDetail?.documentOrigin?.itemKey === entry.itemKey && documentDetail?.documentOrigin?.revision === entry.revision ? documentDetail : null
+          const source = configured.find((row: any) => row.id === entry.sourceId)
+          return h('article', { className: 'saw-box', key: entry.itemKey }, h('h4', null, displayTitle(entry.title)), h('p', { className: 'saw-meta' }, `${text(entry.sourceId)} · ${text(source?.sheet)} · ${text(source?.range)}`),
+            h('span', { className: 'saw-badge' }, stateName(entry.state)), h('p', { className: 'saw-meta' }, `${tr('Snapshot')}: ${time(entry.at)} · ${tr('DocumentSnapshotWarning')}`),
+            ...array(entry.warnings).map((warning: any, i: number) => h('p', { key: i, className: 'saw-error' }, text(warning))),
+            button(tr(selected ? 'DocumentCloseOriginal' : 'DocumentOpenOriginal'), () => { if (selected) resetDocumentEvidence(); else void openDocument(entry) }, !!documentBusy), selected ? documentEvidenceView(entry, selected) : null)
+        }))
+    }
     const systemContent = () => {
-      const data = systemData[system]
+      const data = systemData[system] || (system === 'sources' ? {} : null)
       if (!data) return h('p', null, tr('Loading'))
       if (system === 'todo') return h(React.Fragment, null, h('h3', null, tr('Admission')), ...pendingPlans.map(plan => admissionView(plan)), !pendingPlans.length ? h('p', null, tr('NoPlans')) : null, h('h3', null, tr('InformationNeeded')), h('p', { className: 'saw-meta' }, tr('QuestionsOnBoard')), button(tr('AllTasks'), showAllTasks), h('h3', null, tr('Approvals')), h('p', { className: 'saw-meta' }, tr('ApprovalWindow')), ...array(data.items).map(approvalView), !array(data.items).length ? h('p', null, tr('NoApprovals')) : null, data.next ? button(tr('MoreApprovals'), () => { void readSystem(true) }, systemBusy.current) : null)
-      if (system === 'sources') return h(React.Fragment, null, h('p', null, tr('Readonly')), ...array(data.sources).map((source: any, i: number) => h('article', { className: 'saw-box', key: source.id || i }, h('h3', null, source.id || tr('Source')), fields([['Kind', text(source.kind)], ['Health', source.ok === true ? tr('Healthy') : source.ok === false ? tr('Unhealthy') : tr('Unknown')], ['LastEvent', time(source.lastAt)], ['Paused', source.paused === true ? tr('Yes') : source.paused === false ? tr('No') : tr('Unknown')], ['Attended', source.attended === true ? tr('Yes') : source.attended === false ? tr('No') : tr('Unknown')]]))), !array(data.sources).length ? h('p', null, tr('NoSources')) : null)
+      if (system === 'sources') return h(React.Fragment, null, documentSourcesView(), h('p', null, tr('Readonly')), ...array(data.sources).map((source: any, i: number) => h('article', { className: 'saw-box', key: source.id || i }, h('h3', null, source.id || tr('Source')), fields([['Kind', text(source.kind)], ['Health', source.ok === true ? tr('Healthy') : source.ok === false ? tr('Unhealthy') : tr('Unknown')], ['LastEvent', time(source.lastAt)], ['Paused', source.paused === true ? tr('Yes') : source.paused === false ? tr('No') : tr('Unknown')], ['Attended', source.attended === true ? tr('Yes') : source.attended === false ? tr('No') : tr('Unknown')]]))), !array(data.sources).length ? h('p', null, tr('NoSources')) : null)
       if (system === 'settings') {
         const groups: Record<string, any[]> = {}
         const groupFor = (key: string) => /stateDir|dbPath|lockPath|workRoot/.test(key) ? 'storage' : /watchdog|stall|repeat|waitingHuman/.test(key) ? 'supervision' : /approval|confirm/.test(key) ? 'approvals' : /^max|queueLimit/.test(key) ? 'budgets' : /roleTools|routerReadScope|sources|acceptMode|bots/.test(key) ? 'permissions' : 'runtime'
@@ -701,8 +847,9 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
           h('form', { className: 'saw-composer', inert: planReview || replyOpen ? true : undefined, onSubmit: (e: any) => { e.preventDefault(); void submit() } },
             array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('DraftGroup'), h('select', { value: draftEpoch, disabled: sending, onChange: (e: any) => chooseDraftEpoch(e.target.value) }, h('option', { value: workspace.epoch }, tr('CurrentDraft')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedDraft')} ${index + 1}`)))) : null,
             oldDraft ? h('p', { className: 'saw-banner' }, tr('OldDraftHint')) : null,
-            composer.target ? h('div', { className: 'saw-chip' }, `${tr('SupplementTo')}: ${composer.target.title}`, button('×', () => updateComposer({ target: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelTarget') })) : h('div', { className: 'saw-compose-modes', role: 'group', 'aria-label': tr('MessageIntent') }, button(tr('PlanMode'), () => updateComposer({ intent: 'new-task', origin: null }), sending || !!pendingRequest || archive || oldDraft, { 'aria-pressed': composer.intent === 'new-task' }), button(tr('AskMode'), () => updateComposer({ intent: 'message', origin: null }), sending || !!pendingRequest || archive || oldDraft, { 'aria-pressed': composer.intent === 'message' })),
-            composer.origin ? h('div', { className: 'saw-chip' }, `${tr('RecreatedFrom')}: ${composer.origin.title}`, button('×', () => updateComposer({ origin: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelOrigin') })) : null,
+            composer.target ? h('div', { className: 'saw-chip' }, `${tr('SupplementTo')}: ${composer.target.title}`, button('×', () => updateComposer({ target: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelTarget') })) : h('div', { className: 'saw-compose-modes', role: 'group', 'aria-label': tr('MessageIntent') }, button(tr('PlanMode'), () => updateComposer({ intent: 'new-task', origin: null, documentOrigin: null }), sending || !!pendingRequest || archive || oldDraft, { 'aria-pressed': composer.intent === 'new-task' }), button(tr('AskMode'), () => updateComposer({ intent: 'message', origin: null, documentOrigin: null }), sending || !!pendingRequest || archive || oldDraft, { 'aria-pressed': composer.intent === 'message' })),
+            composer.origin ? h('div', { className: 'saw-chip' }, `${tr('RecreatedFrom')}: ${composer.origin.title}`, button('×', () => updateComposer({ origin: null, documentOrigin: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelOrigin') })) : null,
+            composer.documentOrigin ? h('div', { className: 'saw-chip' }, tr('DocumentDraftOrigin'), button('×', () => updateComposer({ documentOrigin: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelOrigin') })) : null,
             h('label', { className: 'saw-sr', htmlFor: 'saw-draft' }, tr('InputLabel')), h('textarea', { id: 'saw-draft', ref: inputRef, value: composer.draft, placeholder: tr(composer.target ? 'InputForTask' : composer.intent === 'new-task' ? 'InputForPlan' : 'InputForQuestion'), rows: 2, disabled: sending || !!pendingRequest || archive || oldDraft || !workspace, onChange: (e: any) => updateComposer({ draft: e.target.value }), onKeyDown: (e: any) => { if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing || e.isComposing || e.nativeEvent?.keyCode === 229 || e.keyCode === 229) return; e.preventDefault(); void submit() }, 'aria-describedby': 'saw-input-help' }),
             h('div', { className: 'saw-compose-footer' }, h('small', { id: 'saw-input-help', className: 'saw-meta' }, tr('KeyboardHint')),
             pendingRequest ? h('div', { className: 'saw-request' }, h('p', null, tr('PendingRequest')), h('details', null, h('summary', null, tr('RequestDetails')), h('code', { className: 'saw-fingerprint' }, pendingRequest.requestId)), h('div', { className: 'saw-row' }, button(tr('CheckStatus'), () => { void submit(true) }, sending), button(tr('RetrySameRequest'), () => { void submit(false) }, sending || pendingRequest.epoch !== workspace?.epoch || archive), latest?.stage === 'unknown' && latest.accepted === false && Number.isSafeInteger(latest.seq) ? button(tr('CancelUnknownRequest'), () => askConfirm('request', { payload: pendingRequest, seq: latest.seq }, 'cancel'), sending || pendingRequest.epoch !== workspace?.epoch || archive) : null)) : h('button', { type: 'submit', className: 'saw-btn saw-send', disabled: sending || archive || oldDraft || !composer.draft.trim() || workspace?.capabilities?.send !== true }, sending ? tr('Sending') : tr(composer.target ? 'SendInput' : composer.intent === 'new-task' ? 'GeneratePlan' : 'Send'))),

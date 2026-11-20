@@ -30,8 +30,10 @@ describe('P2 role guard', () => {
 })
 
 describe('P2 tool descriptors', () => {
-  it('exposes exactly nine Router tools and rejects malformed briefs', () => {
-    expect(routerToolNames).toHaveLength(9)
+  it('exposes ten Router tools, including request-bound source evidence, and rejects malformed briefs', () => {
+    expect(routerToolNames).toHaveLength(10)
+    expect(validateRouterToolParams('task_source_context', {}).ok).toBe(true)
+    expect(validateRouterToolParams('task_source_context', { itemKey: 'model-selected-item' }).ok).toBe(false)
     expect(validateRouterToolParams('ticket_status', { ticketId: 't1' }).ok).toBe(true)
     expect(validateRouterToolParams('ticket_status', { ticketId: '', extra: true }).ok).toBe(false)
     expect(validateRouterToolParams('ticket_create', { brief: {} }).ok).toBe(false)

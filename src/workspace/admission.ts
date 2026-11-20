@@ -10,6 +10,7 @@ import { decisionId, evalId, sourceId, threadKey, ticketId } from '../domain/ids
 import { getEval, startEval, settleEval } from '../engine/eval.js'
 import { isPaused } from '../engine/pause.js'
 import { commandError, createCommandJournal, WorkspaceError, type CommandRecord } from './commands.js'
+import { validDocumentOrigin, type DocumentOrigin, type DocumentOriginAuthority } from './document-origin.js'
 
 export type AdmissionState = 'pending' | 'approved' | 'rejected' | 'expired' | 'superseded' | 'consumed'
 export interface AdmissionDecision {
@@ -34,6 +35,7 @@ export interface AdmissionPlanDTO {
   readonly risk: Pick<TicketBrief, 'blockers' | 'approvalsRequired' | 'outOfScope'>
   readonly ticketId?: string
   readonly originTicket?: string
+  readonly documentOrigin?: DocumentOrigin
   readonly blockedReason?: string
 }
 export interface AdmissionOptions {
@@ -42,12 +44,13 @@ export interface AdmissionOptions {
   /** Lifetime of the pending human confirmation, not the Eval timeout. */
   readonly timeoutMs?: number
   readonly paused?: () => boolean
+  readonly documentOrigins?: DocumentOriginAuthority
 }
 interface Plan {
   readonly version: 1
   readonly planId: string
   readonly fingerprint: string
-  readonly command: Pick<CommandRecord, 'requestId' | 'epoch' | 'intent' | 'digest' | 'messageId' | 'threadKey'>
+  readonly command: Pick<CommandRecord, 'requestId' | 'epoch' | 'intent' | 'digest' | 'messageId' | 'threadKey' | 'documentOrigin'>
   readonly brief: TicketBrief
   readonly policy: Policy
   readonly createdAt: number
@@ -98,8 +101,13 @@ function freeze<T>(value: T): T {
   return value
 }
 function copy<T>(value: T): T { return freeze(JSON.parse(canonical(value)) as T) }
-function fingerprint(requestId: string, brief: TicketBrief, policy: Policy): string {
-  return createHash('sha256').update(canonical({ requestId, brief, policy }), 'utf8').digest('hex')
+function fingerprint(requestId: string, brief: TicketBrief, policy: Policy, documentOrigin?: DocumentOrigin): string {
+  // Omitting provenance preserves every existing v1 fingerprint byte-for-byte.
+  return createHash('sha256').update(canonical({ requestId, brief, policy, ...(documentOrigin ? { documentOrigin } : {}) }), 'utf8').digest('hex')
+}
+function sameBinding(left: Plan['command'], right: Plan['command']): boolean {
+  return bindingFields.every(field => left[field] === right[field])
+    && canonical(left.documentOrigin ?? null) === canonical(right.documentOrigin ?? null)
 }
 function checkedBrief(value: TicketBrief): TicketBrief {
   // Check the original graph too: additional properties must not smuggle a secret into kv.
@@ -133,16 +141,22 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
     if (!plan || !effect) return commandError('admission_not_found', 404)
     if (plan.version !== 1 || plan.planId !== id || effect.kind !== KIND || !states.includes(String(effect.state))
       || !plan.command || plan.command.intent !== 'new-task' || !validateTicketBrief(plan.brief) || hasSensitiveContractData(plan)
-      || plan.fingerprint !== fingerprint(plan.command.requestId, plan.brief, plan.policy)
+      || (plan.command.documentOrigin !== undefined && !validDocumentOrigin(plan.command.documentOrigin))
+      || plan.fingerprint !== fingerprint(plan.command.requestId, plan.brief, plan.policy, plan.command.documentOrigin)
       || plan.evaluationId !== `eval:admission:${id}` || plan.decisionId !== `decision:admission:${id}` || plan.ticketId !== `ticket:admission:${id}`
       || !Number.isSafeInteger(plan.createdAt) || !Number.isSafeInteger(plan.expiresAt) || plan.expiresAt <= plan.createdAt) return commandError('admission_record_invalid', 503)
     return { plan: freeze(plan), state: effect.state as AdmissionState }
   }
   function commandFor(plan: Plan): CommandRecord {
     const command = journal.read(plan.command.requestId)
-    if (!command || bindingFields.some(field => command[field] !== plan.command[field])) return commandError('admission_command_mismatch')
+    if (!command || !sameBinding(command, plan.command)) return commandError('admission_command_mismatch')
     if (!command.durable || !['admitted', 'processing', 'published'].includes(command.stage)) return commandError('admission_command_not_admitted')
     return command
+  }
+  function validateOrigin(command: Plan['command']): void {
+    if (!command.documentOrigin) return
+    if (!options.documentOrigins) return commandError('document_origin_unavailable', 503)
+    options.documentOrigins.validate(command.documentOrigin, command.requestId)
   }
   function sourceTrigger(command: CommandRecord) {
     const rows = store.db.prepare(`SELECT t.*, tt.state AS queue_state, d.filtered, d.decision_id, d.ticket_id, d.delivered_to
@@ -165,6 +179,7 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
       brief: plan.brief, scope: plan.brief.scope, acceptance: plan.brief.acceptance,
       risk: { blockers: plan.brief.blockers, approvalsRequired: plan.brief.approvalsRequired, outOfScope: plan.brief.outOfScope },
       ...(journal.read(plan.command.requestId)?.originTicket ? { originTicket: journal.read(plan.command.requestId)!.originTicket } : {}),
+      ...(plan.command.documentOrigin ? { documentOrigin: plan.command.documentOrigin } : {}),
       ...(state === 'consumed' ? { ticketId: plan.ticketId } : {}), ...(blockedReason ? { blockedReason } : {}) })
   }
   function metadata(plan: Plan) {
@@ -180,6 +195,11 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
     return store.transaction(() => {
       if (current(plan.command.requestId) !== plan.planId) return commandError('admission_not_current')
       const saved = read(plan.planId)
+      if (plan.command.documentOrigin) {
+        if (!options.documentOrigins) return commandError('document_origin_unavailable', 503)
+        // The authority participates in this transaction; settlement itself is reconciled above.
+        options.documentOrigins.link(plan.command.documentOrigin, plan.command.requestId, plan.ticketId)
+      }
       if (saved.state !== 'consumed' && !store.repos.side_effect.updateByState(effectKey(plan.planId), 'approved', 'consumed', { ticket_id: plan.ticketId })) return commandError('admission_conflict')
       return dto(plan, 'consumed')
     })
@@ -207,6 +227,7 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
         || trigger.decision_id !== plan.decisionId || trigger.ticket_id !== plan.ticketId || trigger.queue_state !== 'consumed') return commandError('admission_reconciliation_failed', 503)
       return markConsumed(plan)
     }
+    validateOrigin(command)
     if (canonical(policy) !== canonical(plan.policy)) return dto(plan, 'approved', 'admission_policy_changed')
     const thread = store.repos.thread.get(command.threadKey)
     if (policy.acceptMode !== 'auto') return dto(plan, 'approved', 'admission_accept_mode')
@@ -229,6 +250,7 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
     const mandate = grantMandate({ decision: { kind: 'accept', strength: 'explicit', policyVersion: policy.version },
       grantedBy: { id: String(trigger.actor_id), source: sourceId(String(trigger.source)), bot: false }, at,
       scope: plan.brief.scope.repo, via: 'admission', rules: [] }, policy)
+    validateOrigin(command)
     settleEval(store, active.id, { id: decisionId(plan.decisionId), kind: 'accept', reason: 'Human approved immutable admission plan', strength: 'explicit', at,
       ticket: { id: ticketId(plan.ticketId), title: plan.brief.goal, brief: plan.brief, mandate, workdir: plan.workdir } }, policy)
     return markConsumed(plan)
@@ -236,27 +258,32 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
   function propose(command: CommandRecord, brief: TicketBrief): AdmissionPlanDTO {
     const checked = checkedBrief(brief)
     const savedCommand = journal.read(command?.requestId)
-    if (!savedCommand || bindingFields.some(field => savedCommand[field] !== command[field])) return commandError('admission_command_mismatch')
+    if (!savedCommand || !sameBinding(savedCommand, command)) return commandError('admission_command_mismatch')
     if (savedCommand.intent !== 'new-task' || savedCommand.targetTicket) return commandError('admission_new_task_required')
     if (!savedCommand.durable || !['admitted', 'processing', 'published'].includes(savedCommand.stage)) return commandError('admission_command_not_admitted')
-    const digest = fingerprint(savedCommand.requestId, checked, policy)
+    const digest = fingerprint(savedCommand.requestId, checked, policy, savedCommand.documentOrigin)
     const result = store.transaction(() => {
       const previousId = current(savedCommand.requestId)
       if (previousId) {
         const previous = read(previousId)
         const state = expirePending(previous.plan, previous.state, Date.now())
-        if (previous.plan.fingerprint === digest) return dto(previous.plan, state)
+        if (previous.plan.fingerprint === digest) {
+          if (state !== 'consumed') validateOrigin(savedCommand)
+          return dto(previous.plan, state)
+        }
         // Commit a newly observed expiry before reporting the locked plan to the caller.
         if (state !== 'pending') return { locked: true as const }
         if (!store.repos.side_effect.updateByState(effectKey(previousId), 'pending', 'superseded')) return commandError('admission_conflict')
       }
+      validateOrigin(savedCommand)
       const trigger = sourceTrigger(savedCommand)
       if (trigger.queue_state !== 'pending' || trigger.decision_id || trigger.ticket_id || trigger.delivered_to) return commandError('admission_input_consumed')
       const createdAt = Date.now(), planId = randomUUID()
       const expiresAt = createdAt + timeoutMs
       if (!Number.isSafeInteger(expiresAt)) return commandError('admission_timeout_invalid', 400)
       const plan: Plan = { version: 1, planId, fingerprint: digest,
-        command: { requestId: savedCommand.requestId, epoch: savedCommand.epoch, intent: savedCommand.intent, digest: savedCommand.digest, messageId: savedCommand.messageId, threadKey: savedCommand.threadKey },
+        command: { requestId: savedCommand.requestId, epoch: savedCommand.epoch, intent: savedCommand.intent, digest: savedCommand.digest, messageId: savedCommand.messageId, threadKey: savedCommand.threadKey,
+          ...(savedCommand.documentOrigin ? { documentOrigin: copy(savedCommand.documentOrigin) } : {}) },
         brief: checked, policy, createdAt, expiresAt,
         evaluationId: `eval:admission:${planId}`, decisionId: `decision:admission:${planId}`, ticketId: `ticket:admission:${planId}`, workdir: join(workRoot, `admission-${planId}`) }
       if (hasSensitiveContractData(plan)) return commandError('admission_sensitive_contract', 400)
@@ -280,6 +307,7 @@ export function createAdmissionService(store: Store, options: AdmissionOptions) 
       // A terminal replay may arrive after the Host has finalized the command journal.
       if (state === 'expired') return { expired: true as const }
       commandFor(plan)
+      if (input.decision === 'approve' && state !== 'consumed') validateOrigin(plan.command)
       if (state !== 'pending') {
         if (input.decision === 'approve' && ['approved', 'consumed'].includes(state) || input.decision === 'reject' && state === 'rejected') return { plan, state }
         return commandError('admission_not_pending')

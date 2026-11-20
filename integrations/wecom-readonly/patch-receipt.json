@@ -1,0 +1,44 @@
+{
+  "baselineKind": "reconstructed by reversing exact read-before-edit literals, not independent backup or git",
+  "source": "/Users/dundundebaba/Documents/deepseek-harness/default-workspace/dsh-wecom-readonly",
+  "patchSha256": "00fa1b9552239d9efe58e00af3c042f3791ea25b253304a7a2515251640695c5",
+  "dryRun": "passed",
+  "temporaryApplyAndHashes": "passed",
+  "files": [
+    {
+      "path": "server.py",
+      "beforeSha256": "b9680ff6333154bc075a64610d6641f1788472b9d25c7be6990b511ac269df7c",
+      "afterSha256": "0223a73737dc2b0f91e616dc5fcc809a8de37557bff3a3126dd135dc501a2cb4"
+    },
+    {
+      "path": "package.json",
+      "beforeSha256": "52b642cc8e5356a11067a7fc3f0f75b4d53023ccfe3e6d9c28a5556cd97b16ae",
+      "afterSha256": "30a802f84aff9c950bf90b54fb841218103856b7328dbbc55ecce2135604c342"
+    },
+    {
+      "path": "vendor/src/wecom_excel_mcp/decoder.py",
+      "beforeSha256": "f61f39487aefc181b6f3d6e774d83dec2168422cf87d2d57f6ee3a092758864f",
+      "afterSha256": "cfddec2d3cfad59fd878e97810cf338698d94b1e2f1d99852492a12639d161fc"
+    },
+    {
+      "path": "vendor/src/wecom_excel_mcp/formatting.py",
+      "beforeSha256": "6d260c1f8667af0239e7eb2ae6187f2c029263404ddff72213ed1b3b44bc076e",
+      "afterSha256": "837cfa54f78601ea900d8e9d9a4a75d5bdeda1780d8e19fdce948a667250aae0"
+    },
+    {
+      "path": "task_snapshot.py",
+      "beforeSha256": null,
+      "afterSha256": "cc799c41278b5bdc76f96e28a3a750daaf42cbfa5106c556b1631a708523f4de"
+    },
+    {
+      "path": "tests/test_task_snapshot.py",
+      "beforeSha256": null,
+      "afterSha256": "7b40bf1c5c6d5d73af7c58a9aafd64e3e04dcc1ac6809d187a2bdb659a59c082"
+    },
+    {
+      "path": "tests/test_task_snapshot_protocol.py",
+      "beforeSha256": null,
+      "afterSha256": "07a9a91e0db0a470fc66688d513875175f4fd15a210fcb4b04136e408a601c49"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Synthetic configured Source only. No remote document or MCP reads.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-wecom-20261120-173600
+    confirm: always
+    sources:
+      - id: docs:host-fixture
+        kind: wecom-document
+        attended: false
+        doc: https://doc.weixin.qq.com/sheet/host_fixture
+        sheet: stable_tab
+        range: A2:D20
+        idColumn: A
+        titleColumn: B
+        textColumns: [B, C]
+        filter: { column: D, values: [todo] }
+- insert:
+    - id: kanban-s4-wecom-20261120-173600
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        requireCoverage: true
+        requireReadableDetails: true
+        requireDocumentSources: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-wecom-20261120-173600/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-wecom-20261120-173600-result.json

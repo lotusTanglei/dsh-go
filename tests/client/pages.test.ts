@@ -97,7 +97,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     const submit = section('submit')
     contains(submit, ['const existing = saved.pending', 'const epoch = existing?.epoch || draftEpochRef.current', 'if (!existing && epoch !== epochRef.current) return', 'requestId: mintId()', "saved.target ? 'ticket-input' : saved.intent", "call('command-status', { epoch, requestId: payload.requestId }", "e?.code !== 'command_not_found'", 'requestId: payload.requestId', 'text: payload.text', "call('command', exact, controller)", 'epochRef.current !== epoch', 'historyRef.current !== epoch', 'new TextEncoder().encode(saved.draft).length > 16384'])
     expect(submit.match(/mintId\(\)/g)).toHaveLength(1)
-    contains(section('applyReceipt'), ['current.pending?.requestId === payload.requestId', "matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage))", "receipt.accepted === true && current.draft === payload.text ? { draft: '', origin: null }"])
+    contains(section('applyReceipt'), ['current.pending?.requestId === payload.requestId', "matches && (receipt.accepted === true || ['canceled', 'rejected'].includes(receipt.stage))", "receipt.accepted === true && current.draft === payload.text ? { draft: '', origin: null, documentOrigin: null }"])
     contains(workspace, ['sendController.current?.abort()', "setNotice(tr('EpochChanged'))", 'const oldDraft = !!draftEpoch && draftEpoch !== workspace?.epoch', 'disabled: sending || !!pendingRequest || archive || oldDraft || !workspace', 'disabled: sending || archive || oldDraft || !composer.draft.trim()', "button(tr('CheckStatus'), () => { void submit(true) }", "button(tr('RetrySameRequest'), () => { void submit(false) }", 'pendingRequest.epoch !== workspace?.epoch || archive', 'e.nativeEvent?.isComposing', 'e.isComposing', 'e.nativeEvent?.keyCode === 229', 'e.keyCode === 229', "e.key !== 'Enter' || e.shiftKey"])
   })
 
@@ -245,6 +245,44 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('text'), ["value === undefined || value === null || value === '' ? tr('Unknown')"])
     contains(section('time'), ["Number.isFinite(value)", ": tr('Unknown')"])
     expect(styles).not.toMatch(/(?:^|[}\n])\s*(?:body|html|:root|#root)\s*[{,]/)
+  })
+
+  it('keeps document reads explicit and config-backed, and does not build a document manager or polling engine', () => {
+    contains(section('briefingView'), ['array(workspace?.documentSources).length', "tr('DocumentReadEntry')", "openSystem('sources')"])
+    contains(section('systemContent'), ['documentSourcesView()', 'data.sources'])
+    contains(section('documentSourcesView'), ['if (!configured.length) return null', "tr('DocumentReadOnce')", 'readDocuments(source.id)', "tr('DocumentLocalList')", 'readDocuments()', 'displayTitle(entry.title)', 'stateName(entry.state)', 'entry.warnings'])
+    contains(section('readDocuments'), ["action: 'scan', epoch, sourceId", "action: 'list', epoch", '...(cursor ? { cursor } : {})', 'more ? { ...result, items:', "tr('DocumentReadUncertain')", 'documentBusyRef.current', 'resetDocumentEvidence()'])
+    expect(section('readSystem')).not.toMatch(/document-source|readDocuments|loadDocumentImages|openDocument/)
+    const effects: string[] = []
+    walk(tree, node => { if (ts.isCallExpression(node) && node.expression.getText(tree) === 'React.useEffect') effects.push(node.getText(tree)) })
+    expect(effects.join('\n')).not.toMatch(/readDocuments\(|openDocument\(|loadDocumentImages\(|call\('document-/)
+    contains(index, ["path === 'document-source' && (body as any)?.action === 'scan'", 'documentScan ? 190000 : 15000'])
+  })
+
+  it('requires exact source detail and actual raster img load before preparing only a guarded plan draft', () => {
+    contains(section('openDocument'), ["action: 'detail'", 'revision: entry.revision', 'result.documentOrigin.itemKey !== entry.itemKey', 'result.documentOrigin.revision !== entry.revision'])
+    contains(section('loadDocumentImages'), ["call('document-image'", 'digest: image.digest', "['image/png', 'image/jpeg', 'image/gif', 'image/webp']", 'data:${result.mediaType};base64,${result.encoded}', 'loaded: false'])
+    contains(section('documentEvidenceView'), ["h('img'", 'src: documentImages[image.digest].src', 'onLoad: () => documentImageRendered(detail, image.digest, true)', 'onError: () => documentImageRendered(detail, image.digest, false)', 'image.cell', "type: 'checkbox'", "tr('DocumentReviewHint')", "tr('DocumentSnapshotWarning')"])
+    contains(section('documentCanPlan'), ["entry?.state === 'candidate'", 'entry.eligible === true', 'detail?.eligible === true', 'array(detail.screenshots).every', '?.loaded === true', 'documentReviewedRef.current', 'evidenceDigest', 'configVersion'])
+    contains(section('prepareDocumentPlan'), ['saved.pending', 'saved.draft.trim()', 'saved.target', 'saved.origin', 'saved.documentOrigin', 'draftEpochRef.current !== epochRef.current', 'historyRef.current !== epochRef.current', "draft: documentInstruction, intent: 'new-task'", 'documentOrigin: detail.documentOrigin'])
+    expect(section('prepareDocumentPlan')).not.toMatch(/call\(|submit\(/)
+    expect(section('documentInstruction')).toBe("'请为所选外部文档条目生成待审阅计划；先调用 task_source_context 读取不可信来源证据。尚未授权执行。'")
+    contains(section('blankComposer'), ['documentOrigin: null'])
+    contains(section('readComposer'), ['validDocumentOrigin(saved.documentOrigin)', 'validDocumentOrigin(pending.documentOrigin)', "pending.intent === 'new-task'"])
+    contains(section('submit'), ["saved.intent === 'new-task' && validDocumentOrigin(saved.documentOrigin)", 'documentOrigin: saved.documentOrigin', "payload.intent === 'new-task'", 'documentOrigin: payload.documentOrigin'])
+    contains(section('updateComposer'), ["next.intent !== 'new-task' || next.target || next.origin", 'next.documentOrigin = null'])
+    contains(workspace, ['setDocuments(null); setDocumentScanResult(null)', 'documentOrigin: null', "tr('DocumentDraftOrigin')"])
+    expect(zh.wDocumentReviewHint).toContain('不是机器')
+    expect(zh.wDocumentPlanOnly).toContain('不执行')
+  })
+
+  it('offers original-sheet attestation only for source-reviewable unknown formatting, never an ignore or execution shortcut', () => {
+    contains(section('documentCanReview'), ["entry?.state === 'blocked'", 'entry.reviewable === true', 'entry.eligible === false', 'detail?.reviewable === true', 'detail.eligible === false', 'validDocumentLink(detail.documentLink)', 'array(detail.screenshots).every', 'documentReviewedRef.current', 'evidenceDigest'])
+    contains(section('reviewDocument'), ["action: 'review'", "decision: 'reviewed-not-struck'", 'evidenceDigest: origin.evidenceDigest', 'documentCanReview(entry, detail)', 'saved.draft.trim()', 'documentDetailRef.current !== detail', 'result?.eligible !== true', 'result?.reviewable !== false', "result?.state !== 'candidate'", "tr('DocumentReviewSaved')"])
+    expect(section('reviewDocument')).not.toMatch(/submit\(|prepareDocumentPlan\(|call\('command|ignoreStrike|force:/)
+    contains(section('documentEvidenceView'), ["h('a', { href: detail.documentLink, target: '_blank', rel: 'noopener noreferrer' }", "tr('DocumentOpenOfficial')", "tr('DocumentUnknownReviewWarning')", "tr(reviewable ? 'DocumentVerifyOriginalNotStruck' : 'DocumentReviewed')", "reviewable ? button(tr('DocumentConfirmNotStruck')", 'reviewDocument(entry)', '!canReview || draftOccupied'])
+    expect(zh.wDocumentUnknownReviewWarning).toContain('不是执行授权')
+    expect(zh.wDocumentReviewSaved).toContain('尚未发送')
   })
 
   it('covers literal and semantic dynamic translations without forcing obsolete pages or unrelated source strings', () => {

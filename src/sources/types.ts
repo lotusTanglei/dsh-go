@@ -9,7 +9,7 @@ export interface Channel {
   reply(channel: ChannelKind, threadKey: ThreadKey, body: string, idemKey: string): Promise<void>
 }
 export interface Source extends Channel {
-  readonly kind: 'session' | 'inbox' | 'github' | 'feishu'
+  readonly kind: 'session' | 'inbox' | 'github' | 'feishu' | 'wecom-document'
   readonly attended: boolean
   start(): Promise<void>
   stop(): Promise<void>

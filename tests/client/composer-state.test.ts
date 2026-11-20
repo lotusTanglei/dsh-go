@@ -28,7 +28,7 @@ const plain = (value: any) => JSON.parse(JSON.stringify(value))
 describe('actual composer state closures (not UI rendering)', () => {
   it('defaults only brand new state to planning, retaining an existing empty or legacy message draft', () => {
     const blankComposer = closure('blankComposer'), sessionStorage = storage()
-    const read = closure('readComposer', { blankComposer, sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
+    const read = closure('readComposer', { blankComposer, validDocumentOrigin: closure('validDocumentOrigin'), sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
     expect(read('new').intent).toBe('new-task')
     for (const saved of [{ draft: '', intent: 'message' }, { draft: 'legacy body' }]) {
       sessionStorage.setItem('draft:current', JSON.stringify(saved))
@@ -38,12 +38,98 @@ describe('actual composer state closures (not UI rendering)', () => {
     expect(read('current')).toMatchObject({ draft: 'plan body', intent: 'new-task' })
   })
 
+  it('restores exact document-origin drafts and pending requests, without leaking origin into chat or legacy state', () => {
+    const blankComposer = closure('blankComposer'), sessionStorage = storage(), validDocumentOrigin = closure('validDocumentOrigin')
+    const read = closure('readComposer', { blankComposer, validDocumentOrigin, sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
+    const documentOrigin = { kind: 'wecom-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
+    const pending = { epoch: 'current', requestId: 'request-doc', text: 'Plan only', intent: 'new-task', documentOrigin }
+    sessionStorage.setItem('draft:current', JSON.stringify({ draft: 'Plan only', intent: 'new-task', documentOrigin, pending }))
+    expect(plain(read('current'))).toMatchObject({ documentOrigin, pending })
+    for (const saved of [{ intent: 'message' }, { intent: 'new-task', target: { id: 'task' } }, { intent: 'new-task', origin: { id: 'old-task' } }]) {
+      sessionStorage.setItem('draft:current', JSON.stringify({ draft: 'Preserve text', documentOrigin, ...saved }))
+      expect(read('current').draft).toBe('Preserve text'); expect(read('current').documentOrigin).toBeNull()
+    }
+    sessionStorage.setItem('draft:current', JSON.stringify({ draft: 'Preserve text', intent: 'new-task', documentOrigin: { ...documentOrigin, url: 'https://untrusted.invalid' } }))
+    expect(read('current').documentOrigin).toBeNull()
+    sessionStorage.setItem('draft:current', JSON.stringify({ draft: 'Preserve text', intent: 'message', pending: { ...pending, intent: 'message' } }))
+    expect(read('current').pending).toBeNull()
+  })
+
+  it('trusts source eligibility for task-bearing cells while requiring every available screenshot to render and explicit review', () => {
+    const documentOrigin = { kind: 'wecom-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
+    const documentImagesRef = { current: {} as any }, documentReviewedRef = { current: true }
+    const canPlan = closure('documentCanPlan', { epochRef: { current: 'current' }, validDocumentOrigin: closure('validDocumentOrigin'), array: closure('array'), documentImagesRef, documentReviewedRef })
+    const entry = { documentOrigin, eligible: true, state: 'candidate' }
+    const detail = { documentOrigin, eligible: true, epoch: 'current', cells: [{ column: 'A', strike: 'no' }, { column: 'Z', strike: 'unknown' }], screenshots: [] }
+    expect(canPlan(entry, detail)).toBe(true) // text-only task; unrelated unknown column does not override Source eligibility
+    expect(canPlan({ ...entry, eligible: false }, detail)).toBe(false)
+    expect(canPlan(entry, { ...detail, eligible: false })).toBe(false)
+    for (const state of ['blocked', 'claimed', 'linked', 'stopped']) expect(canPlan({ ...entry, state }, detail)).toBe(false)
+    const withImage = { ...detail, screenshots: [{ digest: 'e'.repeat(64) }] }
+    expect(canPlan(entry, withImage)).toBe(false)
+    documentImagesRef.current['e'.repeat(64)] = { loaded: false }; expect(canPlan(entry, withImage)).toBe(false)
+    documentImagesRef.current['e'.repeat(64)] = { loaded: true }; expect(canPlan(entry, withImage)).toBe(true)
+    documentReviewedRef.current = false; expect(canPlan(entry, withImage)).toBe(false)
+    documentReviewedRef.current = true; expect(canPlan(entry, { ...detail, epoch: 'archived' })).toBe(false)
+    expect(canPlan(entry, { ...detail, documentOrigin: { ...documentOrigin, revision: 'f'.repeat(64) } })).toBe(false)
+  })
+
+  it('permits manual unknown-format review only for exact reviewable snapshots, official original links, loaded evidence and owner acknowledgement', () => {
+    const documentOrigin = { kind: 'wecom-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
+    const documentImagesRef = { current: {} as any }, documentReviewedRef = { current: false }
+    const canReview = closure('documentCanReview', { epochRef: { current: 'current' }, validDocumentOrigin: closure('validDocumentOrigin'), validDocumentLink: closure('validDocumentLink'), array: closure('array'), documentImagesRef, documentReviewedRef })
+    const entry = { documentOrigin, eligible: false, reviewable: true, state: 'blocked' }
+    const detail = { documentOrigin, eligible: false, reviewable: true, epoch: 'current', documentLink: 'https://doc.weixin.qq.com/sheet/id?tab=sheet_1', screenshots: [] }
+    expect(canReview(entry, detail)).toBe(false)
+    documentReviewedRef.current = true; expect(canReview(entry, detail)).toBe(true) // text-only task still needs explicit original-sheet attestation
+    for (const patch of [{ reviewable: false }, { eligible: true }, { state: 'linked' }, { state: 'claimed' }, { state: 'stopped' }]) expect(canReview({ ...entry, ...patch }, detail)).toBe(false)
+    for (const patch of [{ reviewable: false }, { eligible: true }, { epoch: 'archived' }, { documentOrigin: { ...documentOrigin, revision: 'f'.repeat(64) } }]) expect(canReview(entry, { ...detail, ...patch })).toBe(false)
+    for (const documentLink of ['https://evil.invalid', 'javascript:alert(1)', 'https://user:pass@doc.weixin.qq.com/sheet/id?tab=sheet', 'https://doc.weixin.qq.com/sheet/id?tab=sheet#auth', 'https://doc.weixin.qq.com/sheet/id?tab=sheet&token=secret']) expect(canReview(entry, { ...detail, documentLink })).toBe(false)
+    const withImage = { ...detail, screenshots: [{ digest: 'e'.repeat(64) }] }
+    expect(canReview(entry, withImage)).toBe(false)
+    documentImagesRef.current['e'.repeat(64)] = { loaded: true }; expect(canReview(entry, withImage)).toBe(true)
+    documentImagesRef.current['e'.repeat(64)] = { loaded: false }; expect(canReview(entry, withImage)).toBe(false)
+  })
+
+  it('records an explicit exact review before enabling a separate plan draft and never sends a command', async () => {
+    const documentOrigin = { kind: 'wecom-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
+    const entry = { itemKey: documentOrigin.itemKey, revision: documentOrigin.revision, documentOrigin, eligible: false, reviewable: true, state: 'blocked' }
+    const detail = { documentOrigin, eligible: false, reviewable: true, epoch: 'current', documentLink: 'https://doc.weixin.qq.com/sheet/id?tab=sheet_1', screenshots: [] }
+    const documentDetailRef = { current: detail as any }, documentReviewedRef = { current: true }, documentImagesRef = { current: {} }, epochRef = { current: 'current' }
+    const canReview = closure('documentCanReview', { epochRef, validDocumentOrigin: closure('validDocumentOrigin'), validDocumentLink: closure('validDocumentLink'), array: closure('array'), documentImagesRef, documentReviewedRef })
+    const calls: any[] = [], notices: string[] = [], details: any[] = []
+    let documents: any = { items: [entry] }
+    const globals = { documentDetailRef, epochRef, composerRef: { current: { draft: '', pending: null, target: null, origin: null, documentOrigin: null } }, documentBusyRef: { current: false }, documentCanReview: canReview,
+      draftEpochRef: { current: 'current' }, historyRef: { current: 'current' }, validDocumentOrigin: closure('validDocumentOrigin'), array: closure('array'), alive: { current: true },
+      setDocumentBusy() {}, setDocumentError() {}, setDocumentDetail: (next: any) => details.push(next), setDocuments: (update: any) => { documents = update(documents) }, setNotice: (notice: string) => notices.push(notice), tr: (key: string) => key,
+      call: async (path: string, input: any) => { calls.push({ path, input }); return { documentOrigin, eligible: true, reviewable: false, state: 'candidate' } },
+    }
+    await closure('reviewDocument', globals)(entry)
+    expect(calls).toEqual([{ path: 'document-source', input: { action: 'review', epoch: 'current', itemKey: documentOrigin.itemKey, revision: documentOrigin.revision, evidenceDigest: documentOrigin.evidenceDigest, decision: 'reviewed-not-struck' } }])
+    expect(details.at(-1)).toMatchObject({ eligible: true, reviewable: false })
+    expect(documents.items[0]).toMatchObject({ eligible: true, reviewable: false, state: 'candidate' })
+    expect(notices).toContain('DocumentReviewSaved')
+    documentDetailRef.current = detail; documents = { items: [entry] }; calls.length = 0
+    globals.composerRef.current.draft = 'Keep my draft'
+    await closure('reviewDocument', globals)(entry)
+    expect(calls).toEqual([]); expect(notices.at(-1)).toBe('ResolveDraftFirst')
+  })
+
+  it('clears document origin on intent/target changes and explicit cancellation without dropping draft text', () => {
+    const origin = { kind: 'wecom-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
+    const saved = { draft: 'Keep me', intent: 'new-task', documentOrigin: origin }, outcomes: any[] = []
+    const update = closure('updateComposer', { draftEpochRef: { current: 'current' }, composerCache: { current: { current: saved } }, saveComposer: (_epoch: string, next: any) => outcomes.push(next) })
+    for (const patch of [{ intent: 'message' }, { target: { id: 'task' } }, { origin: { id: 'old' } }, { documentOrigin: null }]) {
+      update(patch); expect(outcomes.at(-1)).toMatchObject({ draft: 'Keep me', documentOrigin: null })
+    }
+  })
+
   it('preserves the exact pending recovery payload and task target rather than converting it to a new plan', () => {
     const blankComposer = closure('blankComposer'), sessionStorage = storage()
     const pending = { epoch: 'current', requestId: 'request-1', text: 'Original input', intent: 'ticket-input', ticketId: 'ticket-A' }
     const saved = { draft: 'Edited local draft', intent: 'message', pending, target: { id: 'ticket-A', title: 'A' } }
     sessionStorage.setItem('draft:current', JSON.stringify(saved))
-    const read = closure('readComposer', { blankComposer, sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
+    const read = closure('readComposer', { blankComposer, validDocumentOrigin: closure('validDocumentOrigin'), sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
     expect(plain(read('current'))).toMatchObject(saved)
     expect(read('other').pending).toBeNull()
   })
@@ -104,7 +190,7 @@ describe('actual reply baseline and explicit reading closures', () => {
       sendBusy: { current: false }, epochRef: { current: 'current' }, draftEpochRef: { current: 'current' }, historyRef: { current: 'current' },
       workspaceRef: { current: { capabilities: { send: true } } }, composerRef: { current: saved },
       replyBaselineReady: h.replyBaselineReady, replyReadThrough: h.replyReadThrough, conversations: h.conversations,
-      sessionStorage: h.shared, mintId: () => 'immutable-request', TextEncoder, AbortController,
+      sessionStorage: h.shared, validDocumentOrigin: closure('validDocumentOrigin'), mintId: () => 'immutable-request', TextEncoder, AbortController,
       sendController: { current: null }, alive: { current: true }, setSending() {}, updateComposer() {},
       call: async () => ({ accepted: true, stage: 'published' }), applyReceipt() {}, poke: { current() {} }, setNotice() {}, tr: (key: string) => key,
     })

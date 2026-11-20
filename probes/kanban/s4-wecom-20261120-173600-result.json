@@ -1,0 +1,451 @@
+{
+  "kind": "kanban-s4-real-host-single-workspace",
+  "startedAt": "2026-11-20T09:31:59.579Z",
+  "state": "passed",
+  "externalProviderRequests": 0,
+  "localAdapterCalls": 2,
+  "mainCalls": 1,
+  "titleCalls": 1,
+  "purposes": [
+    "main",
+    "session-title"
+  ],
+  "inputTokens": 0,
+  "outputTokens": 0,
+  "boundaries": {
+    "owner": "connection.browserPeer is the installed in-process owner Peer; not a real browser cookie/authentication proof.",
+    "nonOwner": "A real connection.createPeer with synthetic unknown principal tests only the exact-route principal fence, not HTTP credential admission.",
+    "client": "Actual current lib/client.js and Host manifest/bundle are read. A VM registers its factory and three slots without rendering; no DOM, browser, screenshots, visual/layout/interaction proof.",
+    "execution": "One message intent only. No ticket admission, assignment start, Worker, external provider, or alternative GUI/server.",
+    "cleanup": "Runtime disposal and probe-owned SQLite read-only checks precede receipt. Host-store closure, file-lock release and runner process cleanup remain for lead after runner exit."
+  },
+  "installedSourceContracts": {
+    "presets": "@deepseek-ai/dsh-agent-preset-registry/src/index.ts:193 list(): Promise<AgentPreset[]>; broken omitted when usable",
+    "modules": "@deepseek-ai/dsh-client-modules/src/index.ts:719 graph(), :728 clientPath(id), :745 fetchBundle(Request)",
+    "manifest": "@deepseek-ai/dsh-client-modules/src/client/manifest.ts:52 WebBootEntry { id, url, rev, inject?, immediately?, external? }; :94 WebBootGraph { rev, entries, batches }",
+    "connection": "@deepseek-ai/dsh-client-connection/src/rpc.ts:247 createPeer({principal, interactions}); src/rpc-host.ts:215-222 exact route rejects non-owner principal with 403"
+  },
+  "presets": {
+    "rosterCount": 7,
+    "rows": [
+      {
+        "id": "dsh-superagent-router",
+        "name": "Superagent Router",
+        "description": "Read-only task routing and human-facing coordination."
+      },
+      {
+        "id": "dsh-superagent-watchdog",
+        "name": "Superagent Watchdog",
+        "description": "Read-only assignment observation seam."
+      },
+      {
+        "id": "dsh-superagent-worker",
+        "name": "Superagent Worker",
+        "description": "Ticket-scoped execution and structured reporting."
+      }
+    ]
+  },
+  "client": {
+    "graphRev": "9311518fa256",
+    "entry": {
+      "id": "dsh-superagent",
+      "url": "plugins/??dsh-superagent/client.js&rev=8a0022bde0a3",
+      "rev": "8a0022bde0a3",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    },
+    "clientPath": "/Users/dundundebaba/sync/dsh-s-p/lib/client.js",
+    "expectedPath": "/Users/dundundebaba/sync/dsh-s-p/lib/client.js",
+    "bytes": 179880,
+    "sha256": "ca1c3590f95b87f58db0eeb31effc57207ad6ddfce337221b7331837b0c173dd",
+    "bundleUrl": "http://localhost/plugins/??dsh-superagent/client.js&rev=8a0022bde0a3",
+    "bundleStatus": 200,
+    "bundleSha256": "271cd2ad4eaa25ff331e5a8b776c6606c0dedf00e695fd690e9199e2eccf9a6b",
+    "servedContainsExactArtifact": true,
+    "proof": "factory-and-slot registration only; no React render or DOM",
+    "workspaceSeams": {
+      "function WorkspacePage": true,
+      "saw-workspace": true,
+      "command-status": true,
+      "timelineCursor": true,
+      "RetrySameRequest": true,
+      "BoundaryTitle": true,
+      "DeskTitle": true,
+      "HistoryShort": true,
+      "briefingView": true,
+      "latestAssistant": true,
+      "deriveDeskState": true,
+      "saw-compose-modes": true,
+      "交给超管": true,
+      "displayTitle": true,
+      "reportSummary": true,
+      "resultView": true,
+      "saw-original-request": true,
+      "saw-result-technical": true,
+      "查看完整任务原文": true,
+      "报告中的验收": true,
+      "document-source": true,
+      "document-image": true,
+      "documentCanPlan": true,
+      "DocumentReadOnce": true,
+      "DocumentPlanOnly": true
+    },
+    "registration": {
+      "entries": 1,
+      "imports": [
+        "react"
+      ],
+      "owners": [
+        "conversation.chat.node",
+        "sidebar.panellist",
+        "main"
+      ],
+      "slots": [
+        {
+          "name": "conversation.chat.node",
+          "key": "superagent-channel-notice",
+          "locale": "superagent",
+          "componentName": "ChannelNotice",
+          "isFunction": true
+        },
+        {
+          "name": "sidebar.panellist",
+          "id": "superagent",
+          "order": 100,
+          "locale": "superagent",
+          "componentName": "Icon",
+          "isFunction": true
+        },
+        {
+          "name": "main",
+          "key": "superagent",
+          "locale": "superagent",
+          "componentName": "WorkspacePage",
+          "isFunction": true
+        }
+      ],
+      "definitions": [
+        "superagent-channel-notice"
+      ],
+      "rendered": false,
+      "browser": false
+    }
+  },
+  "nonOwnerDenied": {
+    "status": 403,
+    "body": {
+      "text": "forbidden"
+    }
+  },
+  "originDenied": {
+    "status": 403,
+    "body": {
+      "ok": false,
+      "code": "origin_denied",
+      "error": {
+        "code": "origin_denied",
+        "message": "Origin is not permitted"
+      },
+      "message": "Origin is not permitted"
+    }
+  },
+  "workspace": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "846a5d18-d912-435c-b640-079a101ca6b7",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795167119663,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "documentSources": [
+          {
+            "id": "docs:host-fixture",
+            "sheet": "stable_tab",
+            "range": "A2:D20"
+          }
+        ],
+        "briefing": {
+          "snapshotAt": 1795167119664,
+          "decisions": {
+            "total": 0,
+            "items": []
+          },
+          "active": {
+            "total": 0,
+            "items": []
+          },
+          "results": {
+            "total": 0,
+            "items": []
+          },
+          "counts": {
+            "pending": 0,
+            "running": 0,
+            "waiting": 0,
+            "ended": 0
+          }
+        },
+        "admissions": [],
+        "admissionsTotal": 0,
+        "pendingPlans": 0,
+        "pendingApprovals": 0
+      }
+    }
+  },
+  "board": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "scope": {
+          "kind": "superagent-ledger",
+          "otherSessions": "not-included"
+        },
+        "columns": {
+          "pending": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "running": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "waiting": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          },
+          "ended": {
+            "total": 0,
+            "items": [],
+            "hasMore": false
+          }
+        },
+        "snapshotAt": 1795167119664,
+        "revision": "b6ebff67362ba35219b1677183118104042899441a2871f8975719463bc0e587",
+        "filtered": false,
+        "pendingApprovals": 0
+      }
+    }
+  },
+  "boardNonOwner": {
+    "status": 403,
+    "body": {
+      "text": "forbidden"
+    }
+  },
+  "boardOrigin": {
+    "status": 403,
+    "body": {
+      "ok": false,
+      "code": "origin_denied",
+      "error": {
+        "code": "origin_denied",
+        "message": "Origin is not permitted"
+      },
+      "message": "Origin is not permitted"
+    }
+  },
+  "documents": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "sources": [
+          {
+            "id": "docs:host-fixture",
+            "sheet": "stable_tab",
+            "range": "A2:D20"
+          }
+        ],
+        "total": 0,
+        "hasMore": false,
+        "items": []
+      }
+    }
+  },
+  "documentsNonOwner": {
+    "status": 403,
+    "body": {
+      "text": "forbidden"
+    }
+  },
+  "documentsOrigin": {
+    "status": 403,
+    "body": {
+      "ok": false,
+      "code": "origin_denied",
+      "error": {
+        "code": "origin_denied",
+        "message": "Origin is not permitted"
+      },
+      "message": "Origin is not permitted"
+    }
+  },
+  "documentsArbitrary": {
+    "status": 400,
+    "body": {
+      "ok": false,
+      "code": "invalid_input",
+      "error": {
+        "code": "invalid_input",
+        "message": "Request fields are not permitted"
+      },
+      "message": "Request fields are not permitted"
+    }
+  },
+  "documentsImage": {
+    "status": 409,
+    "body": {
+      "ok": false,
+      "code": "document_snapshot_changed",
+      "error": {
+        "code": "document_snapshot_changed",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "documentsReviewUnknown": {
+    "status": 409,
+    "body": {
+      "ok": false,
+      "code": "document_review_denied",
+      "error": {
+        "code": "document_review_denied",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "documentsReviewNonOwner": {
+    "status": 403,
+    "body": {
+      "text": "forbidden"
+    }
+  },
+  "documentsReviewOrigin": {
+    "status": 403,
+    "body": {
+      "ok": false,
+      "code": "origin_denied",
+      "error": {
+        "code": "origin_denied",
+        "message": "Origin is not permitted"
+      },
+      "message": "Origin is not permitted"
+    }
+  },
+  "command": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "0aa57914-654d-4ba4-91fb-9127ab4b0777",
+        "messageId": "workspace:0aa57914-654d-4ba4-91fb-9127ab4b0777",
+        "epoch": "846a5d18-d912-435c-b640-079a101ca6b7",
+        "stage": "claimed",
+        "accepted": true,
+        "seq": 3,
+        "at": 1795167119667,
+        "updatedAt": 1795167119709
+      }
+    }
+  },
+  "flush": true,
+  "status": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "requestId": "0aa57914-654d-4ba4-91fb-9127ab4b0777",
+        "messageId": "workspace:0aa57914-654d-4ba4-91fb-9127ab4b0777",
+        "epoch": "846a5d18-d912-435c-b640-079a101ca6b7",
+        "stage": "published",
+        "accepted": true,
+        "seq": 6,
+        "at": 1795167119667,
+        "updatedAt": 1795167120325
+      }
+    }
+  },
+  "conversation": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "latestAssistant": {
+          "id": "4e32f3d8-95bc-4956-a843-ccde571c8cd6",
+          "seq": 15,
+          "lastSeq": 15,
+          "at": 1795167119735,
+          "kind": "assistant",
+          "text": "S4 local adapter: one conversational reply; no ticket or Worker execution."
+        },
+        "items": [
+          {
+            "id": "workspace:0aa57914-654d-4ba4-91fb-9127ab4b0777",
+            "seq": 4,
+            "lastSeq": 9,
+            "at": 1795167119667,
+            "kind": "user",
+            "text": "S4 local conversation fixture. Reply once without tools or creating a task.",
+            "stage": "admitted"
+          },
+          {
+            "id": "4e32f3d8-95bc-4956-a843-ccde571c8cd6",
+            "seq": 15,
+            "lastSeq": 15,
+            "at": 1795167119735,
+            "kind": "assistant",
+            "text": "S4 local adapter: one conversational reply; no ticket or Worker execution."
+          }
+        ],
+        "nextAfter": "WzEsInQ4d3lmTnlkZGtNbGdpa1J4SzNpT0V6T1UtSHVjSlhnVTBVQUNvOEh2bW8iLCJhZnRlciIsMTgsOTAwNzE5OTI1NDc0MDk5MSwxOF0",
+        "hasMore": false
+      }
+    }
+  },
+  "userMessageEvents": 1,
+  "conversationProof": {
+    "user": 1,
+    "assistant": 1
+  },
+  "briefingProof": {
+    "groups": [
+      "snapshotAt",
+      "decisions",
+      "active",
+      "results",
+      "counts"
+    ],
+    "latestReplyIndependent": true
+  },
+  "liveAgents": 0,
+  "sqlite": {
+    "dbPath": "/Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-wecom-20261120-173600/superagent.sqlite",
+    "readOnly": true,
+    "runningAssignments": 0,
+    "pendingOrEvaluatingTriggers": 0,
+    "runningEvals": 0,
+    "pendingOutbox": 0,
+    "outboxTotal": 0,
+    "tickets": 0,
+    "assignments": 0
+  },
+  "finishedAt": "2026-11-20T09:32:00.332Z"
+}

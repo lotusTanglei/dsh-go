@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { Store } from '../store/index.js'
+import { validDocumentOrigin, type DocumentOrigin } from './document-origin.js'
 
 export type CommandIntent = 'message' | 'new-task' | 'ticket-input'
-export interface WorkspaceCommand { epoch: string; requestId: string; intent: CommandIntent; text: string; ticketId?: string; recreateFrom?: string }
+export interface WorkspaceCommand { epoch: string; requestId: string; intent: CommandIntent; text: string; ticketId?: string; recreateFrom?: string; documentOrigin?: DocumentOrigin }
 export interface CommandRecord {
   version: 1; requestId: string; epoch: string; intent: CommandIntent; digest: string; messageId: string
-  threadKey: string; targetTicket?: string; originTicket?: string; stage: 'received' | 'queued' | 'claimed' | 'admitted' | 'processing' | 'published' | 'canceled' | 'rejected' | 'unknown'
+  threadKey: string; targetTicket?: string; originTicket?: string; documentOrigin?: DocumentOrigin; stage: 'received' | 'queued' | 'claimed' | 'admitted' | 'processing' | 'published' | 'canceled' | 'rejected' | 'unknown'
   seq: number; at: number; updatedAt: number; durable: boolean; error?: string
 }
 export class WorkspaceError extends Error {
@@ -17,11 +18,16 @@ export function validateCommand(value: WorkspaceCommand): void {
   if (!value || !UUID.test(value.requestId) || typeof value.epoch !== 'string' || !value.epoch || !['message', 'new-task', 'ticket-input'].includes(value.intent)
     || typeof value.text !== 'string' || !value.text.trim() || Buffer.byteLength(value.text, 'utf8') > 16_384 || value.text.includes('\0')
     || (value.intent === 'ticket-input' ? typeof value.ticketId !== 'string' || !value.ticketId : value.ticketId !== undefined)
-    || (value.recreateFrom !== undefined && (value.intent !== 'new-task' || typeof value.recreateFrom !== 'string' || !value.recreateFrom || value.recreateFrom.length > 200))) commandError('invalid_command', 400)
+    || (value.recreateFrom !== undefined && (value.intent !== 'new-task' || typeof value.recreateFrom !== 'string' || !value.recreateFrom || value.recreateFrom.length > 200))
+    || (value.documentOrigin !== undefined && (!validDocumentOrigin(value.documentOrigin) || value.intent !== 'new-task' || value.ticketId !== undefined || value.recreateFrom !== undefined))) commandError('invalid_command', 400)
 }
 export function commandDigest(value: WorkspaceCommand): string {
   // Preserve exact Unicode/newlines. No lossy normalization or redacted replay copy.
-  return createHash('sha256').update(JSON.stringify([value.epoch, value.intent, value.text, value.ticketId ?? null, ...(value.recreateFrom === undefined ? [] : [value.recreateFrom])])).digest('hex')
+  const origin = value.documentOrigin
+  // An explicit tuple makes origin object key order irrelevant; absent-origin bytes stay v1-compatible.
+  return createHash('sha256').update(JSON.stringify([value.epoch, value.intent, value.text, value.ticketId ?? null,
+    ...(value.recreateFrom === undefined ? [] : [value.recreateFrom]),
+    ...(origin === undefined ? [] : [[origin.kind, origin.itemKey, origin.revision, origin.evidenceDigest, origin.configVersion]])])).digest('hex')
 }
 export function createCommandJournal(store: Store) {
   const key = (id: string) => `workspace-command:v1:${id}`
@@ -29,22 +35,26 @@ export function createCommandJournal(store: Store) {
     const row = store.repos.side_effect.get(key(id))
     if (!row) return undefined
     const value = row.detail as CommandRecord
-    if (row.kind !== 'workspace-command-v1' || value?.version !== 1 || value.requestId !== id) return commandError('command_record_invalid', 503)
+    if (row.kind !== 'workspace-command-v1' || value?.version !== 1 || value.requestId !== id
+      || (value.documentOrigin !== undefined && (!validDocumentOrigin(value.documentOrigin) || value.intent !== 'new-task' || value.targetTicket !== undefined || value.originTicket !== undefined))) return commandError('command_record_invalid', 503)
+    if (value.documentOrigin) Object.freeze(value.documentOrigin)
     return value
   }
   const all = (): CommandRecord[] => (store.db.prepare("SELECT key FROM side_effect WHERE kind = ? ORDER BY at, key").all('workspace-command-v1') as { key: string }[]).map(row => read(row.key.slice('workspace-command:v1:'.length))!)
   return {
     read, all,
     byMessage(messageId: string) { return all().find(row => row.messageId === messageId) },
-    receive(input: WorkspaceCommand, thread: string): CommandRecord {
+    receive(input: WorkspaceCommand, thread: string, beforeInsert?: () => void): CommandRecord {
       validateCommand(input)
       return store.transaction(() => {
         const existing = read(input.requestId), digest = commandDigest(input)
         if (existing) { if (existing.digest !== digest) return commandError('request_conflict'); return existing }
+        beforeInsert?.()
         const at = Date.now()
         const record: CommandRecord = { version: 1, requestId: input.requestId, epoch: input.epoch, intent: input.intent, digest,
           messageId: `workspace:${input.requestId}`, threadKey: thread, ...(input.ticketId ? { targetTicket: input.ticketId } : {}),
-          ...(input.recreateFrom ? { originTicket: input.recreateFrom } : {}), stage: 'received', seq: 1, at, updatedAt: at, durable: false }
+          ...(input.recreateFrom ? { originTicket: input.recreateFrom } : {}),
+          ...(input.documentOrigin ? { documentOrigin: Object.freeze({ ...input.documentOrigin }) } : {}), stage: 'received', seq: 1, at, updatedAt: at, durable: false }
         store.repos.side_effect.insert({ key: key(input.requestId), kind: 'workspace-command-v1', ticket_id: input.ticketId ?? null, at, state: 'v1:1', detail: record })
         return record
       })

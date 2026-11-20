@@ -18,12 +18,15 @@ import type { WorkerGuardSnapshot, RoleGuardRuntime } from './tools/runtime.js'
 import { createWatchdog, type WatchdogAssignment } from './engine/watchdog.js'
 import { sampleDeviation } from './sessions/watchdog.js'
 import { createWorkspaceRuntime } from './workspace/runtime.js'
+import { createWorkspaceDocuments } from './workspace/documents.js'
+import type { WecomToolsPort } from './sources/wecom-connector.js'
 import type { Spawner } from './sessions/worker.js'
 import { approvalImpact } from './engine/approval-impact.js'
 
 /** Narrow Host adapter; DSH's live APIs remain at this boundary. */
 export interface RuntimeContext {
   readonly agents: { get(id: string): any; create(input: any): Promise<any>; resume?(input: any): Promise<any> }
+  readonly tools?: WecomToolsPort
   readonly agentPresets: { mount(ctx: any, id: string): Promise<unknown>; composedPreset(ctx: any): string | undefined }
   readonly subagents: { startActivation(input: any): Promise<any>; interrupt?(id: string, cause: any): unknown }
   readonly sessionQuery: { readSession(id: string): Promise<any> }
@@ -48,7 +51,7 @@ export function readWorkerSnapshot(store: Store, sessionId: string): WorkerGuard
 /** Synthetic tests may inject a fake Spawner; production never obtains an execution bypass from Config or HTTP. */
 export interface RuntimeTestAdapter { readonly spawner: Spawner; readonly legacyInput?: boolean }
 export function createRuntime(ctx: RuntimeContext, store: Store, config: Config, roleGuard?: RoleGuardRuntime, testAdapter?: RuntimeTestAdapter) {
-  const policy = createPolicy({ acceptedSources: config.sources.map(row => row.id as any), acceptMode: config.acceptMode, confirm: config.confirm, bots: config.bots, paused: config.paused, evalTimeoutMs: config.evalTimeoutMs, budgets: { maxWorkers: config.maxWorkers, maxStepsPerTicket: config.maxStepsPerTicket, maxTokensPerTicket: config.maxTokensPerTicket, maxDurationMsPerTicket: config.maxDurationMsPerTicket, maxRetries: config.maxRetries, queueLimit: config.queueLimit, watchdog: { intervalMs: config.watchdogIntervalMs, stallMs: config.stallMs, repeatCallThreshold: config.repeatCallThreshold } } })
+  let policy = createPolicy({ acceptedSources: config.sources.map(row => row.id as any), acceptMode: config.acceptMode, confirm: config.confirm, bots: config.bots, paused: config.paused, evalTimeoutMs: config.evalTimeoutMs, budgets: { maxWorkers: config.maxWorkers, maxStepsPerTicket: config.maxStepsPerTicket, maxTokensPerTicket: config.maxTokensPerTicket, maxDurationMsPerTicket: config.maxDurationMsPerTicket, maxRetries: config.maxRetries, queueLimit: config.queueLimit, watchdog: { intervalMs: config.watchdogIntervalMs, stallMs: config.stallMs, repeatCallThreshold: config.repeatCallThreshold } } })
   const sources = new SourceRegistry()
   const workers = new Map<string, WorkerHandle>()
   const ownedHandles: any[] = []
@@ -56,6 +59,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   const controller = new AbortController()
   let mainId: string | undefined
   let workspace: ReturnType<typeof createWorkspaceRuntime> | undefined
+  let documents: ReturnType<typeof createWorkspaceDocuments> | undefined
   let disposed = false
   let initialization: 'starting' | 'ready' | 'failed' = 'starting'
   let heartbeat: number | undefined
@@ -63,7 +67,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   const audit = (action: string, detail: unknown, ticket?: string) => store.repos.audit.insert({ at: Date.now(), actor: 'superagent', action, ticket_id: ticket ?? null, thread_key: null, detail })
   const track = (task: Promise<unknown>) => { tasks.add(task); void task.catch(() => { if (!disposed) audit('runtime_error', { code: 'SA_RUNTIME_FAILURE' }) }).finally(() => tasks.delete(task)) }
   const sendRouter = async (text: string, wake = false, id?: string) => { if (!mainId) throw new Error('runtime: Router not ready'); const agent = ctx.agents.get(mainId); if (!agent) throw new Error('runtime: Router missing'); const value = { ...message(text), ...(id ? { id } : {}) }; await (wake ? agent.followup(value) : agent.inject(value)) }
-  const engine = createEngine(store, { policy, queueLimit: config.queueLimit, maxEvalRequeues: config.maxEvalRequeues, outbox: { maxRetries: config.outboxMaxAttempts, backoffMs: config.outboxBackoffMs, backoffMaxMs: config.outboxBackoffMaxMs, onDropped: row => audit('outbox_dropped', { id: row.id }) } }, {
+  const engine = createEngine(store, { get policy() { return policy }, queueLimit: config.queueLimit, maxEvalRequeues: config.maxEvalRequeues, outbox: { maxRetries: config.outboxMaxAttempts, backoffMs: config.outboxBackoffMs, backoffMaxMs: config.outboxBackoffMaxMs, onDropped: row => audit('outbox_dropped', { id: row.id }) } }, {
     liveSessionIds: () => new Set(store.repos.assignment.all().map(row => String(row.session_id)).filter(id => ctx.agents.get(id))),
     sender: { async send(row) { const thread = store.repos.thread.get(row.threadKey); const source = thread ? sources.get(thread.source as any) : undefined; if (!source) throw new Error('source unavailable'); await source.reply(row.channel, row.threadKey, row.body, row.idempotencyKey) } },
   })
@@ -368,8 +372,18 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       }
     })
     sources.register(source)
+    // Configured external instances must not accidentally exclude this exact owned human channel.
+    // Resolve once before admission/recovery starts; never admit arbitrary browser Session ids.
+    const ownedBindings = store.repos.kv.get('workspace-bindings-v1')?.v as { current?: { sessionId?: string }; archives?: Array<{ sessionId?: string }> } | undefined
+    const ownedSessions = [mainId!, ...(ownedBindings?.current?.sessionId ? [ownedBindings.current.sessionId] : []), ...(ownedBindings?.archives ?? []).flatMap(row => typeof row.sessionId === 'string' && row.sessionId ? [row.sessionId] : [])]
+    if (policy.acceptedSources.length) policy = createPolicy({ ...policy, acceptedSources: [...new Set([...policy.acceptedSources, ...ownedSessions.map(id => `session:${id}` as typeof source.id)])] })
     store.repos.thread.insertOrIgnore({ key: `session:${mainId}`, source: source.id, ref_json: { source: source.id, kind: 'session', id: mainId, address: {} }, created_at: Date.now(), last_at: Date.now(), seq: 0, paused: false, evaluating: null })
-    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid })
+    if (config.sources.some(row => row.kind === 'wecom-document')) documents = createWorkspaceDocuments(store, config, {
+      tools: ctx.tools, signal: controller.signal, registry: sources,
+      ingest: trigger => engine.ingest(trigger), reply: (body, idem) => source.reply('session', threadKey(`session:${mainId}`), body, idem),
+    })
+    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, documentOrigins: documents?.authority })
+    await documents?.start()
     if (!testAdapter) {
       // Upgrades/reloads cannot keep an old, unverified Worker executable.
       for (const assignment of store.repos.assignment.all().filter(row => row.state === 'running')) {
@@ -413,8 +427,13 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       if (disposed) return { ok: false, code: 'SA_RUNTIME_STOPPED' }
       const sessionId = exec?.agent?.id
       const worker = sessionId ? assignmentFor(sessionId) : undefined
-      const routerCommands = ['ticket_list', 'ticket_status', 'ticket_cancel', 'assignment_start', 'assignment_stop', 'ticket_resume', 'ticket_create', 'channel_reply', 'human_ask']
+      const routerCommands = ['task_source_context', 'ticket_list', 'ticket_status', 'ticket_cancel', 'assignment_start', 'assignment_stop', 'ticket_resume', 'ticket_create', 'channel_reply', 'human_ask']
       if (routerCommands.includes(name) && (sessionId !== mainId || ctx.agents.get(mainId!) !== exec.agent)) return { ok: false, code: 'SA_ROUTER_IDENTITY_REQUIRED' }
+      if (['ticket_cancel', 'assignment_start', 'assignment_stop', 'ticket_resume'].includes(name) && await workspace?.isDocumentPlanningTurn()) return { ok: false, code: 'SA_DOCUMENT_PLANNING_ONLY' }
+      if (name === 'task_source_context') {
+        try { return { ok: true, code: 'SA_EXTERNAL_SOURCE_CONTEXT', evidence: await workspace?.sourceContext() } }
+        catch (error) { return { ok: false, code: (error as any)?.code || 'SA_DOCUMENT_CONTEXT_DENIED' } }
+      }
       if (name === 'ticket_list') return { ok: true, code: 'SA_OK', items: store.repos.ticket.all().map(row => ({ id: row.id, state: row.state, title: row.title })) }
       if (name === 'ticket_status') { const row = ticketFor(args.ticketId); return { ok: true, code: 'SA_OK', ticket: { id: row.id, title: row.title, state: row.state } } }
       if (name === 'ticket_cancel') return { ok: await stopTicket(args.ticketId, args.reason), code: 'SA_STOPPED' }
@@ -486,6 +505,22 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       async commandStatus(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.commandStatus(input) },
       async reviseAdmission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.reviseAdmission(input) },
       async admission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.decideAdmission(input) },
+      async documentSource(input: any) {
+        await ready
+        if (!workspace || !documents || disposed) throw Object.assign(new Error('document_source_unavailable'), { code: 'document_source_unavailable', status: 503 })
+        workspace.requireEpoch(input.epoch)
+        if (input.action === 'list') return documents.list(input.cursor)
+        if (input.action === 'scan') return documents.scan(input.sourceId)
+        if (input.action === 'detail') return documents.detail(input.itemKey, input.revision)
+        if (input.action === 'review' && input.decision === 'reviewed-not-struck') return documents.review(input.itemKey, input.revision, input.evidenceDigest, input.epoch)
+        throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
+      },
+      async documentImage(input: any) {
+        await ready
+        if (!workspace || !documents || disposed) throw Object.assign(new Error('document_source_unavailable'), { code: 'document_source_unavailable', status: 503 })
+        workspace.requireEpoch(input.epoch)
+        return documents.image(input.itemKey, input.revision, input.digest)
+      },
       async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'durable-chat-notice', modelWakeup: false, visualVerification: 'pending-human' }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
       async sources() { return Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, paused: config.paused || engine.paused(), ...await source.health() }))) },
       ownsTicketTransitions: true,

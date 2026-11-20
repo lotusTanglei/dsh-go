@@ -29,7 +29,7 @@
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-chat"] }
   },
-  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md"],
+  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md", "integrations/wecom-readonly", "docs/WECOM-DOCUMENT-SOURCE.md"],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

@@ -17,7 +17,8 @@ export function createClientPlugin(React: any, dictionaries: Record<string, Reco
       ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'superagent-channel-notice', locale: NS }, ChannelNotice))
       async function request(path: string, body = {}, signal?: AbortSignal) {
         const timeout = new AbortController()
-        const timer = setTimeout(() => timeout.abort(), 15000)
+        const documentScan = path === 'document-source' && (body as any)?.action === 'scan'
+        const timer = setTimeout(() => timeout.abort(), documentScan ? 190000 : 15000)
         const abort = () => timeout.abort()
         signal?.addEventListener('abort', abort, { once: true })
         if (signal?.aborted) timeout.abort()

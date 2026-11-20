@@ -88,6 +88,7 @@ exports.apply = function (ctx, config) {
       requireProof(response.status === 200 && result.client.servedContainsExactArtifact, 'S4_SERVED_ARTIFACT_MISMATCH')
       const requiredSeams = ['function WorkspacePage', 'saw-workspace', 'command-status', 'timelineCursor', 'RetrySameRequest', 'BoundaryTitle', ...(config.requireBriefing ? ['DeskTitle', 'HistoryShort', 'briefingView', 'latestAssistant', 'deriveDeskState', 'saw-compose-modes', '交给超管'] : [])]
       if (config.requireReadableDetails) requiredSeams.push('displayTitle', 'reportSummary', 'resultView', 'saw-original-request', 'saw-result-technical', '查看完整任务原文', '报告中的验收')
+      if (config.requireDocumentSources) requiredSeams.push('document-source', 'document-image', 'documentCanPlan', 'DocumentReadOnce', 'DocumentPlanOnly')
       result.client.workspaceSeams = Object.fromEntries(requiredSeams.map(term => [term, source.includes(term)]))
       requireProof(Object.values(result.client.workspaceSeams).every(Boolean), 'S4_SINGLE_WORKSPACE_SEAM_MISSING')
       requireProof(!/function\s+SevenPages\b|function\s+Page\s*\(|createRoot\s*\(|ReactDOM|document\.body|dangerouslySetInnerHTML|\binnerHTML\b|\bouterHTML\b/.test(source), 'S4_OLD_OR_ROOT_OWNING_CLIENT')
@@ -149,6 +150,20 @@ exports.apply = function (ctx, config) {
         requireProof(source.includes('OtherSessionsNotIncluded') && source.includes('统计范围待确认'), 'S4_COVERAGE_CLIENT_MISSING')
       }
       const epoch = result.workspace.body.data.epoch
+      if (config.requireDocumentSources) {
+        result.documents = await post('document-source', { action: 'list', epoch }, ctx.connection.browserPeer)
+        result.documentsNonOwner = await post('document-source', { action: 'list', epoch }, nonOwner)
+        result.documentsOrigin = await post('document-source', { action: 'list', epoch }, ctx.connection.browserPeer, 'https://hostile.invalid')
+        result.documentsArbitrary = await post('document-source', { action: 'scan', epoch, sourceId: 'docs:host-fixture', doc: 'https://hostile.invalid' }, ctx.connection.browserPeer)
+        result.documentsImage = await post('document-image', { epoch, itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), digest: 'c'.repeat(64) }, ctx.connection.browserPeer)
+        const review = { action: 'review', epoch, itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), decision: 'reviewed-not-struck' }
+        result.documentsReviewUnknown = await post('document-source', review, ctx.connection.browserPeer)
+        result.documentsReviewNonOwner = await post('document-source', review, nonOwner)
+        result.documentsReviewOrigin = await post('document-source', review, ctx.connection.browserPeer, 'https://hostile.invalid')
+        requireProof(result.documentsReviewUnknown.status === 409 && result.documentsReviewNonOwner.status === 403 && result.documentsReviewOrigin.status === 403, 'S4_DOCUMENT_REVIEW_FENCE_FAILED')
+        requireProof(result.documents.status === 200 && result.documents.body.data.sources.length === 1 && result.documents.body.data.items.length === 0 && result.documents.body.data.total === 0, 'S4_DOCUMENT_SOURCE_NOT_COLD')
+        requireProof(result.documentsNonOwner.status === 403 && result.documentsOrigin.status === 403 && result.documentsArbitrary.status === 400 && result.documentsImage.status === 409, 'S4_DOCUMENT_SOURCE_FENCE_FAILED')
+      }
       const input = { epoch, requestId: randomUUID(), intent: 'message', text: 'S4 local conversation fixture. Reply once without tools or creating a task.' }
       result.command = await post('command', input, ctx.connection.browserPeer)
       await agent.whenIdle()

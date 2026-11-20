@@ -170,6 +170,14 @@
 - 独立UI/UX复审找到并修“多attempt缺日期误选旧报告”“混空串隐藏关键信息”两项，收口无剩余阻断。firstfocused1fail是新静态测试把ternary label断言为固定调用，修测试语义后78/78；新增纯闭包84tests，最终41files/459tests、typecheck/build/pack exit0（`readable-final-20261120-163300/`）。无React/DOM/截图模拟。
 - 真实Host当前bundle/序列化helper/3slot/board口径/持久对话/Worker关闭回执`s4-readable-20261120-163100-result.json`passed，外部产品provider0（Router本地确定性适配器）、agents0/DB静止/锁释放。没有真实用户会话扫描、模型标题翻译、profile/restart或安全门变更；本轮修复尚无实机视觉证明，整体S0→S4仍未交付。
 
+## 2026-11-20T17:25:00+08:00 · 企业微信文档任务来源
+
+- 按用户要求先读types/registry/session/config及runtime/workspace准入链，明确沿Source→Trigger，不做文档管理。真实连接器原响应是display text+images，无稳定rowID/删除线；经用户“实现完整功能”反馈一并授权最小连接器增强，不以空metadata冒充没有删除线。
+- 新manual Source/config、ctx.tools.execute固定只读MCP契约、私有原文与图片SHA工件、工作区本地候选/分页/原文/实际图像、真实human new-task+request-bound readonlycontexttool和现有计划确认。外部trustsystem bottrue addressednone原engine只filtered，不伪造human，不自动授予mandate。文档规划turn额外禁cancel/start/stop/resume工具，不让提示注入控制其它任务。
+- 独立审查4项均接纳：claim+journal之间崩溃→同事务beforeInsert；staleorigin全局recover异常→只拒绝本请求；final证据文件半写永久失败→temp+fsync+原子publish及精确owned损坏文件修复；非空来源allowlist导致归档任务补充静默filtered→增精确ownedbindings并拒假成功。真实SQLite定向反例已通过。
+- 协议研究只读腾讯官方公共bundle，静态typeTable+property路径证明CTFontfield11wrappedbool/field12null；未执行remoteJS。最终render默认false不等于partialdecoder可断言false，继承/条件/表格/透视格式有否证，不隐去限制。受限connector补丁/typedmodule/tests纳入可审查工件，未重载运行中MCP/改profile/读取私人文档。
+- 补明确人工核对路径：未知删除线不冒充no，只有其他证据完整且无已知yes时，owner可打开官方原表后精确快照留核对声明；原unknown不改、不升信任，后续仍真实new-task与完整计划批准。Source重提取校验、原warnings保存批次否决；scan开始撤销receipt，digest变化/失败/不完整/配置epoch变化均不能复用旧声明。新Source68focused/UI63focused、unknown/no两路生产模式SQLite准入均通过；最终46files/569tests、typecheck/build通过（`wecom-final-review-20261120-173400/`）。首次fullgate失败为未先重建新的locale，与真实artifact新旧不一致；先build再完整门禁通过，不放宽测试。连接器165passed125skipped，真实SDK离线工具调用证实str list_sheets自动{result:str} structuredContent，typed snapshot直接结构，普通content仅摘要。真实Hostconfiguredsource冷启动不remote读、owner本地list200/nonowner与Origin403、任意doc字段400、无证据image409、新人工核对未知snapshot409/nonowner和Origin403；最终155项pack内容检查通过，生产Worker关闭；firstseam文案拼错探针failed保留后修probe重新passed。外部产品provider0、agents0、SQLite静止。不是GUI或真实企微端到端，整体安全闭环仍未完成。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

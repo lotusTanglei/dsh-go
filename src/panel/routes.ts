@@ -1,4 +1,5 @@
 import { statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { relative, resolve, isAbsolute } from 'node:path'
 import { readBoard, boardTicket, approvalFingerprint } from './board.js'
@@ -54,6 +55,10 @@ export interface PanelPorts {
   readonly ownsTicketTransitions?: boolean
   readonly health?: () => unknown | Promise<unknown>
   readonly sources?: () => unknown | Promise<unknown>
+  /** Runtime verifies the current epoch; list/detail are local observations, scan is explicit only. */
+  readonly documentSource?: (input: any) => Promise<unknown>
+  /** Exact local evidence only; never resolves a caller-provided path, URL, or tool. */
+  readonly documentImage?: (input: any) => Promise<{ bytes: Buffer; mimeType: string }>
   readonly settings?: () => readonly EffectiveSetting[] | Promise<readonly EffectiveSetting[]>
   readonly stopTicket?: (ticketId: string, reason: string) => boolean | void | Promise<boolean | void>
   readonly resumeTicket?: (ticketId: string) => boolean | void | Promise<boolean | void>
@@ -69,7 +74,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/document-source', '/document-image'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -111,6 +116,23 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 function validId(value: unknown): value is string { return typeof value === 'string' && SAFE_ID.test(value) }
+function validHash(value: unknown): value is string { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) }
+/** Preserve only validated provenance hashes in this exact DTO; global sanitizer stays unchanged. */
+function documentData(value: unknown, depth = 0): unknown {
+  if (depth > 12) return '[REDACTED]'
+  if (Array.isArray(value)) return value.slice(0, 100).map(item => documentData(item, depth + 1))
+  if (isObject(value)) return Object.fromEntries(Object.entries(value).slice(0, 100).flatMap(([key, item]) => {
+    if (key === 'documentLink') return typeof item === 'string' && /^https:\/\/doc\.weixin\.qq\.com\/sheet\/[A-Za-z0-9_-]+\?tab=[A-Za-z0-9_-]+$/.test(item) ? [[key, item]] : []
+    return /token|secret|password|credential|authorization|cookie|raw|payload|workdir|path|url/i.test(key) ? [] : [[key, ['itemKey', 'revision', 'evidenceDigest', 'configVersion', 'digest', 'cursor'].includes(key) && validHash(item) ? item : documentData(item, depth + 1)]]
+  }))
+  return sanitize(value, depth)
+}
+function validRaster(bytes: Buffer, mime: string): boolean {
+  if (mime === 'image/png') return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  if (mime === 'image/jpeg') return bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 && bytes.at(-2) === 255 && bytes.at(-1) === 217
+  if (mime === 'image/gif') return bytes.length >= 6 && ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii'))
+  return mime === 'image/webp' && bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+}
 function only(input: Record<string, unknown>, keys: readonly string[]): boolean {
   return Object.keys(input).every(key => keys.includes(key))
 }
@@ -274,7 +296,7 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     return ok(await ports.conversation(input))
   })
   route('/command', async request => {
-    const parsed = await body(request, ['epoch', 'requestId', 'intent', 'text', 'ticketId', 'recreateFrom']); if (parsed.error) return parsed.error
+    const parsed = await body(request, ['epoch', 'requestId', 'intent', 'text', 'ticketId', 'recreateFrom', 'documentOrigin']); if (parsed.error) return parsed.error
     if (!ports.command) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
     return ok(await ports.command(parsed.value!))
   })
@@ -461,6 +483,25 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     })
     if (!changed) return fail('conflict', 'Ticket changed concurrently', 409)
     return ok(publicTicket({ ...current, state: transitioned.state, stopped_by_human: action === 'stop', ended_at: transitioned.ended?.at, ended_by: transitioned.ended?.by, outcome: transitioned.ended?.outcome, current_assignment: null, updated_at: transitioned.updatedAt }))
+  })
+  route('/document-source', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'sourceId', 'itemKey', 'revision', 'cursor', 'evidenceDigest', 'decision']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    const shape = input.action === 'list' ? only(input, ['action', 'epoch', 'cursor']) && (input.cursor === undefined || validHash(input.cursor)) : input.action === 'scan' ? only(input, ['action', 'epoch', 'sourceId']) && validId(input.sourceId) : input.action === 'detail' ? only(input, ['action', 'epoch', 'itemKey', 'revision']) && validHash(input.itemKey) && validHash(input.revision) : input.action === 'review' ? only(input, ['action', 'epoch', 'itemKey', 'revision', 'evidenceDigest', 'decision']) && ['itemKey', 'revision', 'evidenceDigest'].every(key => validHash(input[key])) && input.decision === 'reviewed-not-struck' : false
+    if (!shape || !validId(input.epoch)) return fail('invalid_input', 'Document request fields are invalid', 400)
+    if (!ports.documentSource) return fail('document_unavailable', 'Document source is unavailable', 503)
+    // Runtime port checks epoch and current revision; no implicit scan or remote read here.
+    return json({ ok: true, data: documentData(await ports.documentSource(input)) })
+  })
+  route('/document-image', async request => {
+    const parsed = await body(request, ['epoch', 'itemKey', 'revision', 'digest']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!validId(input.epoch) || !['itemKey', 'revision', 'digest'].every(key => validHash(input[key]))) return fail('invalid_input', 'Document image identity is invalid', 400)
+    if (!ports.documentImage) return fail('document_unavailable', 'Document image is unavailable', 503)
+    const result = await ports.documentImage(input)
+    if (!result || !Buffer.isBuffer(result.bytes) || result.bytes.length === 0 || result.bytes.length > 8 * 1024 * 1024 || !validRaster(result.bytes, result.mimeType) || createHash('sha256').update(result.bytes).digest('hex') !== input.digest) return fail('document_image_invalid', 'Document image is unavailable', 400)
+    // This exact bounded raster evidence response is not arbitrary text: redaction would corrupt base64.
+    return json({ ok: true, data: { mediaType: result.mimeType, encoded: result.bytes.toString('base64') } })
   })
   route('/health', async request => { const parsed = await body(request, []); if (parsed.error) return parsed.error; return ok(await healthData()) })
   route('/settings', async request => {
