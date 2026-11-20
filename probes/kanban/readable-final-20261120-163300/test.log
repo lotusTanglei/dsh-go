@@ -1,0 +1,59 @@
+
+$ pnpm run test
+
+> dsh-superagent@0.1.0 test /Users/dundundebaba/sync/dsh-s-p
+> vitest run
+
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/workspace/runtime.test.ts (20 tests) 2195ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1541ms
+ ✓ tests/panel/kanban.test.ts (14 tests) 544ms
+ ✓ tests/workspace/admission.test.ts (21 tests) 503ms
+ ✓ tests/store/hardening.test.ts (9 tests) 558ms
+ ✓ tests/closeout/faults.test.ts (4 tests) 444ms
+   ✓ CLOSE-OUT C3 real offline fault injection > rejects a second real process while the first process remains alive with the store lock  379ms
+ ✓ tests/workspace/adversarial.test.ts (30 tests) 478ms
+ ✓ tests/workspace/commands.test.ts (28 tests) 579ms
+ ✓ tests/runtime-integration.test.ts (13 tests) 334ms
+ ✓ tests/closeout/concurrency.test.ts (3 tests) 203ms
+ ✓ tests/workspace/briefing.test.ts (9 tests) 157ms
+ ✓ tests/engine/crash-recovery.test.ts (1 test) 176ms
+ ✓ tests/engine/p3-engine.test.ts (11 tests) 198ms
+ ✓ tests/runtime-recovery.test.ts (7 tests) 184ms
+ ✓ tests/config.test.ts (5 tests) 214ms
+ ✓ tests/store/store.test.ts (6 tests) 205ms
+ ✓ tests/panel/routes.test.ts (8 tests) 149ms
+ ✓ tests/runtime-safety.test.ts (6 tests) 154ms
+ ✓ tests/client/pages.test.ts (17 tests) 161ms
+ ✓ tests/store/closeout-security.test.ts (11 tests) 134ms
+ ✓ tests/client/composer-state.test.ts (7 tests) 100ms
+ ✓ tests/panel/closeout.test.ts (5 tests) 106ms
+ ✓ tests/closeout/injection.test.ts (6 tests) 120ms
+ ✓ tests/runtime.test.ts (2 tests) 53ms
+ ✓ tests/plugin.test.ts (2 tests) 68ms
+ ✓ tests/client/detail-readability.test.ts (84 tests) 14ms
+ ✓ tests/client/artifact.test.ts (3 tests) 11ms
+ ✓ tests/boundaries.test.ts (3 tests) 6ms
+ ✓ tests/workspace/conversation.test.ts (25 tests) 10ms
+ ✓ tests/client/desk-model.test.ts (46 tests) 8ms
+ ✓ tests/client/bundle.test.ts (2 tests) 7ms
+ ✓ tests/engine/dispatch.test.ts (8 tests) 5ms
+ ✓ tests/domain/domain.test.ts (13 tests) 4ms
+ ✓ tests/sessions/watchdog.test.ts (3 tests) 5ms
+ ✓ tests/sources/sources.test.ts (3 tests) 4ms
+ ✓ tests/engine/watchdog.test.ts (7 tests) 3ms
+ ✓ tests/sessions/worker.test.ts (2 tests) 3ms
+ ✓ tests/engine/brief-report.test.ts (4 tests) 3ms
+ ✓ tests/tools/tools.test.ts (4 tests) 2ms
+ ✓ tests/client/channel.test.ts (3 tests) 2ms
+ ✓ tests/sessions/main.test.ts (2 tests) 2ms
+ ✓ tests/domain/immutable.test.ts (2 tests) 2ms
+
+ Test Files  41 passed (41)
+      Tests  459 passed (459)
+   Start at  16:31:37
+   Duration  25.38s (transform 536ms, setup 0ms, collect 2.23s, tests 8.11s, environment 4ms, prepare 3.05s)
+
+[exit code: 0] [tee exit code: 0]

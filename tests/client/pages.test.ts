@@ -182,6 +182,22 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(detail).not.toMatch(/call\(['"](?:overview|health)['"]|\.slice\(/)
   })
 
+  it('keeps detail headers scan-readable and presents results before execution internals', () => {
+    contains(workspace, ["id: 'saw-detail-title'", 'displayTitle(item.title)', "'aria-labelledby': 'saw-detail-title'", "className: 'saw-original-request'", "tr('OriginalTaskText')", "item.title || tr('Untitled')", "detailTab === 'results' ? resultView()"])
+    contains(styles, ['.saw-detail>.saw-detail-head h2{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis', '.saw-detail-head>.saw-btn{flex-shrink:0}', '.saw-card-title{display:-webkit-box;-webkit-line-clamp:2'])
+    const original = workspace.indexOf("className: 'saw-original-request'")
+    expect(original).toBeGreaterThan(workspace.indexOf("h('div', { className: 'saw-detail-scroll' }"))
+    const result = section('resultView')
+    contains(result, ['reportSummary(detail)', "item?.state === 'ended' ? item.outcome : item?.state", "listSection('ReportedWork'", "tr('ReportedChecks')", "tr('NeedsYourAttention')", 'summary.malformedAcceptance', "tr('ChecksNeedReview')", 'item?.pendingApprovals > 0', 'item?.attention', "'ApprovalStillPending'", "tr('OriginalReport')", 'valueView(assignment.report)', 'valueView(detail.delivery)', "className: 'saw-result-technical'"])
+    expect(result.indexOf("listSection('ReportedWork'")).toBeLessThan(result.indexOf("tr('ReportedChecks')"))
+    expect(result.indexOf("tr('NeedsYourAttention')")).toBeLessThan(result.indexOf("tr('AttemptsAndReports')"))
+    expect(result).not.toMatch(/askConfirm|call\(|JSON\.parse|report\.state\s*===\s*['"]ready/)
+    expect(section('displayTitle')).not.toMatch(/fixture|acceptance|store|update|replace|call\(/i)
+    expect(zh.wCheckPassed).toBe('报告：通过')
+    expect(zh.wOriginalTaskText).toBe('查看完整任务原文')
+    for (const key of ['ReportedWork', 'ReportedNextSteps', 'ReportedRisks', 'NoWorkReported', 'SummaryUnavailable']) { expect(zh[`w${key}`]).toBeTruthy(); expect(en[`w${key}`]).toBeTruthy() }
+  })
+
   it('shows full impact details/reason/fingerprint and requires reviewable scope plus explicit reasons for decisions', () => {
     contains(section('approvalView'), ["item.state === 'pending'", 'item.expiresAt <= Date.now()', 'item.allowed?.approve === true', 'item.impact?.reviewable === true', '!!item.fingerprint', 'valueView(item.impact?.details)', 'item.impact?.description', 'item.impact?.reason', 'text(item.fingerprint)', 'item.reason', 'item.decidedBy', 'item.decidedAt', '!canApprove', 'item.allowed?.deny !== true'])
     expect(section('approvalView')).not.toMatch(/\.slice\(|\.substring\(/)

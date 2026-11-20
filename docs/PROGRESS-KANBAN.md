@@ -161,6 +161,15 @@
 - 独立UI/UX只读评审无新增阻断；initial focused94/94，final全量40files/374tests、typecheck/build/pack exit0（`coverage-final-20261120-161900/`）。新增真实SQLite只读反例：不同session lineage任务同板可见、scope不随零数/筛选/分页变、SELECT无DB写、浏览器任意session/epoch拒绝；执行真实scope谓词验证旧/未知服务failclosed，没有DOM模拟。
 - 真实Host最终资源+board scope/owner200/非owner403/Origin403回执`s4-coverage-final-20261120-161900-result.json`passed；外部产品provider0，Router为本地确定性fixture，agents0/锁释放/DB静止。早一轮scopeHost回执也保留。新版实际页面/主题/IME/焦点仍不可验，未重启或改profile，生产Worker仍关闭；整体目标继续未完成，不能把统计口径修复称为跨会话汇总交付。
 
+## 2026-11-20T16:33:00+08:00 · 长标题与结果的阅读路径
+
+- 用户实图证明“交给超管”已加载，但详情header把完整Harmless acceptance fixture指令当h2占多行，结果首屏又是attempt日期/steps/token/ready/todo嵌套字段。原因是直接绑定Ticket.title和valueView(report)，不能把本次问题再解释为未更新。
+- 仅展示层派生字面首句/首行、64码点短label；详情header单行ellipsis、close不缩，卡片两行、动态短标题。四tab共用正文“查看完整任务原文”可展开，不改DB/原始title/brief，不按Fixture猜重命名为业务任务、删除或筛掉测试记录。
+- 结果阅读顺序改台账权威状态→做了什么→报告验收→需人工，风险/后续非空或未知时仍显示；attempt元数据、原始report及投递状态退次级折叠。完整报告、changedFiles、记录仍保留，不把report.ready/passed晋升Ticket完成/真实验收，需人工还核对ticket attention/pendingApprovals/anomaly。
+- 精确currentAssignment优先；没有当前指向才在全部startedAt有效且唯一最新时选，日期缺失/并列/指向缺失都不猜，最新无report不拿旧ready顶替。验收逐brief ID比对，缺项/重复/未知/结果或证据无效不显示通过汇总；schema允许的混空字符串风险/人工项过滤空白但保留有效原文。
+- 独立UI/UX复审找到并修“多attempt缺日期误选旧报告”“混空串隐藏关键信息”两项，收口无剩余阻断。firstfocused1fail是新静态测试把ternary label断言为固定调用，修测试语义后78/78；新增纯闭包84tests，最终41files/459tests、typecheck/build/pack exit0（`readable-final-20261120-163300/`）。无React/DOM/截图模拟。
+- 真实Host当前bundle/序列化helper/3slot/board口径/持久对话/Worker关闭回执`s4-readable-20261120-163100-result.json`passed，外部产品provider0（Router本地确定性适配器）、agents0/DB静止/锁释放。没有真实用户会话扫描、模型标题翻译、profile/restart或安全门变更；本轮修复尚无实机视觉证明，整体S0→S4仍未交付。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

@@ -87,6 +87,7 @@ exports.apply = function (ctx, config) {
       result.client = { graphRev: graph.rev, entry, clientPath, expectedPath, bytes: bytes.length, sha256: digest(bytes), bundleUrl: bundleUrl.href, bundleStatus: response.status, bundleSha256: digest(served), servedContainsExactArtifact: served.includes(source.trim()), proof: 'factory-and-slot registration only; no React render or DOM' }
       requireProof(response.status === 200 && result.client.servedContainsExactArtifact, 'S4_SERVED_ARTIFACT_MISMATCH')
       const requiredSeams = ['function WorkspacePage', 'saw-workspace', 'command-status', 'timelineCursor', 'RetrySameRequest', 'BoundaryTitle', ...(config.requireBriefing ? ['DeskTitle', 'HistoryShort', 'briefingView', 'latestAssistant', 'deriveDeskState', 'saw-compose-modes', '交给超管'] : [])]
+      if (config.requireReadableDetails) requiredSeams.push('displayTitle', 'reportSummary', 'resultView', 'saw-original-request', 'saw-result-technical', '查看完整任务原文', '报告中的验收')
       result.client.workspaceSeams = Object.fromEntries(requiredSeams.map(term => [term, source.includes(term)]))
       requireProof(Object.values(result.client.workspaceSeams).every(Boolean), 'S4_SINGLE_WORKSPACE_SEAM_MISSING')
       requireProof(!/function\s+SevenPages\b|function\s+Page\s*\(|createRoot\s*\(|ReactDOM|document\.body|dangerouslySetInnerHTML|\binnerHTML\b|\bouterHTML\b/.test(source), 'S4_OLD_OR_ROOT_OWNING_CLIENT')

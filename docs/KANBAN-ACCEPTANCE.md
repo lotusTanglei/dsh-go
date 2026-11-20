@@ -5,13 +5,14 @@
 **部分完成／不可交付，非生产就绪；不能称工程闭环完成。**
 
 - 本轮已实现后端及单入口工作区，并分阶段提交：`05a8ab8`（命令/确认/结果/安全关门）、`7d55411`（对话四列看板）、`6ceeee6`（过期/分页/计划修订/精确范围展示与证据）、`7d18346`（未知请求终止与来源关联新建）、`4a06ee6/6cd8ff0`（401认证提示与证据收口）。
+- 2026-11-20任务详情可读性：用户新截图已加载“交给超管”，但完整测试指令被用作多行大标题、原始报告字段挤占结果页。现改为字面首句/行的64码点展示标题、header单行/close不缩，完整title留正文折叠，不修改DB/按Fixture猜重命名；结果先台账状态/做了什么/报告验收/需人工，attempt元数据/raw/delivery退到折叠。currentAssignment精确优先，否则无可靠唯一开始时间即不猜最新；验收按brief逐ID核对、缺项/重复/未知/缺证据不汇总通过；风险/人工请求混空串不会隐藏有效内容。审批正文/范围/指纹与Worker关闭不变。84项标题/报告纯闭包反例、全量41files/459tests、typecheck/build/pack exit0，见[详情可读性门禁](<../probes/kanban/readable-final-20261120-163300/test.log>)；[真实Host新版资源](<../probes/kanban/s4-readable-20261120-163100-result.json>)仅证明当前资源/工厂注册/路由与安全关门，不证明浏览器布局或真实Worker完成，实机视觉仍未验。
 - 2026-11-20统计范围纠正：用户有进行中会话但看板0，核实是其他普通DSH会话未接入超管台账，不是按当前epoch隐藏任务。API新增显式ledger-only scope，界面全局提示“未汇总其他会话”，旧服务范围未知不猜全量；空态/全量入口限定已登记任务，过滤无命中独立文案。此项不宣称跨会话工作汇总已实现，未读取个人会话正文或接管执行。focused94/94、全量40files/374tests、typecheck/build/pack exit0，见[统计口径门禁](<../probes/kanban/coverage-final-20261120-161900/test.log>)；[真实Host范围回执](<../probes/kanban/s4-coverage-final-20261120-161900-result.json>)确认board owner200、非owner/Origin403、ledger-only scope、生产Worker关闭与probe清理。
 - 2026-11-20操作台重做：用户截图明确否定旧v2可用性，不能用319项测试推翻实际反馈。本轮以“描述任务→生成计划→完整审阅”为入口，单标题/单历史入口、动作决策卡、动态合计3行、两行输入及模式化发送，安全说明只折叠不撤销；未知/失败不假空、旧draft模式不迁移、新回复水位/归档轮询/焦点恢复已补。40files/372tests、typecheck/build/pack通过，见[最终门禁](<../probes/kanban/desk-final-20261120-160500/test.log>)；[真实Host新版资源回执](<../probes/kanban/s4-control-20261120-160800-result.json>)passed。首轮probe路径触发既有敏感前缀检测，failed回执保留，仅更换probe自有目录后验证，不改安全规则。实机视觉仍待真实页面加载后验证。
 - 历史任务摘要修订：38 files / **319 tests**，typecheck/build/pack exit0，日志见[最新测试](<../probes/kanban/briefing-final-20261120-153800/test.log>)；真实Host新增摘要/独立助手回复/当前资源验证见[S4摘要回执](<../probes/kanban/s4-briefing-20261120-153900-result.json>)。默认任务与决策，历史可切换，未筛选账本最多6条/组+完整total，未把Fixture改为业务成果。独立UI/UX复审后已修到期计数、异常文案与未知结果。历史用户授权只重载超管，管理器当时返回需重启DSH，最终保持启用；用户后续截图已证明v2加载但不可用，不能继续以未加载解释。
 - 历史完整三闸与打包：37 files / **307 tests**；14:02后认证提示补丁的全量门禁与pack另见`web-auth-20261119-140200/`，typecheck/test/build/pack exit0；[完整日志](<../probes/kanban/supplement-20261118-221200/test.log>)、[构建](<../probes/kanban/supplement-20261118-221200/build.log>)、[打包](<../probes/kanban/supplement-20261118-221200/pack.log>)。后端还验证过精确暂存树，267tests/三闸/pack通过，非借未暂存UI掩盖阶段缺件：[暂存树测试](<../probes/kanban/s1-staged-20261118-212700/test.log>)。
 - 真实安装版 L1 spawn 父根、L2 同票未列/deny 可写反证已成立：[S0原始结果](<../probes/kanban/s0-20261118-202300-result.json>)。**真实生产Worker启动、恢复、工具执行全部关闭**，不是通过隔离验收。
 - 已完成真实Host“命令→特定计划→确认→建票→同会话唯一持久通知”，但Router为本地确定性适配器、通知为合成Channel fixture；**不是实际Worker报告完成链路**：[S1结果](<../probes/kanban/s1-20261118-211400-result.json>)。外部产品provider请求0，本地适配器3次/fixture，协作代理另计。
-- 用户最新截图证明v2已连接、加载但信息层级难用，之前以匿名401推断认证故障或以未加载解释的结论撤回。本次操作台重做还没有当前GUI实图/点击/IME/主题/console验证，也未擅自重启DSH。没有搜凭据、创建假DOM/截图或启动替代GUI。
+- 用户最新截图已证明“交给超管”操作台重做加载，但长标题和原始报告堆叠仍难读；此前以匿名401推断认证故障或以未加载解释的结论撤回。本次详情修复还没有当前GUI实图/点击/IME/主题/console验证，也未擅自重启DSH。没有搜凭据、创建假DOM/截图或启动替代GUI。
 
 ## 证据层级
 

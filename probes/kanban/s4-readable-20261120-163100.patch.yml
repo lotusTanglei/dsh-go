@@ -1,0 +1,14 @@
+# Readable detail bundle: actual Host factory/resources, no browser rendering.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-readable-20261120-163100
+    confirm: always
+- insert:
+    - id: kanban-s4-readable-20261120-163100
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        requireCoverage: true
+        requireReadableDetails: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-readable-20261120-163100/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-readable-20261120-163100-result.json
