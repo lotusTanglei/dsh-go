@@ -5,11 +5,12 @@
 **部分完成／不可交付，非生产就绪；不能称工程闭环完成。**
 
 - 本轮已实现后端及单入口工作区，并分阶段提交：`05a8ab8`（命令/确认/结果/安全关门）、`7d55411`（对话四列看板）、`6ceeee6`（过期/分页/计划修订/精确范围展示与证据）、`7d18346`（未知请求终止与来源关联新建）、`4a06ee6/6cd8ff0`（401认证提示与证据收口）。
-- 2026-11-20任务摘要修订：38 files / **319 tests**，typecheck/build/pack exit0，日志见[最新测试](<../probes/kanban/briefing-final-20261120-153800/test.log>)；真实Host新增摘要/独立助手回复/当前资源验证见[S4摘要回执](<../probes/kanban/s4-briefing-20261120-153900-result.json>)。默认任务与决策，历史可切换，未筛选账本最多6条/组+完整total，未把Fixture改为业务成果。独立UI/UX复审后已修到期计数、异常文案与未知结果。用户授权只重载超管，但管理器返回需重启DSH，最终保持启用；当前旧页截图不等于v2已加载。
+- 2026-11-20操作台重做：用户截图明确否定旧v2可用性，不能用319项测试推翻实际反馈。本轮以“描述任务→生成计划→完整审阅”为入口，单标题/单历史入口、动作决策卡、动态合计3行、两行输入及模式化发送，安全说明只折叠不撤销；未知/失败不假空、旧draft模式不迁移、新回复水位/归档轮询/焦点恢复已补。40files/372tests、typecheck/build/pack通过，见[最终门禁](<../probes/kanban/desk-final-20261120-160500/test.log>)；[真实Host新版资源回执](<../probes/kanban/s4-control-20261120-160800-result.json>)passed。首轮probe路径触发既有敏感前缀检测，failed回执保留，仅更换probe自有目录后验证，不改安全规则。实机视觉仍待真实页面加载后验证。
+- 历史任务摘要修订：38 files / **319 tests**，typecheck/build/pack exit0，日志见[最新测试](<../probes/kanban/briefing-final-20261120-153800/test.log>)；真实Host新增摘要/独立助手回复/当前资源验证见[S4摘要回执](<../probes/kanban/s4-briefing-20261120-153900-result.json>)。默认任务与决策，历史可切换，未筛选账本最多6条/组+完整total，未把Fixture改为业务成果。独立UI/UX复审后已修到期计数、异常文案与未知结果。历史用户授权只重载超管，管理器当时返回需重启DSH，最终保持启用；用户后续截图已证明v2加载但不可用，不能继续以未加载解释。
 - 历史完整三闸与打包：37 files / **307 tests**；14:02后认证提示补丁的全量门禁与pack另见`web-auth-20261119-140200/`，typecheck/test/build/pack exit0；[完整日志](<../probes/kanban/supplement-20261118-221200/test.log>)、[构建](<../probes/kanban/supplement-20261118-221200/build.log>)、[打包](<../probes/kanban/supplement-20261118-221200/pack.log>)。后端还验证过精确暂存树，267tests/三闸/pack通过，非借未暂存UI掩盖阶段缺件：[暂存树测试](<../probes/kanban/s1-staged-20261118-212700/test.log>)。
 - 真实安装版 L1 spawn 父根、L2 同票未列/deny 可写反证已成立：[S0原始结果](<../probes/kanban/s0-20261118-202300-result.json>)。**真实生产Worker启动、恢复、工具执行全部关闭**，不是通过隔离验收。
 - 已完成真实Host“命令→特定计划→确认→建票→同会话唯一持久通知”，但Router为本地确定性适配器、通知为合成Channel fixture；**不是实际Worker报告完成链路**：[S1结果](<../probes/kanban/s1-20261118-211400-result.json>)。外部产品provider请求0，本地适配器3次/fixture，协作代理另计。
-- 用户最新截图证明旧工作区已连接并显示历史，之前以匿名401推断用户页认证故障的结论撤回。无浏览器控制，未完整验当前GUI点击/IME/主题/console；新版插件重载经授权尝试但被管理器要求重启，不能宣称已显示。没有搜凭据、创建假DOM/截图或启动替代GUI。
+- 用户最新截图证明v2已连接、加载但信息层级难用，之前以匿名401推断认证故障或以未加载解释的结论撤回。本次操作台重做还没有当前GUI实图/点击/IME/主题/console验证，也未擅自重启DSH。没有搜凭据、创建假DOM/截图或启动替代GUI。
 
 ## 证据层级
 

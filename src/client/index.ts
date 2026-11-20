@@ -1,7 +1,8 @@
 /** Browser factory is serialized by build-client; React and slots stay host-owned. */
 import { createWorkspacePage } from './workspace.js'
 import { workspaceStyles } from './workspace-style.js'
-export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>, channelDefinitions: readonly unknown[], workspaceFactory = createWorkspacePage, styleFactory = workspaceStyles) {
+import { deriveDeskState } from './desk-model.js'
+export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>, channelDefinitions: readonly unknown[], workspaceFactory = createWorkspacePage, styleFactory = workspaceStyles, deskFactory = deriveDeskState) {
   const h = React.createElement
   const NS = 'superagent'
   return {
@@ -43,7 +44,7 @@ export function createClientPlugin(React: any, dictionaries: Record<string, Reco
       function Icon() {
         return h('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true }, h('path', { d: 'M3 4h18v16H3zM8 4v16M13 4v16M18 4v16' }))
       }
-      const Page = workspaceFactory(React, request, t, styleFactory())
+      const Page = workspaceFactory(React, request, t, styleFactory(), deskFactory)
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'superagent', order: 100, label: () => t('title'), locale: NS }, Icon))
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'superagent', inject: () => ({}), locale: NS }, Page))
     },

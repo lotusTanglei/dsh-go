@@ -1,0 +1,12 @@
+# Fresh isolated Host state: avoid desk- matching the credential prefix sk-.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-control-20261120-160800
+    confirm: always
+- insert:
+    - id: kanban-s4-control-20261120-160800
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-control-20261120-160800/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-control-20261120-160800-result.json

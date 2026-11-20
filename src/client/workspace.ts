@@ -1,5 +1,7 @@
-/** Serialized by the client builder. Keep every runtime helper inside this factory. */
-export function createWorkspacePage(React: any, request: (path: string, body?: any, signal?: any) => Promise<any>, t: any, css: string) {
+import { deriveDeskState } from './desk-model.js'
+
+/** Serialized by the client builder. Every runtime helper is local or explicitly supplied. */
+export function createWorkspacePage(React: any, request: (path: string, body?: any, signal?: any) => Promise<any>, t: any, css: string, deskState = deriveDeskState) {
   const h = React.createElement
   const columns = ['pending', 'running', 'waiting', 'ended']
   const tr = (key: string) => t(`w${key}`)
@@ -29,7 +31,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
   const fields = (entries: Array<[string, any]>) => h('dl', { className: 'saw-fields' }, ...entries.map(([key, value]) => h(React.Fragment, { key }, h('dt', null, tr(key)), h('dd', null, value))))
   const briefView = (brief: any) => brief ? h('div', { className: 'saw-brief' }, ...['goal', 'scope', 'base', 'allowWrite', 'denyWrite', 'runtime', 'acceptance', 'blockers', 'outOfScope', 'firstAction', 'approvalsRequired'].map(key => h('section', { key }, h('h4', null, label(key)), valueView(brief[key])))) : h('p', null, tr('BriefMissing'))
   const storageKey = (epoch: string) => `superagent.workspace.v1:${encodeURIComponent(epoch)}`
-  const blankComposer = () => ({ draft: '', intent: 'message', target: null, origin: null, pending: null, receipt: null })
+  const blankComposer = () => ({ draft: '', intent: 'new-task', target: null, origin: null, pending: null, receipt: null })
   const readComposer = (epoch: string) => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(storageKey(epoch)) || 'null')
@@ -59,12 +61,21 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const [composer, setComposer] = React.useState(blankComposer())
     const [historyEpoch, setHistoryEpoch] = React.useState('')
     const [draftEpoch, setDraftEpoch] = React.useState('')
-    const [mobileTab, setMobileTab] = React.useState('board')
+    const [mobileTab, setMobileTab] = React.useState('chat')
     const [collapsed, setCollapsed] = React.useState(false)
     const [activityView, setActivityView] = React.useState('briefing')
     const [newReplies, setNewReplies] = React.useState(0)
+    const [replyOpen, setReplyOpen] = React.useState(false)
+    const [planReview, setPlanReview] = React.useState('')
+    const planFocus = React.useRef(null as HTMLElement | null)
+    const inspectorOpener = React.useRef(null as HTMLElement | null)
+    const inspectorReturnToInput = React.useRef(false)
+    const historyButtonRef = React.useRef(null as HTMLButtonElement | null)
     const activityViewRef = React.useRef('briefing')
     const replyWatermarks = React.useRef({} as Record<string, number>)
+    const replyReadThrough = React.useRef({} as Record<string, number>)
+    const replyBaselineReady = React.useRef({} as Record<string, boolean>)
+    const replyFocus = React.useRef(null as HTMLElement | null)
     const lastActivityView = React.useRef('briefing')
     const briefingScroll = React.useRef(0)
     const [query, setQuery] = React.useState('')
@@ -151,9 +162,16 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       const old = conversations.current[epoch] || { items: [] }
       const next = { ...old, items: merge(old.items, array(page.items), messageOrder), ...(mode !== 'before' ? { nextAfter: page.nextAfter, deltaMore: mode === 'after' && page.hasMore } : {}), ...(mode !== 'after' ? { nextBefore: page.nextBefore, hasMore: page.hasMore } : {}), error: '' }
       next.latestAssistant = page.latestAssistant || old.latestAssistant
-      const replySeq = next.latestAssistant?.lastSeq
-      if (typeof replySeq === 'number' && mode !== 'before') {
-        if (replySeq > (replyWatermarks.current[epoch] ?? -1) && epoch === epochRef.current && activityViewRef.current !== 'history') setNewReplies(1)
+      const replySeq = Number.isSafeInteger(next.latestAssistant?.lastSeq) ? next.latestAssistant.lastSeq : -1
+      if (mode !== 'before') {
+        if (!replyBaselineReady.current[epoch]) {
+          // Baseline even an empty first read, so the first subsequent reply is not swallowed.
+          let readThrough = replySeq
+          try { const saved = sessionStorage.getItem(`superagent.reply-read.v1:${encodeURIComponent(epoch)}`); if (saved !== null && Number.isSafeInteger(Number(saved))) readThrough = Number(saved) } catch {}
+          replyReadThrough.current[epoch] = readThrough; replyBaselineReady.current[epoch] = true
+          try { sessionStorage.setItem(`superagent.reply-read.v1:${encodeURIComponent(epoch)}`, String(readThrough)) } catch {}
+        }
+        if (epoch === epochRef.current) setNewReplies(replySeq > (replyReadThrough.current[epoch] ?? replySeq) ? 1 : 0)
         replyWatermarks.current[epoch] = replySeq
       }
       conversations.current = { ...conversations.current, [epoch]: next }
@@ -296,11 +314,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             const nextComposer = composerCache.current[composerEpoch] || readComposer(composerEpoch)
             composerCache.current[composerEpoch] = nextComposer; composerRef.current = nextComposer; setComposer(nextComposer)
             draftEpochRef.current = composerEpoch; setDraftEpoch(composerEpoch)
-            historyRef.current = epoch; setHistoryEpoch(epoch); setNewReplies(0)
+            historyRef.current = epoch; setHistoryEpoch(epoch); setNewReplies(0); setReplyOpen(false); setPlanReview('')
             if (prior) { setNotice(tr('EpochChanged')); dialogRef.current?.close(); setConfirmation(null) }
           }
           workspaceRef.current = data; setWorkspace(data); setError('')
-          await readConversation(historyRef.current || epoch)
+          await readConversation(epoch)
+          if (historyRef.current && historyRef.current !== epoch) await readConversation(historyRef.current)
           await readBoard()
           await readDetail(detailIdRef.current)
           await readSystem()
@@ -339,6 +358,17 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       if (activityView === 'history' && anchor && anchor.epoch === historyEpoch) { node.scrollTop = anchor.top + node.scrollHeight - anchor.height; historyAnchor.current = null }
       else if (activityViewRef.current === 'history' && autoScroll.current) node.scrollTop = node.scrollHeight
     }, [conversation, historyEpoch, activityView])
+    React.useEffect(() => { if (replyOpen) replyFocus.current?.focus() }, [replyOpen])
+    React.useEffect(() => { if (planReview) planFocus.current?.focus() }, [planReview])
+    React.useEffect(() => {
+      if (!replyOpen && !planReview) return
+      return () => {
+        if (inspectorReturnToInput.current) { inspectorReturnToInput.current = false; inputRef.current?.focus() }
+        else if (inspectorOpener.current?.isConnected) inspectorOpener.current.focus()
+        else if (inputRef.current && !inputRef.current.disabled) inputRef.current.focus()
+        else historyButtonRef.current?.focus()
+      }
+    }, [!!replyOpen || !!planReview])
     React.useEffect(() => {
       if (!detailId) return
       detailCloseRef.current?.focus()
@@ -375,6 +405,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       try {
         if (!payload) payload = { epoch, requestId: mintId(), intent: saved.target ? 'ticket-input' : saved.intent, text: saved.draft, ...(saved.target ? { ticketId: saved.target.id } : saved.origin ? { recreateFrom: saved.origin.id } : {}) }
       } catch { setNotice(tr('SecureIdUnavailable')); return }
+      // A send may race the first history read; its first real reply must still be discoverable.
+      if (!replyBaselineReady.current[epoch]) {
+        const baseline = conversations.current[epoch]?.latestAssistant?.lastSeq ?? -1
+        replyReadThrough.current[epoch] = baseline; replyBaselineReady.current[epoch] = true
+        try { sessionStorage.setItem(`superagent.reply-read.v1:${encodeURIComponent(epoch)}`, String(baseline)) } catch {}
+      }
       const controller = new AbortController()
       sendController.current = controller; sendBusy.current = true; setSending(true)
       updateComposer({ pending: payload }, epoch)
@@ -498,12 +534,31 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const chooseActivity = (view: string) => {
       if (activityViewRef.current === 'briefing' && messagesRef.current) briefingScroll.current = messagesRef.current.scrollTop
       activityViewRef.current = view; setActivityView(view)
-      if (view === 'history') { setNewReplies(0); autoScroll.current = true }
+      if (view === 'history') { autoScroll.current = true }
       // Returning to the brief uses the current interaction context, never moves an old draft/request.
       if (view === 'briefing' && epochRef.current && historyRef.current !== epochRef.current) {
         historyRef.current = epochRef.current; setHistoryEpoch(epochRef.current); setHistoryError('')
         void readConversation(epochRef.current)
       }
+    }
+    const readLatestReply = () => {
+      const epoch = epochRef.current, reply = conversations.current[epoch]?.latestAssistant
+      if (!reply || !Number.isSafeInteger(reply.lastSeq)) return
+      replyReadThrough.current[epoch] = reply.lastSeq; setNewReplies(0)
+      try { sessionStorage.setItem(`superagent.reply-read.v1:${encodeURIComponent(epoch)}`, String(reply.lastSeq)) } catch {}
+    }
+    const openReply = () => {
+      inspectorOpener.current = document.activeElement as HTMLElement
+      setPlanReview(''); chooseActivity('briefing'); setMobileTab('chat'); setCollapsed(false); setReplyOpen(true); readLatestReply()
+    }
+    const startTask = () => {
+      chooseActivity('briefing'); setMobileTab('chat'); setCollapsed(false)
+      if (composerRef.current.pending || composerRef.current.target || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); inputRef.current?.focus(); return }
+      updateComposer({ intent: 'new-task', origin: null }); inputRef.current?.focus()
+    }
+    const replyToCoordinator = () => {
+      if (composerRef.current.pending || composerRef.current.target || composerRef.current.draft.trim() || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); return }
+      chooseActivity('briefing'); setMobileTab('chat'); setCollapsed(false); updateComposer({ intent: 'message', origin: null }); inputRef.current?.focus()
     }
     const chooseDraftEpoch = (epoch: string) => {
       if (sendBusy.current) return
@@ -515,36 +570,38 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const archive = !!historyEpoch && historyEpoch !== workspace?.epoch
     const currentMessages = conversation[historyEpoch]
     const pendingPlans = array(workspace?.admissions).filter(plan => plan.state === 'pending' || plan.state === 'approved')
-    const decisionTotal = workspace?.briefing?.decisions?.total ?? workspace?.pendingApprovals
-    const todoCount = typeof decisionTotal === 'number' ? decisionTotal + pendingPlans.filter(plan => plan.state === 'pending' && plan.expiresAt > Date.now()).length : null
+    const desk = deskState(workspace, Date.now(), !!error)
+    const todoCount = desk.actionTotal
     const latest = composer.receipt
     const pendingRequest = composer.pending
     const item = detail?.ticket
-    const briefing = workspace?.briefing
+    const reviewingPlan = pendingPlans.find(plan => plan.planId === planReview)
     const latestAssistant = conversation[workspace?.epoch]?.latestAssistant
     const openTaskRecord = (record: any, tab = 'overview') => {
       closeSystem(); setMobileTab('board'); openDetail({ id: record.ticketId || record.id }); setDetailTab(tab)
     }
     const showAllTasks = () => { closeSystem(); changeFilter('', ''); setMobileTab('board'); setNotice(tr('AllTasksUnfiltered')) }
-    const recordView = (record: any, result = false) => h('article', { className: 'saw-record', key: record.id },
-      h('div', { className: 'saw-message-head' }, h('span', { className: 'saw-badge' }, record.anomaly ? tr('StateConflict') : stateName(record.state === 'ended' ? record.outcome : record.state)), h('time', null, time(record.at))),
-      h('h4', null, record.title || tr('Untitled')),
-      record.disabledReason ? h('p', { className: 'saw-meta' }, tr('ExecutionBlocked')) : null,
-      record.progress ? h('p', null, record.progress) : h('p', { className: 'saw-meta' }, tr(result ? 'NoResultSummary' : 'NoProgressSummary')),
-      !result && record.nextAction ? h('p', null, `${tr('PlannedNext')}: ${record.nextAction}`) : null,
-      result && array(record.risks).length ? h('p', { className: 'saw-meta' }, `${tr('Risks')}: ${record.risks.join(' · ')}`) : null,
-      button(tr(result ? 'ViewResult' : 'OpenTask'), () => openTaskRecord(record, result ? 'results' : 'overview')))
-    const briefingView = () => !briefing ? h('p', { className: 'saw-meta' }, workspace ? tr('BriefingUnavailable') : tr('Loading')) : h(React.Fragment, null,
-      h('p', { className: 'saw-meta' }, `${tr('BriefingScope')} · ${time(briefing.snapshotAt)}`),
-      h('p', { className: 'saw-meta' }, tr('BriefingRecordHint')),
-      h('section', { className: 'saw-briefing-group', 'aria-label': tr('YourDecisions') }, h('h3', null, tr('YourDecisions')),
-        ...pendingPlans.map(plan => h('details', { className: 'saw-record', key: plan.planId }, h('summary', null, h('strong', null, tr(plan.expiresAt <= Date.now() ? 'Expired' : plan.state === 'pending' ? 'ReviewPlan' : 'PlanApprovedBlocked')), h('span', { className: 'saw-card-line' }, plan.brief?.goal || tr('Untitled'))), admissionView(plan))),
-        ...array(briefing.decisions?.items).map((decision: any) => h('article', { className: 'saw-record', key: decision.id }, h('span', { className: 'saw-badge' }, tr(decision.kind === 'approval' ? 'Approval' : decision.kind === 'anomaly' ? 'StateConflict' : 'InformationNeeded')), h('h4', null, decision.title || tr('Untitled')), h('p', null, decision.kind === 'anomaly' ? tr('StateConflict') : decision.summary || tr('InformationNeeded')), button(tr(decision.kind === 'approval' ? 'ReviewApproval' : 'ReviewDetails'), () => decision.ticketId ? openTaskRecord(decision, decision.kind === 'approval' ? 'approvals' : 'overview') : openSystem('todo')))),
-        !pendingPlans.length && briefing.decisions?.total === 0 ? h('p', { className: 'saw-meta' }, tr('NoStructuredDecisions')) : null,
-        h('p', { className: 'saw-meta' }, `${tr('WindowCount')}: ${array(briefing.decisions?.items).length} / ${text(briefing.decisions?.total)} · ${tr('Plans')}: ${pendingPlans.length}`),
-        button(tr('AllDecisions'), () => openSystem('todo')), button(tr('AllTasks'), showAllTasks)),
-      h('section', { className: 'saw-briefing-group', 'aria-label': tr('TaskRecords') }, h('h3', null, tr('TaskRecords')), ...array(briefing.active?.items).map(record => recordView(record)), briefing.active?.total === 0 ? h('p', { className: 'saw-meta' }, tr('NoActiveRecords')) : null, h('p', { className: 'saw-meta' }, `${tr('WindowCount')}: ${array(briefing.active?.items).length} / ${text(briefing.active?.total)}`), button(tr('AllTasks'), showAllTasks)),
-      h('section', { className: 'saw-briefing-group', 'aria-label': tr('ResultRecords') }, h('h3', null, tr('ResultRecords')), ...array(briefing.results?.items).map(record => recordView(record, true)), briefing.results?.total === 0 ? h('p', { className: 'saw-meta' }, tr('NoResultRecords')) : null, h('p', { className: 'saw-meta' }, `${tr('WindowCount')}: ${array(briefing.results?.items).length} / ${text(briefing.results?.total)}`), button(tr('AllTasks'), showAllTasks)))
+    const openPlan = (plan: any) => { inspectorOpener.current = document.activeElement as HTMLElement; setReplyOpen(false); closeSystem(); setPlanReview(plan.planId); setMobileTab('chat'); setCollapsed(false); chooseActivity('briefing') }
+    const decisionView = (entry: any) => {
+      const data = entry.data, plan = entry.kind === 'plan'
+      return h('article', { className: 'saw-decision', key: entry.id },
+        h('small', { className: 'saw-meta' }, tr(plan ? 'PlanNeedsReview' : entry.kind === 'approval' ? 'OperationNeedsReview' : entry.kind === 'question' ? 'QuestionForYou' : 'TaskNeedsReview')),
+        h('h4', null, plan ? data.brief?.goal || tr('Untitled') : data.title || tr('Untitled')),
+        h('p', { className: 'saw-line-clamp' }, plan ? data.brief?.firstAction || tr('ReviewPlanHint') : entry.kind === 'anomaly' ? tr('StateConflict') : data.summary || tr('InformationNeeded')),
+        button(tr(plan ? 'ReviewPlan' : entry.kind === 'question' ? 'ReadAndAnswer' : entry.kind === 'approval' ? 'ReviewApproval' : 'OpenTask'), () => plan ? openPlan(data) : data.ticketId ? openTaskRecord(data, entry.kind === 'approval' ? 'approvals' : 'overview') : openSystem('todo'), false, { className: 'saw-btn saw-action-primary' }))
+    }
+    const recordView = (entry: any) => {
+      const record = entry.data, confirmed = entry.kind === 'confirmed-plan', result = entry.kind === 'result'
+      return h('button', { type: 'button', className: 'saw-record-row', key: entry.id, onClick: () => confirmed ? openPlan(record) : openTaskRecord(record, result ? 'results' : 'overview') },
+        h('span', { className: 'saw-record-heading' }, h('strong', null, confirmed ? record.brief?.goal || tr('Untitled') : record.title || tr('Untitled')), h('span', { className: 'saw-badge' }, confirmed ? tr('ConfirmedPlan') : record.anomaly ? tr('NeedsReview') : record.disabledReason ? tr('ExecutionOff') : stateName(result ? record.outcome : record.state))),
+        h('span', { className: 'saw-record-summary' }, confirmed ? tr('PlanApprovedBlocked') : record.progress || record.nextAction || tr(result ? 'ResultDetails' : 'TaskDetails')))
+    }
+    const briefingView = () => h(React.Fragment, null,
+      !workspace ? h('p', { className: 'saw-meta' }, tr(error ? 'SyncFailed' : 'Loading')) : !desk.ready ? h('div', { className: 'saw-inline-state' }, h('p', null, tr('BriefingUnavailable')), button(tr('Retry'), () => poke.current())) : null,
+      error && workspace ? h('p', { className: 'saw-meta' }, tr('RecordsStale')) : null,
+      newReplies && latestAssistant ? h('article', { className: 'saw-new-reply' }, h('strong', null, tr('CoordinatorReplied')), h('p', { className: 'saw-line-clamp' }, latestAssistant.text), button(tr('ReadAndReply'), openReply)) : null,
+      (desk.actions.length || (desk.actionTotal ?? 0) > 0) ? h('section', { className: 'saw-briefing-group', 'aria-label': tr('YourDecisions') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('YourDecisions')), h('span', { className: 'saw-count' }, text(desk.actionTotal))), ...desk.actions.map(decisionView), desk.moreActions ? h('div', { className: 'saw-row' }, button(tr('MorePlansApprovals'), () => openSystem('todo')), button(tr('MoreQuestions'), showAllTasks)) : null) : desk.ready && desk.actionTotal === 0 && !error && !newReplies ? h('div', { className: 'saw-idle' }, h('span', { className: 'saw-idle-icon', 'aria-hidden': true }, '+'), h('h3', null, tr(desk.idle ? 'ReadyForTask' : 'NothingToDecide')), h('p', null, tr(desk.idle ? 'DescribeOutcome' : 'ProgressOnBoard')), button(tr('StartPlanning'), startTask, !!pendingRequest || !!composer.target || oldDraft), h('small', { className: 'saw-meta' }, tr('PlanningSteps'))) : null,
+      (desk.records.length || (desk.recordTotal ?? 0) > 0) ? h('section', { className: 'saw-recent', 'aria-label': tr('RecentActivity') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('RecentActivity')), desk.moreRecords ? button(`${tr('AllTasks')} · ${text(desk.recordTotal)}`, showAllTasks) : null), ...desk.records.map(recordView), pendingPlans.some(plan => plan.state === 'approved' && plan.expiresAt > Date.now()) && desk.moreRecords ? button(tr('MorePlansApprovals'), () => openSystem('todo')) : null) : null)
     const systemContent = () => {
       const data = systemData[system]
       if (!data) return h('p', null, tr('Loading'))
@@ -560,46 +617,42 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       return h(React.Fragment, null, h('p', null, tr('Readonly')), ...[['Runtime', data.runtime], ['Database', data.db], ['Workers', data.workers], ['Supervision', data.watchdog], ['Outbox', data.outbox], ['RecentErrors', data.recentErrors]].map(([key, value]) => h('section', { key, className: 'saw-box' }, h('h3', null, tr(key)), valueView(value))))
     }
     return h('section', { className: 'saw', 'aria-label': tr('Workspace') }, h('style', null, css),
-      h('header', { className: 'saw-top' }, h('h1', null, tr('Title')), h('div', { className: 'saw-connection' }, h('span', null, error ? tr('Disconnected') : workspace ? tr('Connected') : tr('Connecting')), h('small', null, `${tr('LastSync')}: ${time(lastSync)}`)),
+      h('header', { className: 'saw-top' }, h('h1', null, tr('Title')), h('div', { className: 'saw-connection' }, h('span', { title: `${tr('LastSync')}: ${time(lastSync)}` }, error ? tr('Disconnected') : workspace ? tr('Connected') : tr('Connecting'))),
         h('label', { className: 'saw-search' }, h('span', { className: 'saw-sr' }, tr('Search')), h('input', { type: 'search', value: query, maxLength: 200, placeholder: tr('Search'), onChange: (e: any) => changeFilter(e.target.value, outcome) })),
         h('label', null, h('span', { className: 'saw-sr' }, tr('OutcomeFilter')), h('select', { value: outcome, onChange: (e: any) => changeFilter(query, e.target.value), 'aria-label': tr('OutcomeFilter') }, h('option', { value: '' }, tr('AllOutcomes')), ...['completed', 'failed', 'stopped', 'dropped'].map(key => h('option', { value: key, key }, stateName(key))))),
         button(`${tr('Todo')}${todoCount === null ? '' : ` · ${todoCount}`}`, () => openSystem('todo')), button(tr('Sync'), () => poke.current()), button(tr('System'), () => openSystem('health'))),
-      h('div', { className: 'saw-boundary', role: 'note' }, h('strong', null, tr('BoundaryTitle')), ' ', tr('BoundaryBody')),
+      h('details', { className: 'saw-boundary' }, h('summary', null, h('span', { className: 'saw-safety-dot', 'aria-hidden': true }), tr(workspace?.capabilities?.workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown')), h('p', null, tr('BoundaryBody'))),
       workspace?.model?.available === false ? h('div', { className: 'saw-banner' }, tr('ModelUnavailable')) : null,
       workspace && workspace.capabilities?.send !== true ? h('div', { className: 'saw-banner' }, tr('SendUnavailable')) : null,
       error ? h('div', { className: 'saw-error saw-banner', role: 'alert' }, error, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => poke.current())) : null,
       storageError ? h('div', { className: 'saw-error saw-banner' }, tr('StorageUnavailable')) : null,
       h('div', { className: 'saw-sr', role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, notice),
-      h('nav', { className: 'saw-mobile-tabs', 'aria-label': tr('WorkspaceView') }, ...['board', 'chat'].map(tab => button(tr(tab === 'board' ? 'Board' : 'TaskBriefing'), () => setMobileTab(tab), false, { key: tab, 'aria-pressed': mobileTab === tab }))),
+      h('nav', { className: 'saw-mobile-tabs', 'aria-label': tr('WorkspaceView') }, ...['board', 'chat'].map(tab => button(`${tr(tab === 'board' ? 'Board' : 'DeskTitle')}${tab === 'chat' && newReplies ? ' •' : ''}`, () => setMobileTab(tab), false, { key: tab, 'aria-pressed': mobileTab === tab }))),
       h('div', { className: `saw-workspace${collapsed ? ' saw-collapsed' : ''}`, 'data-mobile-tab': mobileTab },
-        h('section', { className: 'saw-chat', 'aria-label': tr('TaskBriefing') }, h('div', { className: 'saw-section-head' }, h('h2', null, tr('TaskBriefing')), button(collapsed ? tr('ExpandChat') : tr('CollapseChat'), () => setCollapsed(!collapsed), false, { className: 'saw-btn saw-collapse' })),
+        h('section', { className: 'saw-chat', 'aria-label': tr('DeskTitle') }, h('div', { className: 'saw-section-head' }, h('h2', null, tr(activityView === 'history' ? 'DialogueHistory' : 'DeskTitle')), h('div', { className: 'saw-head-actions' }, button(`${tr(activityView === 'history' ? 'BackToDesk' : 'HistoryShort')}${newReplies ? ' •' : ''}`, () => chooseActivity(activityView === 'history' ? 'briefing' : 'history'), false, { className: 'saw-btn saw-text-btn', ref: historyButtonRef }), button(`${collapsed ? '›' : '‹'}${newReplies ? ' •' : ''}`, () => setCollapsed(!collapsed), !!planReview || replyOpen, { className: 'saw-btn saw-collapse', 'aria-label': `${tr(collapsed ? 'ExpandChat' : 'CollapseChat')}${newReplies ? ` · ${tr('CoordinatorReplied')}` : ''}`, title: tr(collapsed ? 'ExpandChat' : 'CollapseChat') }))),
           h('div', { className: 'saw-chat-inner' },
-            h('nav', { className: 'saw-activity-tabs', 'aria-label': tr('ActivityView') }, button(tr('TaskBriefing'), () => chooseActivity('briefing'), false, { 'aria-pressed': activityView === 'briefing' }), button(`${tr('DialogueHistory')}${newReplies ? ` · ${tr('NewReply')}` : ''}`, () => chooseActivity('history'), false, { 'aria-pressed': activityView === 'history' })),
-            activityView === 'history' && array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('HistoryGroup'), h('select', { value: historyEpoch, onChange: (e: any) => { const epoch = e.target.value; historyRef.current = epoch; setHistoryEpoch(epoch); autoScroll.current = true; setHistoryError(''); void readConversation(epoch) } }, h('option', { value: workspace.epoch }, tr('CurrentConversation')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedConversation')} ${index + 1} · ${time(row.createdAt)}`)))) : null,
+            activityView === 'history' && array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('HistoryGroup'), h('select', { value: historyEpoch, disabled: !!planReview || replyOpen, onChange: (e: any) => { const epoch = e.target.value; historyRef.current = epoch; setHistoryEpoch(epoch); autoScroll.current = true; setHistoryError(''); void readConversation(epoch) } }, h('option', { value: workspace.epoch }, tr('CurrentConversation')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedConversation')} ${index + 1} · ${time(row.createdAt)}`)))) : null,
           archive ? h('p', { className: 'saw-banner' }, tr('ArchiveReadonly')) : null,
           historyError ? h('p', { className: 'saw-error' }, historyError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readConversation(historyEpoch) })) : null,
-          h('div', { className: 'saw-messages', ref: messagesRef, onScroll: (e: any) => { const node = e.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80 }, 'aria-label': tr(activityView === 'briefing' ? 'TaskBriefing' : 'ConversationHistory') },
-            activityView === 'briefing' ? h(React.Fragment, null,
-              h('p', { className: 'saw-meta saw-view-marker' }, tr('BriefingVersion')),
-              historyError ? h('p', { className: 'saw-error' }, tr('RepliesUnavailable')) : null,
-              latestAssistant ? h('details', { className: 'saw-reply', key: latestAssistant.id }, h('summary', null, newReplies ? tr('NewReply') : tr('LatestReply'), h('time', { className: 'saw-meta' }, ` · ${time(latestAssistant.at)}`)), h('p', { className: 'saw-meta' }, tr('ReplyNotDecision')), h('p', { className: 'saw-pre' }, latestAssistant.text), button(tr('DialogueHistory'), () => chooseActivity('history'))) : null,
-              button(tr('DialogueHistory'), () => chooseActivity('history')),
-              briefingView()) : h(React.Fragment, null,
-            h('p', { className: 'saw-meta' }, tr('HistoryRecordHint')),
+          h('div', { className: 'saw-messages', inert: planReview || replyOpen ? true : undefined, ref: messagesRef, onScroll: (e: any) => { const node = e.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80 }, 'aria-label': tr(activityView === 'briefing' ? 'DeskTitle' : 'ConversationHistory') },
+            activityView === 'briefing' ? briefingView() : h(React.Fragment, null,
+            latestAssistant ? button(tr('ReadLatestReply'), openReply, false, { className: 'saw-btn saw-text-btn' }) : null,
+            h('details', { className: 'saw-history-info' }, h('summary', null, tr('HistoryInfo')), h('p', { className: 'saw-meta' }, tr('HistoryRecordHint'))),
             currentMessages?.hasMore && currentMessages.nextBefore ? button(tr('OlderMessages'), () => { const node = messagesRef.current; if (node) historyAnchor.current = { epoch: historyEpoch, top: node.scrollTop, height: node.scrollHeight }; void readConversation(historyEpoch, currentMessages.nextBefore) }, historyBusy.current) : null,
             !currentMessages ? h('p', { className: 'saw-meta' }, historyError ? tr('HistoryUnavailable') : tr('Connecting')) : !array(currentMessages.items).length ? h('div', { className: 'saw-empty' }, h('h3', null, tr('StartHere')), h('p', null, tr('StartHint'))) : null,
             ...array(currentMessages?.items).map((message: any) => h('article', { className: `saw-message saw-message-${message.kind}`, key: message.id }, h('div', { className: 'saw-message-head' }, h('strong', null, stateName(message.kind)), h('time', null, time(message.at))), h('p', { className: 'saw-pre' }, message.text), message.stage ? h('details', { className: 'saw-message-technical' }, h('summary', null, tr('TechnicalDetails')), h('small', { className: 'saw-meta' }, `${tr('DeliveryStage')}: ${stateName(message.stage)}`)) : null)),
             !archive ? pendingPlans.map(plan => admissionView(plan)) : null)),
-          h('form', { className: 'saw-composer', onSubmit: (e: any) => { e.preventDefault(); void submit() } },
+          planReview ? h('section', { className: 'saw-inspector', role: 'dialog', 'aria-modal': false, 'aria-label': tr('ReviewPlan'), onKeyDown: (e: any) => { if (e.key === 'Escape' && !confirmation) { e.stopPropagation(); setPlanReview('') } } }, h('header', { className: 'saw-detail-head' }, h('h3', null, tr('ReviewPlan')), button('×', () => setPlanReview(''), false, { ref: planFocus, 'aria-label': tr('CloseDetails') })), h('div', { className: 'saw-inspector-scroll' }, reviewingPlan ? admissionView(reviewingPlan) : h('p', null, tr('PlanChanged')))) : null,
+          replyOpen && latestAssistant ? h('section', { className: 'saw-inspector', role: 'dialog', 'aria-modal': false, 'aria-label': tr('CoordinatorReplied'), onKeyDown: (e: any) => { if (e.key === 'Escape') { e.stopPropagation(); setReplyOpen(false) } } }, h('header', { className: 'saw-detail-head' }, h('h3', null, tr('CoordinatorReplied')), button('×', () => setReplyOpen(false), false, { ref: replyFocus, 'aria-label': tr('CloseDetails') })), h('div', { className: 'saw-inspector-scroll' }, h('p', { className: 'saw-pre' }, latestAssistant.text), h('small', { className: 'saw-meta' }, time(latestAssistant.at))), h('footer', { className: 'saw-detail-actions' }, button(tr('Reply'), () => { inspectorReturnToInput.current = true; setReplyOpen(false); replyToCoordinator() }, !!pendingRequest || !!composer.target || !!composer.draft.trim() || oldDraft, { title: tr('ReplyKeepsDraft') }))) : null,
+          h('form', { className: 'saw-composer', inert: planReview || replyOpen ? true : undefined, onSubmit: (e: any) => { e.preventDefault(); void submit() } },
             array(workspace?.archiveEpochs).length ? h('label', { className: 'saw-history-selector' }, tr('DraftGroup'), h('select', { value: draftEpoch, disabled: sending, onChange: (e: any) => chooseDraftEpoch(e.target.value) }, h('option', { value: workspace.epoch }, tr('CurrentDraft')), ...array(workspace.archiveEpochs).map((row: any, index: number) => h('option', { value: row.epoch, key: row.epoch }, `${tr('ArchivedDraft')} ${index + 1}`)))) : null,
             oldDraft ? h('p', { className: 'saw-banner' }, tr('OldDraftHint')) : null,
-            h('div', { className: 'saw-row' }, h('span', { className: 'saw-meta' }, tr('SendTo')), composer.target ? h('span', { className: 'saw-chip' }, `${tr('SupplementTo')}: ${composer.target.title}`, button('×', () => updateComposer({ target: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelTarget') })) : h('strong', null, tr('Title')),
-            composer.origin ? h('span', { className: 'saw-chip' }, `${tr('RecreatedFrom')}: ${composer.origin.title}`, button('×', () => updateComposer({ origin: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelOrigin') })) : null,
-             !composer.target ? h('select', { value: composer.intent, disabled: sending || !!pendingRequest, 'aria-label': tr('MessageIntent'), onChange: (e: any) => updateComposer({ intent: e.target.value, origin: null }) }, h('option', { value: 'message' }, tr('Message')), h('option', { value: 'new-task' }, tr('NewTask'))) : null),
-            h('label', { className: 'saw-sr', htmlFor: 'saw-draft' }, tr('InputLabel')), h('textarea', { id: 'saw-draft', ref: inputRef, value: composer.draft, placeholder: tr('InputPlaceholder'), rows: 3, disabled: sending || !!pendingRequest || archive || oldDraft || !workspace, onChange: (e: any) => updateComposer({ draft: e.target.value }), onKeyDown: (e: any) => { if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing || e.isComposing || e.nativeEvent?.keyCode === 229 || e.keyCode === 229) return; e.preventDefault(); void submit() }, 'aria-describedby': 'saw-input-help' }),
-            h('p', { id: 'saw-input-help', className: 'saw-meta' }, tr('InputHelp')),
-            pendingRequest ? h('div', { className: 'saw-request' }, h('p', null, tr('PendingRequest')), h('details', null, h('summary', null, tr('RequestDetails')), h('code', { className: 'saw-fingerprint' }, pendingRequest.requestId)), h('div', { className: 'saw-row' }, button(tr('CheckStatus'), () => { void submit(true) }, sending), button(tr('RetrySameRequest'), () => { void submit(false) }, sending || pendingRequest.epoch !== workspace?.epoch || archive), latest?.stage === 'unknown' && latest.accepted === false && Number.isSafeInteger(latest.seq) ? button(tr('CancelUnknownRequest'), () => askConfirm('request', { payload: pendingRequest, seq: latest.seq }, 'cancel'), sending || pendingRequest.epoch !== workspace?.epoch || archive) : null)) : h('button', { type: 'submit', className: 'saw-btn saw-send', disabled: sending || archive || oldDraft || !composer.draft.trim() || workspace?.capabilities?.send !== true }, sending ? tr('Sending') : tr('Send')),
-            latest ? h('p', { className: 'saw-meta' }, `${latest.accepted === true ? tr('Accepted') : tr('Unknown')}: ${stateName(latest.stage)}${latest.code ? ` · ${latest.code}` : ''}`) : null,
+            composer.target ? h('div', { className: 'saw-chip' }, `${tr('SupplementTo')}: ${composer.target.title}`, button('×', () => updateComposer({ target: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelTarget') })) : h('div', { className: 'saw-compose-modes', role: 'group', 'aria-label': tr('MessageIntent') }, button(tr('PlanMode'), () => updateComposer({ intent: 'new-task', origin: null }), sending || !!pendingRequest || archive || oldDraft, { 'aria-pressed': composer.intent === 'new-task' }), button(tr('AskMode'), () => updateComposer({ intent: 'message', origin: null }), sending || !!pendingRequest || archive || oldDraft, { 'aria-pressed': composer.intent === 'message' })),
+            composer.origin ? h('div', { className: 'saw-chip' }, `${tr('RecreatedFrom')}: ${composer.origin.title}`, button('×', () => updateComposer({ origin: null }), sending || !!pendingRequest, { 'aria-label': tr('CancelOrigin') })) : null,
+            h('label', { className: 'saw-sr', htmlFor: 'saw-draft' }, tr('InputLabel')), h('textarea', { id: 'saw-draft', ref: inputRef, value: composer.draft, placeholder: tr(composer.target ? 'InputForTask' : composer.intent === 'new-task' ? 'InputForPlan' : 'InputForQuestion'), rows: 2, disabled: sending || !!pendingRequest || archive || oldDraft || !workspace, onChange: (e: any) => updateComposer({ draft: e.target.value }), onKeyDown: (e: any) => { if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing || e.isComposing || e.nativeEvent?.keyCode === 229 || e.keyCode === 229) return; e.preventDefault(); void submit() }, 'aria-describedby': 'saw-input-help' }),
+            h('div', { className: 'saw-compose-footer' }, h('small', { id: 'saw-input-help', className: 'saw-meta' }, tr('KeyboardHint')),
+            pendingRequest ? h('div', { className: 'saw-request' }, h('p', null, tr('PendingRequest')), h('details', null, h('summary', null, tr('RequestDetails')), h('code', { className: 'saw-fingerprint' }, pendingRequest.requestId)), h('div', { className: 'saw-row' }, button(tr('CheckStatus'), () => { void submit(true) }, sending), button(tr('RetrySameRequest'), () => { void submit(false) }, sending || pendingRequest.epoch !== workspace?.epoch || archive), latest?.stage === 'unknown' && latest.accepted === false && Number.isSafeInteger(latest.seq) ? button(tr('CancelUnknownRequest'), () => askConfirm('request', { payload: pendingRequest, seq: latest.seq }, 'cancel'), sending || pendingRequest.epoch !== workspace?.epoch || archive) : null)) : h('button', { type: 'submit', className: 'saw-btn saw-send', disabled: sending || archive || oldDraft || !composer.draft.trim() || workspace?.capabilities?.send !== true }, sending ? tr('Sending') : tr(composer.target ? 'SendInput' : composer.intent === 'new-task' ? 'GeneratePlan' : 'Send'))),
+            latest ? h('details', { className: 'saw-receipt' }, h('summary', null, tr('RequestDetails')), h('p', { className: 'saw-meta' }, `${latest.accepted === true ? tr('Accepted') : tr('Unknown')}: ${stateName(latest.stage)}${latest.code ? ` · ${latest.code}` : ''}`)) : null,
             notice ? h('p', { className: 'saw-meta' }, notice) : null))),
         h('section', { className: 'saw-board-region', 'aria-label': tr('Board') }, h('div', { className: 'saw-board-head' }, h('h2', null, tr('Board')), h('span', { className: 'saw-meta' }, `${board?.filtered ? tr('FilteredCounts') : tr('AllCounts')} · ${tr('Snapshot')}: ${time(board?.snapshotAt)}`)),
           boardError ? h('div', { className: 'saw-error saw-banner' }, boardError, ' ', tr('StaleData')) : null,

@@ -1,0 +1,7 @@
+
+$ pnpm run typecheck
+
+> dsh-superagent@0.1.0 typecheck /Users/dundundebaba/sync/dsh-s-p
+> tsc --noEmit -p tsconfig.json
+
+[exit code: 0] [tee exit code: 0]

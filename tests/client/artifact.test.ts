@@ -82,7 +82,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof)', 
     // Detect a stale build, including locale changes, rather than asserting that
     // replaced seven-page implementation details remain in the bundle.
     expect(JSON.parse(JSON.stringify(registeredDictionaries))).toEqual(dictionaries)
-    for (const seam of ['command-status', 'timelineCursor', 'RetrySameRequest', 'BoundaryTitle', 'saw-workspace']) expect(artifact).toContain(seam)
+    for (const seam of ['command-status', 'timelineCursor', 'RetrySameRequest', 'PlanningOnly', 'saw-workspace', 'deriveDeskState', 'saw-compose-modes']) expect(artifact).toContain(seam)
     effects.forEach(dispose => dispose())
     expect(localeRemoved).toBe(true)
     expect(definitionRemoved).toBe(true)

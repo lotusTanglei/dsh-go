@@ -143,6 +143,16 @@
 - 用户明确允许只关闭再启用超管插件。受支持plugin_manager两次均返回`application=restart-required / restartReason=unmanaged-plugin`，未热应用；已恢复enabled=true，live fiber仍active。未重启DSH、未改其他插件或安全门。当前进程需完整重启后加载本次后端和revisioned客户端资源，不能把构建成功宣称当前GUI已变。
 - 本次可识别标志：左栏标题“任务与决策”，默认“业务摘要视图 · v2”，旁边“对话历史”。真实Host摘要/独立助手回复/新版资源回执`s4-briefing-20261120-153900-result.json`passed，artifact123021bytes/hash99f67dca…、owner200/非owner403/Origin403、agents0与probe锁清理通过；当前安装link指向本工作区。重启后用户截图仍待核。无浏览器控制，不造DOM/截图补证。
 
+## 2026-11-20T16:02:00+08:00 · 按真实使用流程重做左栏
+
+- 用户截图已证明v2加载但难用：重复标题/切换、两次历史入口、版本/口径大段说明、空决策、庞大编辑区。认可这是设计失败，不归咎用户或缓存，也不以测试数量辩解。旧v2与原始证据保留。
+- 默认左栏“交给超管”，唯一历史/返回次级入口；无待办时给“有什么事想交给我→描述任务”的行动空态；有事项只呈具体计划/问题/授权卡与明确审阅按钮。动态合计最多3行，只有截断才给更多，隐藏的已确认计划/审批/补答各有入口。新增纯deriveDeskState，不从文字猜审批/Fixture，不用未知或陈旧数据宣称没事。
+- 编辑区两行、紧凑footer，明确“规划任务/问一问→生成计划/发送”，目标补充保持显式；仅全新状态default new-task，合法旧草稿（包括空白）原intent不迁移，pending原payload/id不可变。安全一行“仅规划·执行关闭”可展开，缺能力显示未知，后端/执行门不改。
+- 最近旧回复不在日常主屏重复露出；新回复短预览+全文/回复入口，实际打开才本标签标记已查看（非服务端已读ACK）。空历史/首条澄清、发送抢先首读、刷新未读、归档均新增执行闭包反例；每tick也同步当前epoch，收起/窄屏保留提示，旧草稿不被回复覆盖。
+- UI/UX独立复审找到并修首条回复漏提示P1、collapsed提示、total>0假空、归档poll、关闭面板焦点（含disabled input fallback）、隐藏计划导航P2；全文/计划面板内部不在inert子树，背后消息/输入暂不可聚焦；完整范围/CAS仍在。没有假DOM/截图验证。
+- 首轮build失败为actionTotal nullable，修为显式null处理；focused一次失败为旧boundary静态合同，改验可展开安全提示后通过。最终client76/76、全量40files/372tests、typecheck/build/pack exit0，证据`desk-final-20261120-160500/`。Host资源+序列化依赖+摘要/助手回复见`s4-control-20261120-160800-result.json`passed，artifact140319bytes/SHA256 3d0f4711…、owner200/nonowner403/Origin403、agents0。首个desk命名state路径因`desk-`包含敏感前缀`sk-`被既有契约拒绝，failed原始回执`s4-desk-20261120-160300-result.json`保留；只换新probe路径为control，未削弱生产敏感检测或重跑未知投递。
+- 未再次改profile或擅自重启DSH；之前管理器返回restart-required/unmanaged-plugin的回执仍成立。源码build不等于当前页面更新，当前无dev:web watcher/浏览器控制；重做版识别为“交给超管/历史”和“规划任务/问一问”，不再有v2版本横幅。待用户加载后核实真实视觉/交互。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

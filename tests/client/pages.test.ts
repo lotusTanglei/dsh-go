@@ -70,10 +70,10 @@ const translationKeys = () => {
 // visual acceptance, or proof of backend authorization/execution is claimed.
 describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () => {
   it('uses one Workspace main panel instead of the superseded seven-page top navigation', () => {
-    contains(index, ["import { createWorkspacePage } from './workspace.js'", "import { workspaceStyles } from './workspace-style.js'", 'workspaceFactory = createWorkspacePage', 'styleFactory = workspaceStyles', 'workspaceFactory(React, request, t, styleFactory())', "name: 'main', key: 'superagent'", '}, Page)'])
+    contains(index, ["import { createWorkspacePage } from './workspace.js'", "import { workspaceStyles } from './workspace-style.js'", 'workspaceFactory = createWorkspacePage', 'styleFactory = workspaceStyles', 'workspaceFactory(React, request, t, styleFactory(), deskFactory)', "name: 'main', key: 'superagent'", '}, Page)'])
     expect(index).not.toMatch(/\bconst pages\b|\bsetPage\b|\bselected\b|h\(['"]nav['"]|sa-tabs/)
     expect([...index.matchAll(/name:\s*['"]main['"]/g)]).toHaveLength(1)
-    contains(workspace, ["['pending', 'running', 'waiting', 'ended']", "tr('Workspace')", "tr('TaskBriefing')", "tr('Board')", 'saw-workspace'])
+    contains(workspace, ["['pending', 'running', 'waiting', 'ended']", "tr('Workspace')", "tr('DeskTitle')", "tr('Board')", 'saw-workspace'])
   })
 
   it('wires workspace commands, receipts, admission, conversation, and board without arbitrary actor/session targeting', () => {
@@ -126,19 +126,24 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
   })
 
   it('defaults to ledger tasks and decisions, keeping raw history and technical receipts behind explicit controls', () => {
-    contains(workspace, ["React.useState('briefing')", "setActivityView(view)", "activityView === 'briefing' ? h(React.Fragment", "tr('TaskBriefing')", "tr('DialogueHistory')", "tr('BriefingVersion')"])
-    contains(section('briefingView'), ['briefing.decisions?.items', 'briefing.active?.items', 'briefing.results?.items', 'briefing.decisions?.total', 'briefing.active?.total', 'briefing.results?.total', "tr('NoStructuredDecisions')", "plan.state === 'pending' ? 'ReviewPlan' : 'PlanApprovedBlocked'", 'admissionView(plan)', "openTaskRecord(decision, decision.kind === 'approval' ? 'approvals' : 'overview')"])
+    contains(workspace, ["React.useState('briefing')", 'setActivityView(view)', "activityView === 'briefing' ? briefingView()", "tr('DeskTitle')", "'BackToDesk' : 'HistoryShort'", "React.useState('chat')"])
+    expect(workspace).not.toMatch(/saw-activity-tabs|tr\('BriefingVersion'\)|tr\('BriefingScope'\)|tr\('BriefingRecordHint'\)|tr\('NoStructuredDecisions'\)/)
+    contains(section('briefingView'), ['desk.actions.map(decisionView)', 'desk.records.map(recordView)', 'desk.moreActions', 'desk.moreRecords', 'desk.ready && desk.actionTotal === 0 && !error && !newReplies', '(desk.actionTotal ?? 0) > 0', "tr(desk.idle ? 'ReadyForTask' : 'NothingToDecide')", "tr('StartPlanning')", "tr('PlanningSteps')", "tr('RecordsStale')"])
     expect(section('briefingView')).not.toMatch(/currentMessages|message\.text|askConfirm\(/)
+    contains(section('decisionView'), ["entry.kind === 'plan'", 'openPlan(data)', "entry.kind === 'approval' ? 'approvals' : 'overview'", "'ReadAndAnswer'", "'ReviewPlan'"])
+    expect(section('decisionView')).not.toMatch(/askConfirm|call\(/)
+    contains(workspace, ['reviewingPlan ? admissionView(reviewingPlan)', "className: 'saw-inspector'", "rows: 2", "composer.intent === 'new-task' ? 'GeneratePlan' : 'Send'", "tr('PlanMode')", "tr('AskMode')", "workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown'"])
     contains(section('showAllTasks'), ["changeFilter('', '')", "setMobileTab('board')"])
-    expect(section('briefing')).not.toContain('board')
-    contains(section('decisionTotal'), ['workspace?.briefing?.decisions?.total', 'workspace?.pendingApprovals'])
-    contains(section('todoCount'), ['decisionTotal', "plan.state === 'pending' && plan.expiresAt > Date.now()"])
-    contains(section('briefingView'), ["plan.expiresAt <= Date.now() ? 'Expired'", 'plan.brief?.goal'])
+    contains(section('desk'), ['deskState(workspace, Date.now(), !!error)'])
     contains(section('chooseActivity'), ["view === 'briefing'", 'historyRef.current = epochRef.current', 'setHistoryEpoch(epochRef.current)', 'readConversation(epochRef.current)'])
-    expect(section('chooseActivity')).not.toMatch(/updateComposer|saveComposer|target:/)
-    contains(section('setConversationPage'), ['page.latestAssistant', 'next.latestAssistant?.lastSeq', 'replyWatermarks.current[epoch]', "activityViewRef.current !== 'history'", 'setNewReplies(1)'])
-    contains(workspace, ['latestAssistant.text', "tr('ReplyNotDecision')", "className: 'saw-message-technical'", "h('summary', null, tr('TechnicalDetails'))", "activityViewRef.current === 'history' && autoScroll.current"])
-    contains(section('recordView'), ["record.anomaly ? tr('StateConflict')", 'record.disabledReason', "record.state === 'ended' ? record.outcome : record.state", "tr('PlannedNext')", "result ? 'results' : 'overview'"])
+    expect(section('chooseActivity')).not.toMatch(/updateComposer|saveComposer|target:|setNewReplies/)
+    contains(section('setConversationPage'), ['page.latestAssistant', 'Number.isSafeInteger(next.latestAssistant?.lastSeq)', 'replyReadThrough.current[epoch]', '!replyBaselineReady.current[epoch]', 'sessionStorage.getItem', 'readThrough = replySeq'])
+    contains(section('readLatestReply'), ['replyReadThrough.current[epoch] = reply.lastSeq', 'sessionStorage.setItem', 'setNewReplies(0)'])
+    contains(section('replyToCoordinator'), ['composerRef.current.pending', 'composerRef.current.target', 'composerRef.current.draft.trim()', "intent: 'message'"])
+    contains(workspace, ['latestAssistant.text', "className: 'saw-message-technical'", "h('summary', null, tr('TechnicalDetails'))", "activityViewRef.current === 'history' && autoScroll.current"])
+    contains(workspace, ['await readConversation(epoch)', 'if (historyRef.current && historyRef.current !== epoch) await readConversation(historyRef.current)', 'inspectorOpener.current.focus()', 'inspectorReturnToInput.current', '!inputRef.current.disabled', 'historyButtonRef.current?.focus()', "`${collapsed ? '›' : '‹'}${newReplies ? ' •' : ''}`"])
+    contains(section('recordView'), ['record.anomaly', 'record.disabledReason', 'stateName(result ? record.outcome : record.state)', "result ? 'results' : 'overview'"])
+    contains(styles, ['.saw-head-actions', '.saw-compose-footer', 'height:76px;min-height:60px', '@media(max-height:650px)', '.saw-messages{flex:1;min-height:0;', '.saw-inspector-scroll{flex:1;min-height:0;overflow:auto'])
   })
 
   it('keeps per-column cursors, server totals, and revision checks when paging beyond 100 cards', () => {
@@ -184,7 +189,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
   })
 
   it('always presents the production boundary, never synthesizes Worker execution or task success', () => {
-    contains(workspace, ["className: 'saw-boundary', role: 'note'", "tr('BoundaryTitle')", "tr('BoundaryBody')", 'workspace?.model?.available === false', 'workspace.capabilities?.send !== true', "tr('ModelUnavailable')", "tr('SendUnavailable')", "tr('StaleData')", 'card.lastProgressAt', 'card.budget?.steps', 'card.budget?.usage', 'card.acceptance.passed', "tr('Stopping')", "tr('Unknown')"])
+    contains(workspace, ["h('details', { className: 'saw-boundary' }", "workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown'", "tr('BoundaryBody')", 'workspace?.model?.available === false', 'workspace.capabilities?.send !== true', "tr('ModelUnavailable')", "tr('SendUnavailable')", "tr('StaleData')", 'card.lastProgressAt', 'card.budget?.steps', 'card.budget?.usage', 'card.acceptance.passed', "tr('Stopping')", "tr('Unknown')"])
     expect(index + workspace).not.toMatch(/new Worker\s*\(|\b(?:mock|fake|demo|sample)(?:Tasks|Tickets|Workers|Messages|Data)\b|Math\.random\s*\(|setBoard\(\s*\{\s*columns|setWorkspace\(\s*\{/i)
     const perform = section('perform')
     contains(perform, ["value.kind === 'stop' && result.state === 'ended'", "result.state === 'ended' ? tr('StoppedNotice') : tr('Stopping')"])

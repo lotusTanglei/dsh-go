@@ -1,0 +1,12 @@
+# Action-first desk: isolated Host resource and conversation contract only.
+- id: superagent-foundation
+  config:
+    stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-desk-20261120-160300
+    confirm: always
+- insert:
+    - id: kanban-s4-desk-20261120-160300
+      name: dsh-superagent/kanban-s4-probe
+      config:
+        requireBriefing: true
+        dbPath: /Users/dundundebaba/sync/dsh-s-p/.probe/kanban-s4-desk-20261120-160300/superagent.sqlite
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/s4-desk-20261120-160300-result.json
