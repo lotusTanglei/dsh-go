@@ -3,7 +3,7 @@ export function workspaceStyles(): string {
   return `
 .saw{box-sizing:border-box;height:100%;min-height:0;min-width:0;padding:calc(var(--dsh-frame-top-clearance,0px) + 12px) 20px 16px;display:flex;flex-direction:column;gap:16px;position:relative;overflow:hidden;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:inherit;font-size:13px;line-height:1.5;container-type:inline-size}
 .saw *{box-sizing:border-box}
-.saw h1,.saw h2,.saw h3,.saw h4,.saw p{margin:0}
+.saw h1,.saw h2,.saw h3,.saw h4,.saw h5,.saw p{margin:0}
 .saw h1{font-size:18px;letter-spacing:-.03em;white-space:nowrap}
 .saw h2{font-size:16px}.saw h3{font-size:14px}.saw h4{font-size:13px}
 .saw p+p{margin-top:6px}
@@ -85,10 +85,16 @@ export function workspaceStyles(): string {
 .saw-line-clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:12px;color:var(--dsw-alias-label-secondary)}
 .saw-source-state{font-size:12px;color:var(--dsw-alias-label-secondary);padding:10px 12px;border-inline-start:2px solid var(--dsw-alias-border-l1)}
 .saw-session-work{display:flex;flex-direction:column;gap:8px;min-width:0;flex-shrink:0}
+.saw-project-group{min-width:0;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l1)}
+.saw-project-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.saw-project-head h4{font-size:14px;font-weight:600}
+.saw-project-head small:last-child{margin-inline-start:auto}
+.saw-project-preview-hint{font-size:11px}
+.saw-session-work-card h5{font-size:13px}
 .saw-session-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:10px}
 .saw-session-work-card{padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow-wrap:anywhere;min-width:0}
-.saw-session-work-card h4{line-height:1.5;font-weight:600}
-.saw-session-preview .saw-session-work-card h4{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.saw-session-work-card h5{line-height:1.5;font-weight:600}
+.saw-session-preview .saw-session-work-card h5{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .saw-session-source{margin-top:4px}.saw-session-preview .saw-session-source{font-size:11px}
 .saw-session-line{margin-top:6px;font-size:12px;white-space:pre-wrap}
 .saw-session-preview .saw-session-line{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

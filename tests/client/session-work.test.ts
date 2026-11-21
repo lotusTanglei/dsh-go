@@ -38,6 +38,39 @@ describe('read-only conversation work UI closures', () => {
     expect(managed).toContain(objective); expect(managed).toContain(decision); expect(managed).not.toContain('saw-line-clamp')
   })
 
+  it('groups by authoritative identity rather than label, merging cross-page rows and keeping unknown/unassigned separate', () => {
+    const group=closure('groupSessionWork',{array,tr})
+    const p=(key:string,name='Same project')=>({kind:'project',key,name})
+    const rows=[{sessionId:'a',project:p('one')},{sessionId:'b',project:p('two')},{sessionId:'c',project:p('one')},{sessionId:'unassigned',project:{kind:'unassigned',key:'unassigned'}},{sessionId:'unknown',project:{kind:'unknown',key:'unknown'}},{sessionId:'legacy'},{sessionId:'a',project:p('wrong')}]
+    const groups=group(rows)
+    expect(groups.map((item:any)=>item.key)).toEqual(['project:one','project:two','unassigned','unknown'])
+    expect(groups[0].items.map((row:any)=>row.sessionId)).toEqual(['a','c'])
+    expect(groups[1].items.map((row:any)=>row.sessionId)).toEqual(['b'])
+    expect(groups[3].items.map((row:any)=>row.sessionId)).toEqual(['unknown','legacy'])
+    expect(groups[0].name).toBe(groups[1].name)
+  })
+
+  it('renders project headings first, disambiguates duplicate project names, and limits only the preview rather than source management', () => {
+    const groupSessionWork=closure('groupSessionWork',{array,tr})
+    const render=closure('sessionProjectGroups',{groupSessionWork,h,tr,sessionWorkCard:(row:any)=>({session:row.sessionId})})
+    const rows=[{sessionId:'a',project:{kind:'project',key:'abcdefgh-111',name:'Same'}},{sessionId:'b',project:{kind:'project',key:'abcdefgh-222',name:'Same'}},{sessionId:'c',project:{kind:'project',key:'abcdefgh-111',name:'Same'}},{sessionId:'d',project:{kind:'unassigned',key:'unassigned'}},{sessionId:'e'}]
+    const preview=JSON.stringify(render(rows,false,undefined,true))
+    expect(preview).toContain('abcdefgh-1');expect(preview).toContain('abcdefgh-2')
+    expect(preview).toContain('"session":"a"');expect(preview).not.toContain('"session":"c"');expect(preview).not.toContain('"session":"e"')
+    const full=JSON.stringify(render(rows,true,'revision',false))
+    expect(full).toContain('"session":"c"');expect(full).toContain('"session":"e"');expect(full).toContain('ProjectLoadedSessions')
+    expect(full).toContain('"tag":"h4"');expect(full).not.toMatch(/"tag":"button"|activate|steer/)
+  })
+
+  it('distinguishes same-title included sessions in source management without turning identities into headlines', () => {
+    const card=closure('sessionWorkCard',{h,React:{Fragment:'fragment'},tr,displayTitle:(v:any)=>v,sessionSourceTitle:(row:any)=>row.title,sessionWorkBusy:'',time:()=>'',button(){}})
+    const base={title:'Same title',evidence:'missing',runtime:'idle'}
+    const first=JSON.stringify(card({...base,sessionId:'session-first-12345678'},true,'revision')),second=JSON.stringify(card({...base,sessionId:'session-next-87654321'},true,'revision'))
+    expect(first).toContain('…12345678');expect(second).toContain('…87654321')
+    expect(first).toContain('SessionWorkReference');expect(second).toContain('SessionWorkReference')
+    expect(first).toContain('session-first-12345678');expect(second).toContain('session-next-87654321')
+  })
+
   it('never uses raw UUID as a source headline and keeps excluded references secondary', () => {
     const title = closure('sessionSourceTitle', { tr, displayTitle: (v: any) => v })
     expect(title({ sessionId: 'id', title: 'edc79c24-8071-4318-a972-afb5e0649922' })).toBe('SessionWorkUntitled')

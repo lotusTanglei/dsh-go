@@ -7,6 +7,7 @@ function fixture(ids = ['one']) {
   const state = { rows: ids.map(id => header(id)), excluded: [] as string[], owned: [] as string[], denied: [] as string[], values: {} as Record<string, Record<string, unknown>>, agents: {} as Record<string, any> }
   const abort = new AbortController()
   const ports: SessionWorkPorts = {
+    listProjects: vi.fn(() => []),
     listSessions: vi.fn(async () => state.rows),
     read: vi.fn(async id => ({ asOfSeq: -1, values: state.values[id] ?? { title: `Title ${id}` } })),
     agent: vi.fn(id => state.agents[id]), ownedSessionIds: () => state.owned,
@@ -37,6 +38,77 @@ describe('SessionWorkSource read-only current-host coverage', () => {
     expect(vi.mocked(f.ports.read).mock.calls.map(call => call[0])).not.toContain('forbidden')
     expect(f.ports.setExcluded).not.toHaveBeenCalled()
     await f.source.stop()
+  })
+
+  it('takes project identity from Host membership, not matching titles or cwd, and retains it on excluded metadata without content reads', async () => {
+    const f=fixture(['one','two','three','four'])
+    f.state.rows[0]=header('one',{cwd:'/private/path/same'})
+    f.state.rows[1]=header('two',{cwd:'/private/path/same'})
+    let projects=[{id:'project-a',title:'Same title',sessionIds:['one','three']},{id:'project-b',title:'Same title',sessionIds:['two']}]
+    f.ports.listProjects=()=>projects
+    await f.source.start()
+    const first=await f.source.list()
+    expect(first.items.find(row=>row.sessionId==='one')?.project).toEqual({kind:'project',key:'project-a',name:'Same title'})
+    expect(first.items.find(row=>row.sessionId==='two')?.project).toEqual({kind:'project',key:'project-b',name:'Same title'})
+    expect(first.items.find(row=>row.sessionId==='three')?.project).toEqual(first.items.find(row=>row.sessionId==='one')?.project)
+    expect(first.items.find(row=>row.sessionId==='four')?.project).toEqual({kind:'unassigned',key:'unassigned'})
+    expect(JSON.stringify(first)).not.toContain('/private/path')
+    await f.source.setIncluded('one',false,{revision:first.revision!})
+    const reads=vi.mocked(f.ports.read).mock.calls.length
+    const excluded=await f.source.list({view:'excluded'})
+    expect(excluded.items[0]?.project).toEqual({kind:'project',key:'project-a',name:'Same title'})
+    expect(f.ports.read).toHaveBeenCalledTimes(reads)
+    projects=[{...projects[0]!,title:'Renamed'},projects[1]!]
+    const renamed=await f.source.list({view:'excluded'})
+    expect(renamed.revision).not.toBe(excluded.revision)
+    expect(renamed.items[0]?.project).toEqual({kind:'project',key:'project-a',name:'Renamed'})
+    await expect(f.source.setIncluded('one',true,{revision:excluded.revision!})).rejects.toMatchObject({code:'session_work_resync'})
+    await f.source.stop()
+  })
+
+  it('keeps registry failure, missing service, denied and ambiguous memberships unknown rather than inventing an unassigned project', async () => {
+    for(const mode of ['missing','throw','malformed','denied','ambiguous']) {
+      const f=fixture(['one'])
+      if(mode==='missing') delete f.ports.listProjects
+      else f.ports.listProjects=()=>{
+        if(mode==='throw') throw new Error('PRIVATE REGISTRY ERROR')
+        if(mode==='malformed') return [{id:'project-a',title:'x',sessionIds:null}] as any
+        if(mode==='denied') return [{id:'private-project',title:'PRIVATE PROJECT',sessionIds:['one'],accessible:false}]
+        return [{id:'project-a',title:'A',sessionIds:['one']},{id:'project-b',title:'B',sessionIds:['one']}]
+      }
+      await f.source.start()
+      const page=await f.source.list()
+      expect(page.state,mode).toBe('partial')
+      expect(page.items[0]?.project,mode).toEqual({kind:'unknown',key:'unknown'})
+      expect(JSON.stringify(page)).not.toMatch(/PRIVATE|private-project/)
+      await f.source.stop()
+    }
+    const f=fixture();await f.source.start()
+    expect((await f.source.list()).items[0]?.project).toEqual({kind:'unassigned',key:'unassigned'})
+    await f.source.stop()
+    const empty=fixture([]);await empty.source.start()
+    expect((await empty.source.list()).state).toBe('ready')
+    empty.ports.listProjects=()=>{throw new Error('private failure')}
+    expect((await empty.source.list()).state).toBe('partial')
+    await empty.source.stop()
+  })
+
+  it('invalidates cached project ownership and old cursors, and never publishes a membership changed during a content read', async () => {
+    const f=fixture(Array.from({length:21},(_,i)=>`s${i}`))
+    let projects=[{id:'project-a',title:'A',sessionIds:f.state.rows.map(row=>row.header.id)}]
+    f.ports.listProjects=()=>projects;await f.source.start()
+    const first=await f.source.list()
+    projects=[{id:'project-b',title:'B',sessionIds:projects[0]!.sessionIds}]
+    await expect(f.source.list({cursor:first.next})).rejects.toMatchObject({code:'session_work_resync'})
+    expect((await f.source.list()).items.every(row=>row.project.kind==='project'&&row.project.key==='project-b')).toBe(true)
+    await f.source.stop()
+    const race=fixture();let current=[{id:'project-a',title:'A',sessionIds:['one']}];race.ports.listProjects=()=>current
+    let finish!:(value:any)=>void,started!:()=>void;const ready=new Promise<void>(resolve=>started=resolve)
+    vi.mocked(race.ports.read).mockImplementation(()=>{started();return new Promise(resolve=>finish=resolve)})
+    await race.source.start();const result=race.source.list();const outcome=result.catch(error=>error);await ready
+    current=[];finish({asOfSeq:0,values:{title:'Old project content'}})
+    expect(await outcome).toMatchObject({code:'session_work_resync'})
+    await race.source.stop()
   })
 
   it('projects only structured facts, separates goal/runtime, retains continued questions, redacts bounded strings and does not infer completion', async () => {

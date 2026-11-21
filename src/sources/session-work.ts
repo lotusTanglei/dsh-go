@@ -5,6 +5,7 @@ import { WorkspaceError } from '../workspace/commands.js'
 import type { Source, ThreadContext } from './types.js'
 
 export interface SessionWorkPorts {
+  listProjects?(): readonly { id: string; title: string; sessionIds: readonly string[]; accessible?: boolean }[]
   listSessions(signal: AbortSignal): Promise<readonly any[]>
   read(sessionId: string, signal: AbortSignal): Promise<{ asOfSeq: number; values: Record<string, unknown> }>
   agent(sessionId: string): any
@@ -14,8 +15,9 @@ export interface SessionWorkPorts {
   setExcluded(ids: readonly string[]): void
   signal: AbortSignal
 }
+export type SessionWorkProject = { kind: 'project'; key: string; name: string } | { kind: 'unassigned' | 'unknown'; key: 'unassigned' | 'unknown' }
 export interface SessionWorkItem {
-  sessionId: string; title: string; objective?: string
+  sessionId: string; title: string; objective?: string; project: SessionWorkProject
   runtime: 'running' | 'idle' | 'unavailable' | 'unknown'
   goalPhase?: string; progress?: string; nextAction?: string; blocker?: string; decision?: string
   observedAt: number; evidence: 'structured' | 'missing' | 'unavailable'; excluded: boolean
@@ -27,7 +29,7 @@ export interface SessionWorkList {
   items: SessionWorkItem[]; hasMore: boolean; next?: string; revision?: string
   error?: 'session_work_unavailable' | 'session_work_partial'
 }
-type Roster = { at: number; revision: string; ownedKey: string; ordinary: string[]; included: string[]; excluded: string[]; internal: string[]; partial: boolean }
+type Roster = { at: number; revision: string; ownedKey: string; projects: Record<string, SessionWorkProject>; projectRevision: string; ordinary: string[]; included: string[]; excluded: string[]; internal: string[]; partial: boolean }
 const TTL = 15_000, FALLBACK = '未提供会话标题'
 const idValid = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:@/-]{0,199}$/.test(value) && !value.includes('://')
 const object = (value: unknown): Record<string, any> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : undefined
@@ -100,15 +102,39 @@ export class SessionWorkSource implements Source {
     const excluded = new Set(this.ports.getExcluded().filter(idValid))
     const ordinary = base.ordinary
     const next = { ...base, included: ordinary.filter(id => !excluded.has(id)), excluded: ordinary.filter(id => excluded.has(id)) }
-    next.revision = hash([ordinary, next.internal, [...excluded].sort()])
+    next.revision = hash([ordinary.map(id => [id, base.projects[id]]), base.projectRevision, next.internal, [...excluded].sort()])
     return next
+  }
+  private readProjects(ordinary: readonly string[]) {
+    // Host membership is authoritative; no cwd/title/path guesses or log reads.
+    const projects: Record<string, SessionWorkProject> = Object.create(null)
+    let partial = false
+    try {
+      const rows = this.ports.listProjects?.()
+      if (!Array.isArray(rows)) throw new Error('project registry unavailable')
+      const members = new Set(ordinary)
+      for (const row of rows) {
+        if (!object(row) || !idValid(row.id) || typeof row.title !== 'string' || !Array.isArray(row.sessionIds) || row.sessionIds.some((id: unknown) => !idValid(id))) throw new Error('invalid project registry')
+        if (row.accessible === false && row.sessionIds.some((id: string) => members.has(id))) partial = true
+        const project: SessionWorkProject = row.accessible === false ? { kind: 'unknown', key: 'unknown' } : { kind: 'project', key: row.id, name: text(row.title, 120) ?? '' }
+        for (const id of row.sessionIds) if (members.has(id)) {
+          if (projects[id]) { projects[id] = { kind: 'unknown', key: 'unknown' }; partial = true }
+          else projects[id] = project
+        }
+      }
+      for (const id of ordinary) projects[id] ??= { kind: 'unassigned', key: 'unassigned' }
+    } catch {
+      partial = true
+      for (const id of ordinary) projects[id] = { kind: 'unknown', key: 'unknown' }
+    }
+    return { projects, partial }
   }
   private async getRoster(fresh = false): Promise<Roster> {
     if (!this.available()) throw new Error('inactive')
     if (!fresh && this.roster && Date.now() - this.roster.at < TTL) {
       const cached = this.makeRosterFromMembership(this.roster)
       // Access revocation and out-of-band membership changes must not reuse cached bodies.
-      if (cached.revision === this.roster.revision && cached.ownedKey === hash([...this.ports.ownedSessionIds()].sort()) && [...cached.included, ...cached.excluded].every(id => this.access(id))) return cached
+      if (hash(this.readProjects(cached.ordinary)) === cached.projectRevision && cached.revision === this.roster.revision && cached.ownedKey === hash([...this.ports.ownedSessionIds()].sort()) && [...cached.included, ...cached.excluded].every(id => this.access(id))) return cached
       this.invalidate()
     }
     if (this.rosterFlight) return this.rosterFlight
@@ -137,7 +163,9 @@ export class SessionWorkSource implements Source {
         const created = (id: string) => { const value = headers.get(id)?.createdAt; return typeof value === 'number' && Number.isFinite(value) ? value : 0 }
         return running(b) - running(a) || created(b) - created(a) || a.localeCompare(b)
       })
-      const base: Roster = { at: Date.now(), revision: '', ownedKey: hash([...this.ports.ownedSessionIds()].sort()), ordinary, included: ordinary, excluded: [], internal: internal.sort(), partial }
+      const projectSnapshot = this.readProjects(ordinary)
+      const projects = projectSnapshot.projects; partial ||= projectSnapshot.partial
+      const base: Roster = { at: Date.now(), revision: '', ownedKey: hash([...this.ports.ownedSessionIds()].sort()), projects, projectRevision: hash(projectSnapshot), ordinary, included: ordinary, excluded: [], internal: internal.sort(), partial }
       const roster = this.makeRosterFromMembership(base)
       if (generation !== this.generation || !this.available()) return resync()
       this.roster = roster
@@ -163,8 +191,9 @@ export class SessionWorkSource implements Source {
       const ids = roster[view]
       if (offset > ids.length) return resync()
       const pageIds = ids.slice(offset, offset + limit)
-      const items = view === 'excluded' ? pageIds.map(id => this.empty(id, true, 'missing')) : await Promise.all(pageIds.map(id => this.project(id, generation)))
-      if (!this.available() || generation !== this.generation || this.makeRosterFromMembership(roster).revision !== roster.revision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || pageIds.some(id => !this.access(id))) return resync()
+      const observed = view === 'excluded' ? pageIds.map(id => this.empty(id, true, 'missing')) : await Promise.all(pageIds.map(id => this.project(id, generation)))
+      const items = observed.map(item => ({ ...item, project: roster.projects[item.sessionId] ?? { kind: 'unknown' as const, key: 'unknown' as const } }))
+      if (!this.available() || generation !== this.generation || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || this.makeRosterFromMembership(roster).revision !== roster.revision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || pageIds.some(id => !this.access(id))) return resync()
       const hasMore = offset + limit < ids.length
       const partial = roster.partial || items.some(item => item.evidence === 'unavailable')
       return { state: partial ? 'partial' : 'ready', sampledAt, scope: 'current-host', defaultIncluded: true,
@@ -177,7 +206,7 @@ export class SessionWorkSource implements Source {
     }
   }
   private empty(id: string, excluded: boolean, evidence: SessionWorkItem['evidence']): SessionWorkItem {
-    return { sessionId: id, title: this.labels.get(id) ?? FALLBACK, runtime: excluded ? 'unknown' : 'unavailable', observedAt: Date.now(), evidence, excluded }
+    return { sessionId: id, project: { kind: 'unknown', key: 'unknown' }, title: this.labels.get(id) ?? FALLBACK, runtime: excluded ? 'unknown' : 'unavailable', observedAt: Date.now(), evidence, excluded }
   }
   private project(id: string, generation: number): Promise<SessionWorkItem> {
     const cached = this.items.get(id)

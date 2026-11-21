@@ -816,12 +816,25 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       const value = typeof row.title === 'string' ? row.title.trim() : ''
       return !value || value === row.sessionId || /^[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(value) ? tr('SessionWorkUntitled') : displayTitle(value)
     }
+    const groupSessionWork = (rows: any) => {
+      const groups = new Map<string, { key: string; kind: string; name: string; items: any[] }>(), seen = new Set<string>()
+      for (const row of array(rows)) {
+        if (typeof row?.sessionId !== 'string' || seen.has(row.sessionId)) continue
+        seen.add(row.sessionId)
+        const project = row.project, known = project?.kind === 'project' && typeof project.key === 'string' && !!project.key
+        const kind = known ? 'project' : project?.kind === 'unassigned' ? 'unassigned' : 'unknown'
+        const key = known ? `project:${project.key}` : kind
+        if (!groups.has(key)) groups.set(key, { key, kind, name: known ? typeof project.name === 'string' && project.name.trim() ? project.name : tr('ProjectUntitled') : tr(kind === 'unassigned' ? 'ProjectUnassigned' : 'ProjectUnknown'), items: [] })
+        groups.get(key)!.items.push(row)
+      }
+      return [...groups.values()]
+    }
     const sessionWorkCard = (row: any, manage = false, revision?: string) => {
       const structured = row.evidence === 'structured', summary = structured && (row.objective || row.progress || row.nextAction || row.blocker || row.decision)
       return h('article', { className: 'saw-session-work-card', key: row.sessionId },
-        row.excluded ? h(React.Fragment, null, h('h4', null, sessionSourceTitle(row)), h('small', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(row.sessionId).slice(-8)}`)) : h(React.Fragment, null,
-          h('h4', null, structured && row.objective ? manage ? row.objective : displayTitle(row.objective) : tr(summary ? 'SessionWorkKnownWork' : 'SessionWorkNoSummary')),
-          h('p', { className: 'saw-meta saw-session-source' }, `${tr('SessionWorkFrom')}: ${sessionSourceTitle(row)}`),
+        row.excluded ? h(React.Fragment, null, h('h5', null, sessionSourceTitle(row)), h('small', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(row.sessionId).slice(-8)}`)) : h(React.Fragment, null,
+          h('h5', null, structured && row.objective ? manage ? row.objective : displayTitle(row.objective) : tr(summary ? 'SessionWorkKnownWork' : 'SessionWorkNoSummary')),
+          h('p', { className: 'saw-meta saw-session-source' }, `${tr('SessionWorkFrom')}: ${sessionSourceTitle(row)}${manage ? ` · ${tr('SessionWorkReference')}: …${String(row.sessionId).slice(-8)}` : ''}`),
           summary ? h(React.Fragment, null,
             row.progress ? h('p', { className: 'saw-session-line', title: row.progress }, row.progress) : null,
             row.nextAction && (manage || !row.progress) ? h('p', { className: 'saw-session-line' }, `${tr('SessionWorkNext')}: ${row.nextAction}`) : null,
@@ -831,12 +844,27 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             structured && row.goalPhase ? h('span', null, `${tr('SessionWorkGoalPhase')}: ${tr(row.goalPhase === 'active' ? 'SessionWorkGoalActive' : row.goalPhase === 'paused' ? 'SessionWorkGoalPaused' : row.goalPhase === 'complete' ? 'SessionWorkGoalCompleted' : row.goalPhase === 'blocked' ? 'SessionWorkGoalBlocked' : 'Unknown')}`) : null,
             h('span', null, tr(row.runtime === 'running' ? 'SessionWorkRuntimeRunning' : row.runtime === 'idle' ? 'SessionWorkRuntimeIdle' : row.runtime === 'unavailable' ? 'SessionWorkRuntimeUnavailable' : 'SessionWorkRuntimeUnknown')),
             h('span', null, `${tr('Snapshot')}: ${time(row.observedAt)}`))),
+        manage ? h('details', { className: 'saw-session-facts' }, h('summary', null, tr('SessionIdentity')), h('code', { className: 'saw-fingerprint' }, row.sessionId)) : null,
         manage ? button(tr(row.excluded ? 'SessionWorkRestore' : 'SessionWorkExclude'), () => { void setSessionIncluded(row, row.excluded === true, revision) }, !!sessionWorkBusy || !revision, { className: 'saw-btn saw-text-btn' }) : null)
+    }
+    const sessionProjectGroups = (rows: any, manage = false, revision?: string, preview = false) => {
+      const groups = groupSessionWork(rows)
+      const reference = (key: string) => {
+        const id = key.slice('project:'.length)
+        let length = Math.min(8, id.length)
+        while (length < id.length && groups.some(group => group.key !== key && group.kind === 'project' && group.key.slice('project:'.length).startsWith(id.slice(0, length)))) length++
+        return id.slice(0, length)
+      }
+      return (preview ? groups.slice(0, 3) : groups).map(group => h('section', { className: 'saw-project-group', key: group.key },
+        h('header', { className: 'saw-project-head' }, h('h4', null, group.name), group.kind === 'project' && groups.filter(other => other.kind === 'project' && other.name === group.name).length > 1 ? h('small', { className: 'saw-meta' }, `${tr('ProjectReference')}: ${reference(group.key)}`) : null,
+          !preview ? h('small', { className: 'saw-meta' }, `${tr('ProjectLoadedSessions')}: ${group.items.length}`) : null),
+        h('div', { className: 'saw-session-grid' }, ...(preview ? group.items.slice(0, 1) : group.items).map(row => sessionWorkCard(row, manage, revision)))))
     }
     const sessionWorkPreview = () => h('section', { className: 'saw-session-work saw-session-preview', 'aria-label': tr('SessionWorkTitle') },
       h('div', { className: 'saw-group-head' }, h('div', { className: 'saw-row' }, h('h3', null, tr('ConversationWork')), h('span', { className: 'saw-badge' }, tr('ReadonlyShort'))), button(tr('AllConversationWork'), () => openSystem('sources'))),
       sessionCoverage !== 'ready' ? h('p', { className: 'saw-source-state', role: 'status' }, tr(sessionCoverage === 'partial' ? 'WorkPartialShort' : 'WorkUnavailableShort')) : null,
-      h('div', { className: 'saw-session-grid' }, ...array(sessionWork?.items).filter(row => row.excluded !== true).slice(0, 3).map(row => sessionWorkCard(row))),
+      h('p', { className: 'saw-meta saw-project-preview-hint' }, tr('ProjectPreviewHint')),
+      ...sessionProjectGroups(array(sessionWork?.items).filter(row => row.excluded !== true), false, undefined, true),
       sessionCoverage === 'ready' && sessionWork.total === 0 && !array(sessionWork.items).length ? h('p', { className: 'saw-meta' }, tr('WorkEmptyShort')) : null)
     const sessionWorkSources = () => {
       const included = sessionWorkPages.included, excluded = sessionWorkPages.excluded
@@ -847,7 +875,8 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         sessionWorkError ? h('p', { className: 'saw-error', role: 'alert' }, sessionWorkError) : null,
         included?.state !== 'ready' ? h('p', { className: 'saw-meta' }, tr(included?.state === 'partial' ? 'SessionWorkPartial' : 'SessionWorkUnavailable')) : null,
         included ? h('p', { className: 'saw-meta' }, `${tr('SessionWorkIncludedCount')}: ${text(included.total)} · ${tr('Snapshot')}: ${time(included.sampledAt)}`) : null,
-        ...array(included?.items).filter(row => row.excluded !== true).map(row => sessionWorkCard(row, true, included.revision)),
+        h('p', { className: 'saw-meta' }, tr('ProjectLoadedHint')),
+        ...sessionProjectGroups(array(included?.items).filter(row => row.excluded !== true), true, included?.revision),
         included?.state === 'ready' && included.total === 0 ? h('p', { className: 'saw-meta' }, tr('SessionWorkEmpty')) : null,
         included?.hasMore && included.next ? button(tr('SessionWorkLoadMore'), () => { void readSessionWork('included', true) }, !!sessionWorkBusy) : null,
         h('details', { className: 'saw-session-excluded', open: excludedOpen, onToggle: toggleExcluded }, h('summary', null, `${tr('SessionWorkExcludedList')} · ${text(excludedTotal)}`),
@@ -855,7 +884,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
           excludedOpen ? h(React.Fragment, null,
             !excluded ? button(tr('SessionWorkLoadExcluded'), () => { void readSessionWork('excluded') }, !!sessionWorkBusy) : null,
             excluded && excluded.state !== 'ready' ? h('p', { className: 'saw-meta' }, tr(excluded.state === 'partial' ? 'SessionWorkPartial' : 'SessionWorkUnavailable')) : null,
-            ...array(excluded?.items).map(row => sessionWorkCard({ ...row, excluded: true }, true, excluded.revision)),
+            ...sessionProjectGroups(array(excluded?.items).map(row => ({ ...row, excluded: true })), true, excluded?.revision),
             excluded?.state === 'ready' && excluded.total === 0 ? h('p', { className: 'saw-meta' }, tr('SessionWorkNoExcluded')) : null,
             excluded?.hasMore && excluded.next ? button(tr('SessionWorkLoadMore'), () => { void readSessionWork('excluded', true) }, !!sessionWorkBusy) : null) : null))
     }

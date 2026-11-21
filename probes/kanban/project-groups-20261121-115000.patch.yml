@@ -1,0 +1,9 @@
+# Read-only WorkspaceRegistry integration; fixture Sessions are never attached to user projects.
+- id: superagent-foundation
+  disabled: true
+- insert:
+    - id: project-groups-contract-20261121
+      name: dsh-superagent/session-work-probe
+      config:
+        stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/project-groups-host-20261121-115000
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/project-groups-20261121-115000-result.json

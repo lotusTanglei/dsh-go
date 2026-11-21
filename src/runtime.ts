@@ -32,7 +32,8 @@ export interface RuntimeContext {
   readonly subagents: { startActivation(input: any): Promise<any>; interrupt?(id: string, cause: any): unknown }
   readonly sessionQuery: { readSession(id: string): Promise<any>; listSessions?(signal?: AbortSignal): Promise<readonly any[]>; inspectSession?<T>(id: string, read: (session: any) => T, signal?: AbortSignal): Promise<T> }
   readonly sessionProjections?: { snapshot(session: any, keys: readonly string[]): { asOfSeq: number; values: Record<string, unknown> } }
-  readonly remoteAccess?: { allows(resource: { kind: 'session'; id: string }): boolean }
+  readonly remoteAccess?: { allows(resource: { kind: 'session' | 'workspace'; id: string }): boolean }
+  readonly workspaceRegistry?: { list(): readonly { id: string; title: string; sessionIds: readonly string[] }[] }
   readonly get?: (name: string) => any
   readonly sessions?: { flush(session: any): Promise<boolean> }
   readonly agentDefaultModel?: { currentSelection(): any }
@@ -389,6 +390,10 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     const excludedKey = 'session-work-excluded:v1'
     sessionWork = new SessionWorkSource({
       signal: controller.signal,
+      listProjects() {
+        if (!ctx.workspaceRegistry || !ctx.remoteAccess) throw new Error('session_work_projects_unavailable')
+        return ctx.workspaceRegistry.list().map(project => ({ id: String(project.id), title: project.title, sessionIds: [...project.sessionIds], accessible: ctx.remoteAccess!.allows({ kind: 'workspace', id: String(project.id) }) }))
+      },
       async listSessions(signal) {
         if (!ctx.sessionQuery.listSessions || !ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess) throw new Error('session_work_unavailable')
         return ctx.sessionQuery.listSessions(signal)

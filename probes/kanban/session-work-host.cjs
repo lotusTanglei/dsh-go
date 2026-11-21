@@ -2,7 +2,7 @@
 const fs = require('node:fs')
 const p = require('node:path')
 const { randomUUID } = require('node:crypto')
-exports.inject = ['agents', 'agentPresets', 'sessionQuery', 'sessionProjections', 'sessions', 'remoteAccess', 'connection', 'subagents', 'llm']
+exports.inject = ['agents', 'agentPresets', 'sessionQuery', 'sessionProjections', 'sessions', 'remoteAccess', 'connection', 'subagents', 'llm', 'workspaceRegistry']
 exports.apply = function(ctx, config) {
   const target = p.resolve(config.resultPath)
   if (fs.existsSync(target)) throw new Error('SESSION_WORK_RECEIPT_EXISTS')
@@ -31,6 +31,7 @@ exports.apply = function(ctx, config) {
       releaseGuard = ctx.on('llm/stream', () => { result.externalProviderRequests++; throw new Error('SESSION_WORK_PROVIDER_FORBIDDEN') })
       const port = {
         agents: ctx.agents, agentPresets: ctx.agentPresets, subagents: ctx.subagents, sessions: ctx.sessions, llm: ctx.llm,
+        workspaceRegistry: ctx.workspaceRegistry,
         agentDefaultModel: ctx.get('agentDefaultModel'), remoteAccess: ctx.remoteAccess, sessionProjections: ctx.sessionProjections,
         effect: factory => ctx.effect(factory), on: (name, listener) => ctx.on(name, listener),
         sessionQuery: {
@@ -54,6 +55,7 @@ exports.apply = function(ctx, config) {
       result.initial = await post('workspace', {})
       const data = result.initial.body.data, epoch = data.epoch, page = data.sessionWork
       if (result.initial.status !== 200 || page.state !== 'ready' || page.total !== 2 || !page.items.some(item => item.sessionId === ordinaryId && item.progress === 'Verify cross-session scope') || !page.items.some(item => item.sessionId === forkId) || reads.includes(childId)) throw new Error('SESSION_WORK_DEFAULT_SCOPE_FAILED')
+       if (page.items.some(item => item.project?.kind !== 'unassigned' || item.project.key !== 'unassigned')) throw new Error('SESSION_WORK_PROJECT_MEMBERSHIP_FAILED')
       result.denied = await post('session-work', { action: 'list', epoch }, nonOwner)
       result.origin = await post('session-work', { action: 'list', epoch }, ctx.connection.browserPeer, 'https://hostile.invalid')
       result.stale = await post('session-work', { action: 'list', epoch: 'wrong-epoch' })
@@ -67,7 +69,7 @@ exports.apply = function(ctx, config) {
       result.restored = await post('workspace', {})
       if (result.restore.status !== 200 || result.restored.body.data.sessionWork.total !== 2) throw new Error('SESSION_WORK_RESTORE_FAILED')
       if (result.denied.status !== 403 || result.origin.status !== 403 || result.stale.status !== 409 || result.arbitrary.status !== 400) throw new Error('SESSION_WORK_ACCESS_FAILED')
-      result.proof = { ordinaryIncluded: true, ordinaryForkIncluded: true, childNotInspected: !reads.includes(childId), exclusionStopsRead: true, restoreMembershipOnly: true, agentCountBefore: agentCount, agentCountAfter: ctx.agents.list().length, tickets: store.repos.ticket.all().length, triggers: store.repos.trigger.all().length, assignments: store.repos.assignment.all().length }
+      result.proof = { authoritativeRegistryRead: true, unassignedNotGuessedFromCwd: true, ordinaryIncluded: true, ordinaryForkIncluded: true, childNotInspected: !reads.includes(childId), exclusionStopsRead: true, restoreMembershipOnly: true, agentCountBefore: agentCount, agentCountAfter: ctx.agents.list().length, tickets: store.repos.ticket.all().length, triggers: store.repos.trigger.all().length, assignments: store.repos.assignment.all().length }
       if (result.proof.agentCountAfter !== agentCount || result.proof.tickets || result.proof.triggers || result.proof.assignments || result.privateSessionContentReads || result.externalProviderRequests) throw new Error('SESSION_WORK_SIDE_EFFECT_FAILED')
       result.state = 'passed'
     } catch(error) { result.state = 'failed'; result.error = { code: String(error?.code || error?.message || 'SESSION_WORK_FAILED') } }

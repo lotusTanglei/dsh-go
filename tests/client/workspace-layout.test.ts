@@ -64,6 +64,11 @@ describe('workspace redesign source layout contracts (not visual acceptance)', (
     expect(chat.getText(tree)).toContain('desk.records.map(recordView)')
     expect(chat.getText(tree)).not.toContain("openSystem('sources')")
     expect(contains(main, element('saw-ledger'))).toBe(true)
+    expect(initial('sessionWorkPreview').getText(tree)).toContain('sessionProjectGroups(')
+    expect(initial('sessionWorkSources').getText(tree).match(/sessionProjectGroups\(/g)).toHaveLength(2)
+    expect(initial('sessionProjectGroups').getText(tree)).toContain("h('h4', null, group.name)")
+    expect(initial('sessionWorkCard').getText(tree)).toContain("h('h5', null, structured")
+    expect(initial('sessionWorkPreview').getText(tree)).toContain("tr('ProjectPreviewHint')")
   })
 
   it('collapses only a completely known empty board and preserves unknown-scope wording', () => {

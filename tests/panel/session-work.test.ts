@@ -31,11 +31,12 @@ describe('session work owner route contract (not live authentication)', () => {
   })
 
   it('preserves exact identities, revisions and next cursors only in the white-listed work DTO', async () => {
-    const next = 'e'.repeat(120), item = { sessionId, title: 'Work', objective: 'Goal', runtime: 'idle', goalPhase: 'active', evidence: 'structured', excluded: false, observedAt: 1, raw: 'hidden', projections: { secret: 'hidden' }, url: 'https://hidden.invalid' }
+    const next = 'e'.repeat(120), item = { sessionId, title: 'Work', objective: 'Goal', runtime: 'idle', goalPhase: 'active', evidence: 'structured', excluded: false, observedAt: 1, raw: 'hidden', projections: { secret: 'hidden' }, url: 'https://hidden.invalid', project: {kind:'project',key:'project-safe',name:'Safe project',path:'/Users/private/hidden',raw:'hidden'} }
     const data = { state: 'ready', scope: 'current-host', total: 31, defaultIncluded: true, revision, next, hasMore: true, items: [item], header: { private: 'hidden' } }
     const f = fixture({ sessionWork: async () => data, workspace: async () => ({ epoch, admissions: [], sessionWork: data, next }) })
     const page = (await f.post({ action: 'list', epoch })).body.data
-    expect(page).toMatchObject({ revision, next, items: [{ sessionId, goalPhase: 'active', runtime: 'idle' }] })
+    expect(page).toMatchObject({ revision, next, items: [{ sessionId, goalPhase: 'active', runtime: 'idle',project:{kind:'project',key:'project-safe',name:'Safe project'} }] })
+    expect(page.items[0].project).toEqual({kind:'project',key:'project-safe',name:'Safe project'})
     expect(JSON.stringify(page)).not.toMatch(/hidden|projections|header|raw/)
     const workspace = (await f.post({}, 'http://owner.test', 'workspace')).body.data
     expect(workspace.sessionWork.next).toBe(next); expect(workspace.sessionWork.items[0].sessionId).toBe(sessionId)
@@ -45,7 +46,7 @@ describe('session work owner route contract (not live authentication)', () => {
   it('omits excluded content even if a misbehaving port supplies it', async () => {
     const f = fixture({ sessionWork: async () => ({ revision, items: [{ sessionId, title: 'Safe caption', excluded: true, objective: 'Do not send', progress: 'Do not send', decision: 'Do not send', runtime: 'running', evidence: 'structured', observedAt: 2 }] }) })
     const item = (await f.post({ action: 'list', epoch, view: 'excluded' })).body.data.items[0]
-    expect(item).toEqual({ sessionId, title: 'Safe caption', excluded: true, observedAt: 2 })
+    expect(item).toEqual({ sessionId, title: 'Safe caption', excluded: true, observedAt: 2, project: {kind:'unknown',key:'unknown'} })
   })
 
   it('delegates exact epoch and membership revision checks without retry and keeps errors fixed', async () => {

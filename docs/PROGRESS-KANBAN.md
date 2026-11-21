@@ -192,6 +192,13 @@
 - 顶部去除范围长声明和独立全宽安全横条，安全位仍常显可展开；发送不可用靠近输入，来源失败一行局部可达。Budget与raw attention不再撑卡，完整字段仍在详情；来源管理不截目标/问题。原草稿、unknown请求、显式target、完整审批和Worker关闭不变。
 - 独立UX终审确认根因方向，两项收尾均修：来源完整文本路径、非空卡技术噪声；新增AST/CSS7组含12个真实空态initializer反例，postcommit focus守卫不当作真人焦点证据。focused179通过；最终50files/592tests、typecheck/build/pack均exit0（159项包内容校验通过）（`workspace-task-first-20261121-113800/`）。初focused失败含过时布局断言/新增CSS注释解析和不允许的transparent/currentColor声明，定位后对齐布局语义、保留token门禁修改产品，不弱化安全测试。无浏览器控制，不启动shellbrowser/替代服务/假DOM，无新实机截图，不声称视觉验收已通过。见[版式合同](<KANBAN-TASK-FIRST.md>)。
 
+## 2026-11-21T11:52:00+08:00 · 会话以项目为第一层
+
+- 用户纠正“会话要按项目来”，按人使用层级重排工作区和来源管理；项目标题→会话目标/进展/问题，不新增项目CRUD、scope选择器或另套会话管理。
+- 安装版真实API核实WorkspaceRegistry.id/title/sessionIds，主界面也按精确成员关系归组；不用headercwd/currentworkingdir/Gitroot猜。Host注入与TypeScript一致，只读list同步索引、无新日志读取；raw path不出adapter。成功无匹配unassigned，缺服务/异常/歧义/deny unknown且partial，零ordinary亦不造ready。
+- 项目快照纳入revision，cache前/内容异步后复核，项目名称/成员/权限变化409重同步不发布旧关联。UI精确key聚合已加载页，同名项目短ID碰撞延长；预览返回6条中最多3组/各1条，来源已加载计数与global更多，不假项目全集。同名无归属来源短ref及可展开完整ref可辨识，默认纳入/持久exclude/restore不变。
+- 两个只读子审查收尾均采纳：同名来源区分、emptyroster registry错误partial。focused82、最终50files/598tests/typecheck/build/pack通过（159项包内容校验通过）（`project-groups-final-20261121-115200/`）；firsttsc显式回调类型补后通过。真实Host[registry受控回执](<../probes/kanban/project-groups-20261121-115000-result.json>)passed：probe自有未attach会话即使有cwd也unassigned，不创建/attach真实workspace；私会话正文0、模型completion0，owner/Origin/epoch/任意字段、子会话去重与exclude无再读仍通过。多项目join是明确fake registry+真实SQLite回归，不称用户项目端到端。GUI/视觉未验，不改core/profile/执行安全门。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

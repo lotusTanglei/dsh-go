@@ -143,6 +143,9 @@ function sessionWorkData(value: unknown): unknown {
   if (validWorkCursor(value.next)) result.next = value.next
   if (Array.isArray(value.items)) result.items = value.items.slice(0, 20).filter(item => isObject(item) && validWorkId(item.sessionId)).map(item => {
     const row: Record<string, unknown> = { sessionId: item.sessionId }
+    const project = item.project
+    if (isObject(project) && project.kind === 'project' && validWorkId(project.key) && typeof project.name === 'string') row.project = { kind: 'project', key: project.key, name: sanitize(project.name) }
+    else row.project = { kind: project?.kind === 'unassigned' ? 'unassigned' : 'unknown', key: project?.kind === 'unassigned' ? 'unassigned' : 'unknown' }
     // Excluded rows retain only the safe source label and membership metadata.
     const keys = item.excluded === true ? ['title', 'excluded', 'observedAt'] : ['title', 'objective', 'runtime', 'goalPhase', 'progress', 'nextAction', 'blocker', 'decision', 'observedAt', 'evidence', 'excluded']
     for (const key of keys) if (typeof item[key] === 'string' || typeof item[key] === 'boolean' || typeof item[key] === 'number' && Number.isFinite(item[key])) row[key] = sanitize(item[key])

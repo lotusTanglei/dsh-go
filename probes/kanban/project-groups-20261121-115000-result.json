@@ -1,0 +1,358 @@
+{
+  "kind": "session-work-installed-host",
+  "state": "passed",
+  "startedAt": "2026-11-21T03:49:28.781Z",
+  "privateSessionContentReads": 0,
+  "externalProviderRequests": 0,
+  "boundary": "Actual installed Session list/inspect/selective projections, real SQLite and owner Peer. Directory filtered to probe-owned identities before any content inspection. Synthetic Session records, no browser DOM or real-user-work completeness claim.",
+  "initial": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "cb8e4a28-63bf-49cf-85f3-44257bd41d6c",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795232969015,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "documentSources": [],
+        "briefing": {
+          "snapshotAt": 1795232969015,
+          "decisions": {
+            "total": 0,
+            "items": []
+          },
+          "active": {
+            "total": 0,
+            "items": []
+          },
+          "results": {
+            "total": 0,
+            "items": []
+          },
+          "counts": {
+            "pending": 0,
+            "running": 0,
+            "waiting": 0,
+            "ended": 0
+          }
+        },
+        "admissions": [],
+        "admissionsTotal": 0,
+        "pendingPlans": 0,
+        "pendingApprovals": 0,
+        "sessionWork": {
+          "state": "ready",
+          "scope": "current-host",
+          "defaultIncluded": true,
+          "sampledAt": 1795232969015,
+          "total": 2,
+          "excludedTotal": 0,
+          "internalTotal": 2,
+          "hasMore": false,
+          "revision": "52da7ee13f175059db1a7c56b3cefe90cf6af6ae8241dc94d1269589be377836",
+          "items": [
+            {
+              "sessionId": "fd370532-18ed-406d-8787-6addcf76cbae",
+              "project": {
+                "kind": "unassigned",
+                "key": "unassigned"
+              },
+              "title": "Synthetic ordinary fork",
+              "runtime": "unavailable",
+              "observedAt": 1795232969256,
+              "evidence": "structured",
+              "excluded": false
+            },
+            {
+              "sessionId": "7842cee4-6ea2-4656-bcf2-d4fe7849ddb5",
+              "project": {
+                "kind": "unassigned",
+                "key": "unassigned"
+              },
+              "title": "Synthetic ordinary work",
+              "runtime": "unavailable",
+              "progress": "Verify cross-session scope",
+              "observedAt": 1795232969257,
+              "evidence": "structured",
+              "excluded": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  "denied": {
+    "status": 403,
+    "body": {
+      "code": "forbidden"
+    }
+  },
+  "origin": {
+    "status": 403,
+    "body": {
+      "ok": false,
+      "code": "origin_denied",
+      "error": {
+        "code": "origin_denied",
+        "message": "Origin is not permitted"
+      },
+      "message": "Origin is not permitted"
+    }
+  },
+  "stale": {
+    "status": 409,
+    "body": {
+      "ok": false,
+      "code": "epoch_mismatch",
+      "error": {
+        "code": "epoch_mismatch",
+        "message": "Workspace request could not be completed"
+      },
+      "message": "Workspace request could not be completed"
+    }
+  },
+  "arbitrary": {
+    "status": 400,
+    "body": {
+      "ok": false,
+      "code": "invalid_input",
+      "error": {
+        "code": "invalid_input",
+        "message": "Request fields are not permitted"
+      },
+      "message": "Request fields are not permitted"
+    }
+  },
+  "exclude": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "included": false,
+        "sessionId": "7842cee4-6ea2-4656-bcf2-d4fe7849ddb5",
+        "revision": "9a1df2ff9afd1daf166e915f479cb2eac9b4fe192a381b95f48c339867a06d2f"
+      }
+    }
+  },
+  "after": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "cb8e4a28-63bf-49cf-85f3-44257bd41d6c",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795232969469,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "documentSources": [],
+        "briefing": {
+          "snapshotAt": 1795232969469,
+          "decisions": {
+            "total": 0,
+            "items": []
+          },
+          "active": {
+            "total": 0,
+            "items": []
+          },
+          "results": {
+            "total": 0,
+            "items": []
+          },
+          "counts": {
+            "pending": 0,
+            "running": 0,
+            "waiting": 0,
+            "ended": 0
+          }
+        },
+        "admissions": [],
+        "admissionsTotal": 0,
+        "pendingPlans": 0,
+        "pendingApprovals": 0,
+        "sessionWork": {
+          "state": "ready",
+          "scope": "current-host",
+          "defaultIncluded": true,
+          "sampledAt": 1795232969469,
+          "total": 1,
+          "excludedTotal": 1,
+          "internalTotal": 2,
+          "hasMore": false,
+          "revision": "9a1df2ff9afd1daf166e915f479cb2eac9b4fe192a381b95f48c339867a06d2f",
+          "items": [
+            {
+              "sessionId": "fd370532-18ed-406d-8787-6addcf76cbae",
+              "project": {
+                "kind": "unassigned",
+                "key": "unassigned"
+              },
+              "title": "Synthetic ordinary fork",
+              "runtime": "unavailable",
+              "observedAt": 1795232969676,
+              "evidence": "structured",
+              "excluded": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  "excluded": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "state": "ready",
+        "scope": "current-host",
+        "defaultIncluded": true,
+        "sampledAt": 1795232969677,
+        "total": 1,
+        "excludedTotal": 1,
+        "internalTotal": 2,
+        "hasMore": false,
+        "revision": "9a1df2ff9afd1daf166e915f479cb2eac9b4fe192a381b95f48c339867a06d2f",
+        "items": [
+          {
+            "sessionId": "7842cee4-6ea2-4656-bcf2-d4fe7849ddb5",
+            "project": {
+              "kind": "unassigned",
+              "key": "unassigned"
+            },
+            "title": "Synthetic ordinary work",
+            "excluded": true,
+            "observedAt": 1795232969677
+          }
+        ]
+      }
+    }
+  },
+  "restore": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "included": true,
+        "sessionId": "7842cee4-6ea2-4656-bcf2-d4fe7849ddb5",
+        "revision": "52da7ee13f175059db1a7c56b3cefe90cf6af6ae8241dc94d1269589be377836"
+      }
+    }
+  },
+  "restored": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "cb8e4a28-63bf-49cf-85f3-44257bd41d6c",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795232969882,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "documentSources": [],
+        "briefing": {
+          "snapshotAt": 1795232969882,
+          "decisions": {
+            "total": 0,
+            "items": []
+          },
+          "active": {
+            "total": 0,
+            "items": []
+          },
+          "results": {
+            "total": 0,
+            "items": []
+          },
+          "counts": {
+            "pending": 0,
+            "running": 0,
+            "waiting": 0,
+            "ended": 0
+          }
+        },
+        "admissions": [],
+        "admissionsTotal": 0,
+        "pendingPlans": 0,
+        "pendingApprovals": 0,
+        "sessionWork": {
+          "state": "ready",
+          "scope": "current-host",
+          "defaultIncluded": true,
+          "sampledAt": 1795232969882,
+          "total": 2,
+          "excludedTotal": 0,
+          "internalTotal": 2,
+          "hasMore": false,
+          "revision": "52da7ee13f175059db1a7c56b3cefe90cf6af6ae8241dc94d1269589be377836",
+          "items": [
+            {
+              "sessionId": "fd370532-18ed-406d-8787-6addcf76cbae",
+              "project": {
+                "kind": "unassigned",
+                "key": "unassigned"
+              },
+              "title": "Synthetic ordinary fork",
+              "runtime": "unavailable",
+              "observedAt": 1795232970092,
+              "evidence": "structured",
+              "excluded": false
+            },
+            {
+              "sessionId": "7842cee4-6ea2-4656-bcf2-d4fe7849ddb5",
+              "project": {
+                "kind": "unassigned",
+                "key": "unassigned"
+              },
+              "title": "Synthetic ordinary work",
+              "runtime": "unavailable",
+              "progress": "Verify cross-session scope",
+              "observedAt": 1795232970092,
+              "evidence": "structured",
+              "excluded": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  "proof": {
+    "authoritativeRegistryRead": true,
+    "unassignedNotGuessedFromCwd": true,
+    "ordinaryIncluded": true,
+    "ordinaryForkIncluded": true,
+    "childNotInspected": true,
+    "exclusionStopsRead": true,
+    "restoreMembershipOnly": true,
+    "agentCountBefore": 1,
+    "agentCountAfter": 1,
+    "tickets": 0,
+    "triggers": 0,
+    "assignments": 0
+  },
+  "finishedAt": "2026-11-21T03:49:30.108Z"
+}

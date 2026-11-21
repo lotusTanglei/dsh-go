@@ -42,7 +42,7 @@ const approve = (plan: AdmissionPlanDTO) => ({ epoch: plan.epoch, requestId: pla
 async function drainTasks() { for (let i = 0; i < 4; i++) await new Promise<void>(done => setImmediate(done)) }
 
 /** Real on-disk SQLite + explicit fake Host. No provider/service is reachable. */
-function fixture(options: { production?: boolean; config?: Partial<Config>; tools?: RuntimeContext['tools']; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string> } } = {}) {
+function fixture(options: { production?: boolean; config?: Partial<Config>; tools?: RuntimeContext['tools']; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string>; projects?: Array<{id:string;title:string;sessionIds:string[]}> } } = {}) {
   const dir = resolve(mkdtempSync(join(tmpdir(), 'workspace-runtime-')))
   const config = resolveConfig({ ...defaults, stateDir: dir, dbPath: '', lockPath: '', workRoot: '', sources: [],
     confirm: 'always', watchdogIntervalMs: 60_000, ...options.config } as Config)
@@ -76,6 +76,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; tool
   let router: any
   const ctx: RuntimeContext = {
     tools: options.tools,
+    workspaceRegistry: { list: () => options.sessionWork?.projects ?? [] },
     remoteAccess: { allows({id}) { return !options.sessionWork?.denied?.has(id) } },
     sessionProjections: { snapshot(session, keys) {
       expect(keys).toEqual(['title','goal','todos','agentTeam','userQuestions'])
@@ -230,7 +231,7 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
   it('defaults to read-only ordinary session work and persists manual exclusion without a Ticket or Agent wake', async () => {
     const external=randomUUID(), fork=randomUUID(), child=randomUUID(), denied=randomUUID()
     const observations={records:[{header:{id:external,createdAt:3}},{header:{id:fork,parentSession:external,createdAt:2}},{header:{id:child,parentSession:external,origin:'subagent',createdAt:4}},{header:{id:denied,createdAt:1}}],
-      values:new Map([[external,{title:'Ordinary work',goal:{goal:{objective:'Implement existing project request',phase:'active'},updatedAt:5},todos:[{content:'Check acceptance',status:'in_progress'}]}],[fork,{title:'Ordinary fork',userQuestions:{active:[{state:'continued',questions:[{question:'Choose the target project'}]}],settled:[{answers:['PRIVATE ANSWER']} ]}}]]), reads:[] as string[],denied:new Set([denied])}
+      values:new Map([[external,{title:'Ordinary work',goal:{goal:{objective:'Implement existing project request',phase:'active'},updatedAt:5},todos:[{content:'Check acceptance',status:'in_progress'}]}],[fork,{title:'Ordinary fork',userQuestions:{active:[{state:'continued',questions:[{question:'Choose the target project'}]}],settled:[{answers:['PRIVATE ANSWER']} ]}}]]), reads:[] as string[],denied:new Set([denied]),projects:[{id:'authoritative-project',title:'Existing project',sessionIds:[external,fork]}]}
     const f=fixture({production:true,sessionWork:observations}); await f.runtime.ready
     expect(observations.reads).toEqual([])
     const first=await f.runtime.panelPorts.workspace(), work=first.sessionWork!
@@ -238,6 +239,8 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect(work.items.map(item=>item.sessionId)).toEqual([external,fork])
     expect(work.items[0]).toMatchObject({objective:'Implement existing project request',goalPhase:'active',runtime:'unavailable',progress:'Check acceptance'})
     expect(work.items[1]?.decision).toContain('Choose the target project')
+    expect(work.items.every(row=>row.project.kind==='project'&&row.project.key==='authoritative-project')).toBe(true)
+    expect(work.items[0]?.project).toEqual({kind:'project',key:'authoritative-project',name:'Existing project'})
     expect(JSON.stringify(work)).not.toContain('PRIVATE ANSWER')
     expect(observations.reads).not.toContain(child); expect(observations.reads).not.toContain(denied)
     await f.runtime.panelPorts.sessionWork({action:'set-included',epoch:first.epoch,sessionId:external,included:false,revision:work.revision!})
@@ -249,6 +252,7 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     const excluded=await f.runtime.panelPorts.sessionWork({action:'list',epoch:after.epoch,view:'excluded'})
     if (!('items' in excluded)) throw new Error('Expected excluded page')
     expect(excluded.items[0]?.sessionId).toBe(external)
+    expect(excluded.items[0]?.project).toEqual({kind:'project',key:'authoritative-project',name:'Existing project'})
     await f.runtime.panelPorts.sessionWork({action:'set-included',epoch:after.epoch,sessionId:external,included:true,revision:excluded.revision!})
     expect((await f.runtime.panelPorts.workspace()).sessionWork).toMatchObject({total:2,excludedTotal:0})
     expect(f.store.repos.ticket.all()).toHaveLength(0); expect(f.store.repos.trigger.all()).toHaveLength(0)
