@@ -30,6 +30,12 @@ describe('read-only conversation work UI closures', () => {
     expect(missing).toContain('SessionWorkNoSummary'); expect(missing).not.toContain('Ship feature'); expect(missing).not.toContain('Do not invent me')
     const blocker = JSON.stringify(card({ ...base, blocker: 'Waiting for CI' }))
     expect(blocker).not.toContain('SessionWorkDecision')
+    const readFull = closure('sessionWorkCard', { h, React: { Fragment: 'fragment' }, tr, displayTitle: (v: string) => v.slice(0, 8), sessionSourceTitle: (v: any) => v.title, sessionWorkBusy: '', time: () => 'snapshot', button() {} })
+    const objective = 'A complete objective that must remain readable on the source page', decision = 'A complete question that must remain readable without a hover tooltip'
+    const preview = JSON.stringify(readFull({ ...base, objective, decision }))
+    expect(preview).not.toContain(objective)
+    const managed = JSON.stringify(readFull({ ...base, objective, decision }, true, 'revision'))
+    expect(managed).toContain(objective); expect(managed).toContain(decision); expect(managed).not.toContain('saw-line-clamp')
   })
 
   it('never uses raw UUID as a source headline and keeps excluded references secondary', () => {

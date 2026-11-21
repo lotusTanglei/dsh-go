@@ -185,6 +185,13 @@
 - 安装版源码精确核实listSessions/inspectSession/selectedsnapshot，cold内部会重放完整日志但不resume；不虚称metadataonly。userQuestions.continued仍可答，legacy和通用审批仍缺；raw events/历史答案不下发。15s缓存、每页20/并发4、preview6/运行优先，页revision冲突重同步。scope当前Host，不跨profile/机器。
 - Source5组反例、UI215focused及主45focused通过，最终49files/585tests、typecheck/build/pack均exit0（包158项内容检查通过）（`sessions-verified-20261121-113000/`）。首次全量门禁因独立fallback类型未声明revision触发tsc2，补显式返回类型后整体通过。独立审查唯一P2为并发排除触发summary409拖主workspace，已以summary独立降级及发送仍可用回归关闭。首Hostprobe403纯文本解析失败，二次probe变量重名未激活，修probe后[实际Host受控验证](<../probes/kanban/session-work-20261121-112300-result.json>)passed；只读普通/fork/child去重、exclude无再读、restore仅membership、owner/Origin/epoch/字段边界、零Ticket/Trigger/Assignment/模型completion。未读取私人业务全集，未修改profile/重启当前GUI，视觉仍未验。
 
+## 2026-11-21T11:38:00+08:00 · 任务优先整页重设计
+
+- 用户实图确认新版已加载，仍丑且层级混乱；撤销继续以未刷新解释的口径。沿已选03看板方向，从看任务/做决策/描述新目标重新排整页，不添新管理页面。
+- 主区左、沟通304px辅区右；决策主区前置、来源最多3短卡、recent折叠；整页主区统一纵滚，四列minmax0不截断末列。1050实际容器切完整任务/对话默认任务、720两列、440单列；打开完整审阅临时扩大辅区。空台账全列精确0/空items/无分页/无错误才单短空态；unknown优先筛选文案，不宣称无工作。
+- 顶部去除范围长声明和独立全宽安全横条，安全位仍常显可展开；发送不可用靠近输入，来源失败一行局部可达。Budget与raw attention不再撑卡，完整字段仍在详情；来源管理不截目标/问题。原草稿、unknown请求、显式target、完整审批和Worker关闭不变。
+- 独立UX终审确认根因方向，两项收尾均修：来源完整文本路径、非空卡技术噪声；新增AST/CSS7组含12个真实空态initializer反例，postcommit focus守卫不当作真人焦点证据。focused179通过；最终50files/592tests、typecheck/build/pack均exit0（159项包内容校验通过）（`workspace-task-first-20261121-113800/`）。初focused失败含过时布局断言/新增CSS注释解析和不允许的transparent/currentColor声明，定位后对齐布局语义、保留token门禁修改产品，不弱化安全测试。无浏览器控制，不启动shellbrowser/替代服务/假DOM，无新实机截图，不声称视觉验收已通过。见[版式合同](<KANBAN-TASK-FIRST.md>)。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

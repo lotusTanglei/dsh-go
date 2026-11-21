@@ -127,11 +127,12 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(section('readConversation')).not.toMatch(/setConversation\(\s*\{\s*\}\s*\)|conversations\.current\s*=\s*\{\s*\}/)
   })
 
-  it('defaults to ledger tasks and decisions, keeping raw history and technical receipts behind explicit controls', () => {
-    contains(workspace, ["React.useState('briefing')", 'setActivityView(view)', "activityView === 'briefing' ? briefingView()", "tr('DeskTitle')", "'BackToDesk' : 'HistoryShort'", "React.useState('chat')"])
+  it('keeps decisions in the main work area and raw history behind explicit chat controls', () => {
+    contains(workspace, ["React.useState('briefing')", 'setActivityView(view)', "activityView === 'briefing' ? briefingView()", "tr('DeskTitle')", "'BackToDesk' : 'HistoryShort'", "React.useState('board')"])
     expect(workspace).not.toMatch(/saw-activity-tabs|tr\('BriefingVersion'\)|tr\('BriefingScope'\)|tr\('BriefingRecordHint'\)|tr\('NoStructuredDecisions'\)/)
-    contains(section('briefingView'), ['desk.actions.map(decisionView)', 'desk.records.map(recordView)', 'desk.moreActions', 'desk.moreRecords', 'desk.ready && desk.actionTotal === 0 && !error && !newReplies', '(desk.actionTotal ?? 0) > 0', "tr('SessionWorkLedgerNoDecision')", "tr('StartPlanning')", "tr('PlanningSteps')", "tr('RecordsStale')"])
-    expect(section('briefingView')).not.toMatch(/currentMessages|message\.text|askConfirm\(/)
+    contains(section('workDecisions'), ['desk.actions.map(decisionView)', 'desk.moreActions', '(desk.actionTotal ?? 0) > 0'])
+    contains(section('briefingView'), ['desk.records.map(recordView)', 'desk.moreRecords', 'newReplies && latestAssistant', "tr('ChatIntro')"])
+    expect(section('briefingView')).not.toMatch(/currentMessages|message\.text|askConfirm\(|sessionWorkPreview\(|workDecisions\(|desk\.actions\.map/)
     contains(section('decisionView'), ["entry.kind === 'plan'", 'openPlan(data)', "entry.kind === 'approval' ? 'approvals' : 'overview'", "'ReadAndAnswer'", "'ReviewPlan'"])
     expect(section('decisionView')).not.toMatch(/askConfirm|call\(/)
     contains(workspace, ['reviewingPlan ? admissionView(reviewingPlan)', "className: 'saw-inspector'", "rows: 2", "composer.intent === 'new-task' ? 'GeneratePlan' : 'Send'", "tr('PlanMode')", "tr('AskMode')", "workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown'"])
@@ -143,9 +144,9 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('readLatestReply'), ['replyReadThrough.current[epoch] = reply.lastSeq', 'sessionStorage.setItem', 'setNewReplies(0)'])
     contains(section('replyToCoordinator'), ['composerRef.current.pending', 'composerRef.current.target', 'composerRef.current.draft.trim()', "intent: 'message'"])
     contains(workspace, ['latestAssistant.text', "className: 'saw-message-technical'", "h('summary', null, tr('TechnicalDetails'))", "activityViewRef.current === 'history' && autoScroll.current"])
-    contains(workspace, ['await readConversation(epoch)', 'if (historyRef.current && historyRef.current !== epoch) await readConversation(historyRef.current)', 'inspectorOpener.current.focus()', 'inspectorReturnToInput.current', '!inputRef.current.disabled', 'historyButtonRef.current?.focus()', "`${collapsed ? '›' : '‹'}${newReplies ? ' •' : ''}`"])
+    contains(workspace, ['await readConversation(epoch)', 'if (historyRef.current && historyRef.current !== epoch) await readConversation(historyRef.current)', 'inspectorOpener.current.focus()', 'inspectorReturnToInput.current', '!inputRef.current.disabled', 'historyButtonRef.current?.focus()', "`${collapsed ? '‹' : '›'}${newReplies ? ' •' : ''}`"])
     contains(section('recordView'), ['record.anomaly', 'record.disabledReason', 'stateName(result ? record.outcome : record.state)', "result ? 'results' : 'overview'"])
-    contains(styles, ['.saw-head-actions', '.saw-compose-footer', 'height:76px;min-height:60px', '@media(max-height:650px)', '.saw-messages{flex:1;min-height:0;', '.saw-inspector-scroll{flex:1;min-height:0;overflow:auto'])
+    contains(styles, ['.saw-head-actions', '.saw-compose-footer', '@media(max-height:650px)', '.saw-messages{flex:1;min-height:0;', '.saw-inspector-scroll{flex:1;min-height:0;overflow:auto'])
   })
 
   it('keeps per-column cursors, server totals, and revision checks when paging beyond 100 cards', () => {
@@ -154,7 +155,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     const more = section('loadMoreBoard')
     contains(more, ['!page?.hasMore || !page.cursor', "call('board', { ...filter, column, cursor: page.cursor, limit: 20 })", 'data.revision !== old.revision', 'merge(array(page.items), array(more.items)', 'loaded.current[column] = items.length'])
     expect(refresh + more).not.toMatch(/\.slice\(0,\s*100\)|Math\.min\(100,\s*(?:Number\()?loaded/)
-    contains(workspace, ["'aria-label': tr(boardScopeKnown ? 'ServerTotal' : 'ServerTotalUnknownScope')", "page ? page.total : '—'", "tr('FilteredCounts') : tr('AllCounts')", 'board?.snapshotAt', 'page?.hasMore ? button', 'void loadMoreBoard(column)'])
+    contains(workspace, ["'aria-label': tr(boardScopeKnown ? 'ServerTotal' : 'ServerTotalUnknownScope')", "page ? page.total : '—'", "board?.filtered ? 'FilteredCounts' : 'AllCounts'", 'board?.snapshotAt', 'page?.hasMore ? button', 'void loadMoreBoard(column)'])
   })
 
   it('makes the missing cross-conversation coverage visible without fabricating tasks or hiding it in diagnostics', () => {
@@ -163,11 +164,9 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     const recognizes = new Function('board', `return (${section('boardScopeKnown')})`) as (board: unknown) => boolean
     for (const old of [undefined, null, {}, { columns: {} }, { scope: { kind: 'all-sessions', otherSessions: 'not-included' } }, { scope: { kind: 'superagent-ledger' } }]) expect(recognizes(old)).toBe(false)
     expect(recognizes({ scope: { kind: 'superagent-ledger', otherSessions: 'not-included' } })).toBe(true)
-    const top = workspace.slice(workspace.indexOf("h('header', { className: 'saw-top' }"), workspace.indexOf("h('details', { className: 'saw-boundary' }"))
-    expect(top).toContain("className: 'saw-coverage'") // not hidden with the mobile board
-    contains(workspace, ["className: 'saw-coverage'", "sessionCoverage === 'ready' ? 'SessionWorkCoverageReady'", "!boardScopeKnown ? tr('CountsScopeUnknown')", "!boardScopeKnown ? 'CoveragePendingHint' : 'SessionWorkLedgerHint'", "!boardScopeKnown ? 'EmptyColumnUnknownScope'", "board?.filtered ? 'EmptyFilteredColumn' : 'EmptyColumn'", "'NoLoadedTasks'"])
+    contains(workspace, ["className: 'saw-scope-details'", "className: 'saw-coverage'", "sessionCoverage === 'ready' ? 'SessionWorkCoverageReady'", "!boardScopeKnown ? 'CountsScopeUnknown'", "!boardScopeKnown ? 'WorkNoReturned' : query || outcome ? 'WorkNoMatch' : 'WorkNoTasks'", "!boardScopeKnown ? 'WorkScopePending' : query || outcome ? 'WorkFilterHint' : 'WorkStartHint'", "!boardScopeKnown ? 'EmptyColumnUnknownScope'", "board?.filtered ? 'EmptyFilteredColumn' : 'EmptyColumn'", "'NoLoadedTasks'"])
     expect(section('sessionCoverage')).toContain("sessionWork?.scope === 'current-host'")
-    expect(section('briefingView')).toContain('sessionWorkPreview()')
+    expect(section('briefingView')).not.toContain('sessionWorkPreview()') // source coverage belongs to main work, not chat
     expect(section('briefingView')).not.toContain('text(desk.recordTotal)') // plans are not Ticket counts
     expect(zh.wAllCounts).toBe('超管已登记任务')
     expect(zh.wFilteredCounts).toContain('已登记任务')
@@ -229,7 +228,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
   })
 
   it('always presents the production boundary, never synthesizes Worker execution or task success', () => {
-    contains(workspace, ["h('details', { className: 'saw-boundary' }", "workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown'", "tr('BoundaryBody')", 'workspace?.model?.available === false', 'workspace.capabilities?.send !== true', "tr('ModelUnavailable')", "tr('SendUnavailable')", "tr('StaleData')", 'card.lastProgressAt', 'card.budget?.steps', 'card.budget?.usage', 'card.acceptance.passed', "tr('Stopping')", "tr('Unknown')"])
+    contains(workspace, ["h('details', { className: 'saw-boundary' }", "workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown'", "tr('BoundaryBody')", 'workspace?.model?.available === false', 'workspace.capabilities?.send !== true', "tr('ModelUnavailable')", "tr('SendUnavailable')", "tr('StaleData')", 'card.lastProgressAt', 'item.budget?.steps', 'item.budget?.usage', 'item.attention ? valueView(item.attention)', 'card.acceptance.passed', "tr('Stopping')", "tr('Unknown')"])
     expect(index + workspace).not.toMatch(/new Worker\s*\(|\b(?:mock|fake|demo|sample)(?:Tasks|Tickets|Workers|Messages|Data)\b|Math\.random\s*\(|setBoard\(\s*\{\s*columns|setWorkspace\(\s*\{/i)
     const perform = section('perform')
     contains(perform, ["value.kind === 'stop' && result.state === 'ended'", "result.state === 'ended' ? tr('StoppedNotice') : tr('Stopping')"])
@@ -252,7 +251,8 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
   })
 
   it('keeps document reads explicit and config-backed, and does not build a document manager or polling engine', () => {
-    contains(section('briefingView'), ['array(workspace?.documentSources).length', "tr('DocumentReadEntry')", "openSystem('sources')"])
+    contains(section('sessionWorkPreview'), ["tr('AllConversationWork')", "openSystem('sources')"])
+    expect(section('briefingView')).not.toMatch(/sessionWorkPreview\(|documentSourcesView\(|readDocuments\(/)
     contains(section('systemContent'), ['documentSourcesView()', 'data.sources'])
     contains(section('documentSourcesView'), ['if (!configured.length) return null', "tr('DocumentReadOnce')", 'readDocuments(source.id)', "tr('DocumentLocalList')", 'readDocuments()', 'displayTitle(entry.title)', 'stateName(entry.state)', 'entry.warnings'])
     contains(section('readDocuments'), ["action: 'scan', epoch, sourceId", "action: 'list', epoch", '...(cursor ? { cursor } : {})', 'more ? { ...result, items:', "tr('DocumentReadUncertain')", 'documentBusyRef.current', 'resetDocumentEvidence()'])
