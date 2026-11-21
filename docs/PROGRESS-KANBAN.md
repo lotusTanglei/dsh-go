@@ -178,6 +178,13 @@
 - 协议研究只读腾讯官方公共bundle，静态typeTable+property路径证明CTFontfield11wrappedbool/field12null；未执行remoteJS。最终render默认false不等于partialdecoder可断言false，继承/条件/表格/透视格式有否证，不隐去限制。受限connector补丁/typedmodule/tests纳入可审查工件，未重载运行中MCP/改profile/读取私人文档。
 - 补明确人工核对路径：未知删除线不冒充no，只有其他证据完整且无已知yes时，owner可打开官方原表后精确快照留核对声明；原unknown不改、不升信任，后续仍真实new-task与完整计划批准。Source重提取校验、原warnings保存批次否决；scan开始撤销receipt，digest变化/失败/不完整/配置epoch变化均不能复用旧声明。新Source68focused/UI63focused、unknown/no两路生产模式SQLite准入均通过；最终46files/569tests、typecheck/build通过（`wecom-final-review-20261120-173400/`）。首次fullgate失败为未先重建新的locale，与真实artifact新旧不一致；先build再完整门禁通过，不放宽测试。连接器165passed125skipped，真实SDK离线工具调用证实str list_sheets自动{result:str} structuredContent，typed snapshot直接结构，普通content仅摘要。真实Hostconfiguredsource冷启动不remote读、owner本地list200/nonowner与Origin403、任意doc字段400、无证据image409、新人工核对未知snapshot409/nonowner和Origin403；最终155项pack内容检查通过，生产Worker关闭；firstseam文案拼错探针failed保留后修probe重新passed。外部产品provider0、agents0、SQLite静止。不是GUI或真实企微端到端，整体安全闭环仍未完成。
 
+## 2026-11-21T11:25:00+08:00 · 默认跨会话来源、手动排除
+
+- 用户截图来源仅一个超管Session，再次指正跨会话缺失；确认范围“默认纳入，手动排除”，不是仅更换覆盖提示。新read-only SessionWorkSource注册、当前Host目录先身份/内部归属/排除过滤再selectedprojection，默认包括普通fork，不把其parent误当subagent。
+- 复用原workspace/source抽屉，不做会话管理器。已有目标/步骤/下一步/阻塞/明确问题只读卡；已登记任务/审批数字不混观察数。排除/恢复只改原kv稳定ID偏好，重启仍效；无原会话写入、激活、建单、自动模型摘要。
+- 安装版源码精确核实listSessions/inspectSession/selectedsnapshot，cold内部会重放完整日志但不resume；不虚称metadataonly。userQuestions.continued仍可答，legacy和通用审批仍缺；raw events/历史答案不下发。15s缓存、每页20/并发4、preview6/运行优先，页revision冲突重同步。scope当前Host，不跨profile/机器。
+- Source5组反例、UI215focused及主45focused通过，最终49files/585tests、typecheck/build/pack均exit0（包158项内容检查通过）（`sessions-verified-20261121-113000/`）。首次全量门禁因独立fallback类型未声明revision触发tsc2，补显式返回类型后整体通过。独立审查唯一P2为并发排除触发summary409拖主workspace，已以summary独立降级及发送仍可用回归关闭。首Hostprobe403纯文本解析失败，二次probe变量重名未激活，修probe后[实际Host受控验证](<../probes/kanban/session-work-20261121-112300-result.json>)passed；只读普通/fork/child去重、exclude无再读、restore仅membership、owner/Origin/epoch/字段边界、零Ticket/Trigger/Assignment/模型completion。未读取私人业务全集，未修改profile/重启当前GUI，视觉仍未验。
+
 ## 尚未通过的强制门禁
 
 - L1 生产spawn首工具前Ticket根与L2逐路径强制 **实证失败**：真实native/Node/Python/脚本/后台同票unlisted/deny可写；生产Worker保持关闭。不是仅缺证据，不以prompt/删shell/stub代替。

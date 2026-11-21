@@ -1,0 +1,9 @@
+# Isolated contract probe over created synthetic sessions; no user session content.
+- id: superagent-foundation
+  disabled: true
+- insert:
+    - id: session-work-contract-20261121
+      name: dsh-superagent/session-work-probe
+      config:
+        stateDir: /Users/dundundebaba/sync/dsh-s-p/.probe/session-work-host-20261121-111500
+        resultPath: /Users/dundundebaba/sync/dsh-s-p/probes/kanban/session-work-20261121-111500-result.json

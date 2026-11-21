@@ -1,6 +1,34 @@
-# 会话覆盖：当前缺口与安装版只读契约
+# 会话覆盖：默认纳入、手动排除与只读契约
 
-日期：2026-11-20。依据安装版 DSH 0.2.2-rc.3 源码与超管当前实现；**不是已经接入其他会话的声明，也不是读取用户其他会话内容或接管它们的授权。**
+更新：2026-11-21。用户在来源截图纠正“来源没有跨会话”，并明确选择 **“默认纳入，手动排除”**。本轮据此实现当前 DSH Host 普通会话的只读结构化工作汇总；不接管、激活、迁移原会话，不自动创建 Ticket。下文 2026-11-20 内容保留为当时的缺口与调查记录，不能将旧“未实现”当成现状，也不能将本轮实现外推为所有 profile/进程/机器的全量监控。
+
+## 当前使用与实现（2026-11-21）
+
+- 打开超管，在“其他会话的工作 · 只读”查看已有目标、当前步骤、下一步、显式阻塞和仍可回答的问题。标题只是来源标签，不拿标题冒充任务目标，不用 UUID 撑大标题。
+- 系统 → 来源 → 会话工作汇总：普通会话现在和之后新增时默认纳入；“不再汇总此会话”保存持久排除偏好，“已排除”可恢复纳入。恢复只改变汇总范围，不恢复或激活 Agent。
+- [SessionWorkSource](<../src/sources/session-work.ts>) 注册到既有 SourceRegistry，id=`session-work:current-host`，不接受外部规范化输入、不生成 Trigger、不能 reply。它是观察来源，不把别处历史用户消息提升为当前任务授权。
+- 超管当前/归档绑定、已登记 Assignment 会话、超管角色 preset 及已知后代去重；其他 `origin=subagent` 不单列。普通 fork 不能仅凭 `parentSession` 当作子代理；非超管祖先的普通 fork 正常纳入。超管祖先的 fork 一并去重，是本产品保守归属策略，不是 DSH 对 fork 的定义。
+- [runtime](<../src/runtime.ts>) 先 `listSessions` 取目录，再按归属、权限和排除偏好过滤；**排除会话不会读取工作 projection**。Host 范围由当前 persistence backend/内存目录决定；不跨 profile/机器搜文件。
+- 投影只选 `title / goal / todos / agentTeam / userQuestions`。通过 `inspectSession(id, getter)` + `sessionProjections.snapshot(session, keys)` 使用安装版真实只读 API，不调用 create/resume/followup/steer/cancel/openSession。**cold 读取为计算精确投影，DSH 内部会读完整日志并 prepare，但不 publish/resume Agent**；不能称“底层不读正文”。适配器不索取 events、不将原始事件或整份 projection 下发，历史 settled 问题答案在 adapter 边界剔除。
+- Goal `active/paused/blocked/complete` 是持久目标事实，Agent `running/idle` 是独立运行状态；idle 不等于完成，todo 全 completed 也不证明目标完成。`goal.blockedReason.message` 是阻塞，不自动当作等待人工。
+- `userQuestions.active` 中 `open` 与 `continued` 都仍可回答；只取问题文字，不传历史答案。但该投影只覆盖 timed 问题，legacy blocking 问题及通用工具审批没有可靠的统一待决投影；没有问题不等于无需人工。界面只观察，必须回原会话处理，不能在此假批准。
+- 四列看板继续仅统计已登记 Ticket。跨会话观察数不是任务数，不混入审批或 Ticket 动态；主工作区空态改为“已登记任务暂无待你决策”，不声称用户没有工作。
+- 源目录和事实缓存最多15秒；预览最多6条，运行中的会话优先，再按创建时间，完整来源页每次最多20条、最多4个投影并发读取，不自动翻全页。预览不承诺已扫描全库任务/决策优先级。显示事实 `observedAt`，不拿响应时钟冒充所有投影的新鲜度。
+- 页 cursor 绑定目录、归属与排除 revision；排序/成员变化要求重新同步，不静默跳页。排除时清缓存并提升 generation，旧 in-flight 读取不发布；读取后复核权限/排除。保存成功才从 UI 移除，失败保留原态并要求刷新核实，不自动重复 mutation。
+- 排除只在既有 SQLite kv 保存稳定 ID，随超管状态库持久化，不改原 Session；不加 DDL、依赖、调度器或全局订阅。单页错误保留 unavailable/partial、总数未知用 null，不造 0。只读预览失败不影响主工作区/发送/审批，独立页冲突仍保留409。
+- 新 POST `/session-work` 只允许 list 或精确 revision 的 set-included；复用现有 Host owner-only Fetch 与 Origin、epoch 校验，不允许 caller 提供角色、URL、路径、工具或会话控制动作。`remoteAccess.allows` 是原 Host Remote 过滤契约，在 Remote 外可为 true，**不是**本插件 owner 授权的替代品。
+
+## 本轮验证边界
+
+最终全量 **49 files / 585 tests、typecheck、build、pack 全部通过**，见[测试门禁](<../probes/kanban/sessions-verified-20261121-113000/test.log>)及[打包日志](<../probes/kanban/sessions-verified-20261121-113000/pack.log>)。包内容校验158项，包含Source/runtime/client/Host注入及本文，无状态库/凭据/依赖目录。首轮完整门禁只因新fallback DTO的TypeScript联合类型未声明optional revision而停止，补返回类型后整套通过，未放宽测试。
+
+真实 SQLite 回归验证默认纳入、排除/重启/恢复、普通 fork、权限/内部子会话、只读副作用、continued 问题、不泄漏历史答案、分页与失效、旧工作区恢复。安装版 Host [受控来源回执](<../probes/kanban/session-work-20261121-112300-result.json>)仅对 probe 自建 Session 使用真实 list/inspect/selected projection 和 owner Fetch：普通/fork可见、子代理不读、排除停止读取、恢复仅成员变化、非owner/Origin403、旧epoch409、任意activate字段400、Ticket/Trigger/Assignment均0、无模型 completion。首轮探针把403纯文本当JSON导致失败，第二轮探针修复时变量重名未激活，均非产品规则失败，失败证据保留；最终语法检查后通过。
+
+未对真实用户会话内容作全量业务验收，未修改 profile/核心、未重启当前 GUI；无 DOM/视觉/点击证明。真实运行 GUI 必须加载本轮 Host 与客户端资源后再核实；只读汇总通过不解除既有生产 Worker 安全关闭。
+
+---
+
+# 2026-11-20 历史调查（当时未接入）
 
 ## 用户看见的问题与当前事实
 

@@ -7,7 +7,7 @@ const installed = createRequire(`${process.env.DSH_INSTALL_DIR || bootstrap.inst
 const Schema = installed('@deepseek-ai/schemastery')
 const configModule = require('./lib/config.js')
 exports.Config = configModule.createConfigSchema(Schema)
-exports.inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagents', 'sessionQuery', 'sessions', 'llm']
+exports.inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagents', 'sessionQuery', 'sessions', 'llm', 'sessionProjections', 'remoteAccess']
 exports.apply = async function apply(ctx, config) {
   const entry = await import(pathToFileURL(resolve(__dirname, 'lib/index.js')).href)
   return entry.apply(ctx, config)

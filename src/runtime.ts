@@ -9,6 +9,7 @@ import { revalidate, grantMandate } from './domain/mandate.js'
 import { assignmentId, ticketId, threadKey } from './domain/ids.js'
 import { validateTicketBrief, type TicketBrief } from './domain/ticket.js'
 import { SessionSource } from './sources/session.js'
+import { SessionWorkSource, type SessionWorkListInput } from './sources/session-work.js'
 import { SourceRegistry } from './sources/registry.js'
 import { createEngine } from './engine/index.js'
 import { startEval, settleEval } from './engine/eval.js'
@@ -29,7 +30,9 @@ export interface RuntimeContext {
   readonly tools?: WecomToolsPort
   readonly agentPresets: { mount(ctx: any, id: string): Promise<unknown>; composedPreset(ctx: any): string | undefined }
   readonly subagents: { startActivation(input: any): Promise<any>; interrupt?(id: string, cause: any): unknown }
-  readonly sessionQuery: { readSession(id: string): Promise<any> }
+  readonly sessionQuery: { readSession(id: string): Promise<any>; listSessions?(signal?: AbortSignal): Promise<readonly any[]>; inspectSession?<T>(id: string, read: (session: any) => T, signal?: AbortSignal): Promise<T> }
+  readonly sessionProjections?: { snapshot(session: any, keys: readonly string[]): { asOfSeq: number; values: Record<string, unknown> } }
+  readonly remoteAccess?: { allows(resource: { kind: 'session'; id: string }): boolean }
   readonly get?: (name: string) => any
   readonly sessions?: { flush(session: any): Promise<boolean> }
   readonly agentDefaultModel?: { currentSelection(): any }
@@ -60,6 +63,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   let mainId: string | undefined
   let workspace: ReturnType<typeof createWorkspaceRuntime> | undefined
   let documents: ReturnType<typeof createWorkspaceDocuments> | undefined
+  let sessionWork: SessionWorkSource | undefined
   let disposed = false
   let initialization: 'starting' | 'ready' | 'failed' = 'starting'
   let heartbeat: number | undefined
@@ -382,7 +386,42 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       tools: ctx.tools, signal: controller.signal, registry: sources,
       ingest: trigger => engine.ingest(trigger), reply: (body, idem) => source.reply('session', threadKey(`session:${mainId}`), body, idem),
     })
-    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, documentOrigins: documents?.authority })
+    const excludedKey = 'session-work-excluded:v1'
+    sessionWork = new SessionWorkSource({
+      signal: controller.signal,
+      async listSessions(signal) {
+        if (!ctx.sessionQuery.listSessions || !ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess) throw new Error('session_work_unavailable')
+        return ctx.sessionQuery.listSessions(signal)
+      },
+      async read(id, signal) {
+        if (!ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess?.allows({ kind: 'session', id })) throw new Error('session_work_unavailable')
+        return ctx.sessionQuery.inspectSession(id, session => {
+          const cut = ctx.sessionProjections!.snapshot(session, ['title', 'goal', 'todos', 'agentTeam', 'userQuestions'])
+          const { title, goal, todos, agentTeam, userQuestions } = cut.values
+          // Historical answers never enter the work-source adapter, even transiently.
+          const active = userQuestions && typeof userQuestions === 'object' ? (userQuestions as { active?: unknown }).active : undefined
+          return structuredClone({ asOfSeq: cut.asOfSeq, values: { title, goal, todos, agentTeam, ...(active === undefined ? {} : { userQuestions: { active } }) } })
+        }, signal)
+      },
+      agent: id => ctx.agents.get(id),
+      canAccess: id => ctx.remoteAccess?.allows({ kind: 'session', id }) === true,
+      ownedSessionIds: () => [mainId!, ...ownedSessions, ...store.repos.assignment.all().map(row => String(row.session_id))],
+      getExcluded() {
+        const value = store.repos.kv.get(excludedKey)?.v
+        if (value === undefined) return []
+        if (!Array.isArray(value) || !value.every(id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/.test(id))) throw new Error('session_work_exclusions_invalid')
+        return value
+      },
+      setExcluded(ids) {
+        store.transaction(() => {
+          store.repos.kv.insertOrIgnore({ k: excludedKey, v: [...ids] })
+          store.db.prepare('UPDATE kv SET v=? WHERE k=?').run(encodeJson([...ids], false), excludedKey)
+        })
+      },
+    })
+    sources.register(sessionWork)
+    await sessionWork.start()
+    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, documentOrigins: documents?.authority, sessionWork: () => sessionWork!.summary() })
     await documents?.start()
     if (!testAdapter) {
       // Upgrades/reloads cannot keep an old, unverified Worker executable.
@@ -505,6 +544,14 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       async commandStatus(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.commandStatus(input) },
       async reviseAdmission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.reviseAdmission(input) },
       async admission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.decideAdmission(input) },
+      async sessionWork(input: { action: 'list' | 'set-included'; epoch: string; view?: 'included' | 'excluded'; cursor?: string; limit?: number; sessionId?: string; included?: boolean; revision?: string }) {
+        await ready
+        if (!workspace || !sessionWork || disposed) throw Object.assign(new Error('session_work_unavailable'), { code: 'session_work_unavailable', status: 503 })
+        workspace.requireEpoch(input.epoch)
+        if (input.action === 'list') return sessionWork.list({ ...(input.view === undefined ? {} : { view: input.view }), ...(input.cursor === undefined ? {} : { cursor: input.cursor }), ...(input.limit === undefined ? {} : { limit: input.limit }) } satisfies SessionWorkListInput)
+        if (input.action === 'set-included' && typeof input.sessionId === 'string' && typeof input.included === 'boolean' && typeof input.revision === 'string') return sessionWork.setIncluded(input.sessionId, input.included, { revision: input.revision })
+        throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
+      },
       async documentSource(input: any) {
         await ready
         if (!workspace || !documents || disposed) throw Object.assign(new Error('document_source_unavailable'), { code: 'document_source_unavailable', status: 503 })

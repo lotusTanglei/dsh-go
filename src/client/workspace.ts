@@ -130,6 +130,13 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const [system, setSystem] = React.useState('')
     const [systemData, setSystemData] = React.useState({} as any)
     const [systemError, setSystemError] = React.useState('')
+    const [sessionWorkPages, setSessionWorkPages] = React.useState({} as any)
+    const [sessionWorkBusy, setSessionWorkBusy] = React.useState('')
+    const [sessionWorkError, setSessionWorkError] = React.useState('')
+    const [excludedOpen, setExcludedOpen] = React.useState(false)
+    const sessionWorkPagesRef = React.useRef({} as any)
+    const sessionWorkBusyRef = React.useRef(false)
+    const excludedOpenRef = React.useRef(false)
     const [documents, setDocuments] = React.useState(null as any)
     const [documentBusy, setDocumentBusy] = React.useState('')
     const [documentError, setDocumentError] = React.useState('')
@@ -330,6 +337,48 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       } catch (e: any) { if (alive.current && systemRef.current === tab) { setSystemError(e?.status === 409 ? tr('DecisionConflict') : messageOf(e)); if (e?.status === 409) poke.current() } }
       finally { systemBusy.current = false }
     }
+    // Passive local projections only. The workspace poll supplies preview; full pages are explicit.
+    const readSessionWork = async (view = 'included', more = false) => {
+      const epoch = epochRef.current
+      if (!epoch || sessionWorkBusyRef.current) return
+      const old = sessionWorkPagesRef.current[view], cursor = more ? old?.next : undefined
+      if (more && (!old?.hasMore || typeof cursor !== 'string')) return
+      sessionWorkBusyRef.current = true; setSessionWorkBusy(view); setSessionWorkError('')
+      try {
+        const data = await call('session-work', { action: 'list', epoch, view, limit: 20, ...(cursor ? { cursor } : {}) })
+        if (!alive.current || epochRef.current !== epoch) return
+        if (more && data.revision !== old.revision) { const changed: any = new Error(); changed.status = 409; throw changed }
+        const page = more ? { ...data, items: [...new Map([...array(old.items), ...array(data.items)].map(row => [row.sessionId, row])).values()] } : data
+        sessionWorkPagesRef.current = { ...sessionWorkPagesRef.current, [view]: page }; setSessionWorkPages(sessionWorkPagesRef.current)
+      } catch (e: any) {
+        if (alive.current && epochRef.current === epoch) setSessionWorkError(tr(e?.status === 409 ? 'SessionWorkChanged' : 'SessionWorkReadFailed'))
+      } finally { sessionWorkBusyRef.current = false; if (alive.current) setSessionWorkBusy('') }
+    }
+    const setSessionIncluded = async (row: any, included: boolean, revision: any) => {
+      const epoch = epochRef.current
+      if (!epoch || sessionWorkBusyRef.current || typeof revision !== 'string' || !revision) return
+      sessionWorkBusyRef.current = true; setSessionWorkBusy(row.sessionId); setSessionWorkError('')
+      let saved = false
+      try {
+        const receipt = await call('session-work', { action: 'set-included', epoch, sessionId: row.sessionId, included, revision })
+        if (!alive.current || epochRef.current !== epoch) return
+        if (receipt?.sessionId !== row.sessionId || receipt?.included !== included) throw new Error('unconfirmed_membership')
+        saved = true; setNotice(tr(included ? 'SessionWorkRestored' : 'SessionWorkExcluded'))
+        // Never optimistically hide a row or retry a mutation after an uncertain outcome.
+        sessionWorkPagesRef.current = {}; setSessionWorkPages({}); poke.current()
+      } catch (e: any) {
+        if (alive.current && epochRef.current === epoch) setSessionWorkError(tr(e?.status === 409 ? 'SessionWorkChanged' : 'SessionWorkSaveFailed'))
+      } finally { sessionWorkBusyRef.current = false; if (alive.current) setSessionWorkBusy('') }
+      if (saved && alive.current && epochRef.current === epoch) {
+        await readSessionWork('included')
+        if (excludedOpenRef.current) await readSessionWork('excluded')
+      }
+    }
+    const toggleExcluded = (event: any) => {
+      const open = event.currentTarget.open === true
+      excludedOpenRef.current = open; setExcludedOpen(open)
+      if (open && !sessionWorkPagesRef.current.excluded) void readSessionWork('excluded')
+    }
     const resetDocumentEvidence = () => {
       documentEvidenceVersion.current++
       documentDetailRef.current = null; documentImagesRef.current = {}; documentReviewedRef.current = false
@@ -444,6 +493,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             sendController.current?.abort()
             sendController.current = null
             epochRef.current = epoch
+            sessionWorkPagesRef.current = {}; setSessionWorkPages({}); setSessionWorkError(''); excludedOpenRef.current = false; setExcludedOpen(false)
             setDocuments(null); setDocumentScanResult(null); setDocumentError(''); resetDocumentEvidence()
             const composerEpoch = prior || epoch
             const nextComposer = composerCache.current[composerEpoch] || readComposer(composerEpoch)
@@ -613,6 +663,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       if (!systemRef.current) systemFocus.current = document.activeElement as HTMLElement
       if (systemRef.current !== tab) resetDocumentEvidence()
       systemRef.current = tab; setSystem(tab); setSystemError(''); void readSystem()
+      if (tab === 'sources' && !sessionWorkPagesRef.current.included) void readSessionWork('included')
     }
     const closeSystem = () => { systemRef.current = ''; setSystem(''); resetDocumentEvidence() }
     const askConfirm = (kind: string, item: any, decision: string) => { setActionError(''); setReason(''); setRevisionGoal(item.brief?.goal || ''); setRevisionFirstAction(item.brief?.firstAction || ''); setConfirmation({ kind, item, decision, epoch: epochRef.current }) }
@@ -710,6 +761,8 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const desk = deskState(workspace, Date.now(), !!error)
     const todoCount = desk.actionTotal
     const boardScopeKnown = board?.scope?.kind === 'superagent-ledger' && board.scope.otherSessions === 'not-included'
+    const sessionWork = workspace?.sessionWork
+    const sessionCoverage = !error && sessionWork?.scope === 'current-host' && ['ready', 'partial'].includes(sessionWork?.state) ? sessionWork.state : 'unavailable'
     const latest = composer.receipt
     const pendingRequest = composer.pending
     const item = detail?.ticket
@@ -755,12 +808,61 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
           ...array(detail.assignments).map((assignment: any, index: number) => h('article', { className: 'saw-box', key: assignment.id || index }, h('h3', null, `${tr('Attempt')} ${index + 1}`), fields([['State', stateName(assignment.state)], ['Started', time(assignment.startedAt)], ['EndedAt', time(assignment.endedAt)], ['LastProgress', time(assignment.lastProgressAt)], ['Steps', text(assignment.steps)], ['Tokens', text(assignment.usage)]]), assignment.report ? h('details', null, h('summary', null, tr('OriginalReport')), valueView(assignment.report)) : h('p', null, tr('NoReport'))))),
         h('details', { className: 'saw-result-technical', key: `${detailId}:delivery` }, h('summary', null, tr('Delivery')), valueView(detail.delivery), h('p', { className: 'saw-meta' }, tr('NoReadAck'))))
     }
+    const sessionSourceTitle = (row: any) => {
+      const value = typeof row.title === 'string' ? row.title.trim() : ''
+      return !value || value === row.sessionId || /^[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(value) ? tr('SessionWorkUntitled') : displayTitle(value)
+    }
+    const sessionWorkCard = (row: any, manage = false, revision?: string) => {
+      const structured = row.evidence === 'structured', summary = structured && (row.objective || row.progress || row.nextAction || row.blocker || row.decision)
+      return h('article', { className: 'saw-session-work-card', key: row.sessionId },
+        row.excluded ? h(React.Fragment, null, h('h4', null, sessionSourceTitle(row)), h('small', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(row.sessionId).slice(-8)}`)) : h(React.Fragment, null,
+          h('h4', null, structured && row.objective ? displayTitle(row.objective) : tr(summary ? 'SessionWorkKnownWork' : 'SessionWorkNoSummary')),
+          h('p', { className: 'saw-meta saw-session-source' }, `${tr('SessionWorkFrom')}: ${sessionSourceTitle(row)}`),
+          summary ? h(React.Fragment, null,
+            row.progress ? h('p', { className: 'saw-session-line' }, row.progress) : null,
+            row.nextAction ? h('p', { className: 'saw-session-line' }, `${tr('SessionWorkNext')}: ${row.nextAction}`) : null,
+            row.blocker ? h('p', { className: 'saw-session-line' }, `${tr('SessionWorkBlocker')}: ${row.blocker}`) : null,
+            row.decision ? h('div', { className: 'saw-session-decision' }, h('strong', null, tr('SessionWorkDecision')), h('p', null, row.decision), h('small', null, tr('SessionWorkAnswerAtSource'))) : null) : null,
+          h('div', { className: 'saw-session-facts' },
+            structured && row.goalPhase ? h('span', null, `${tr('SessionWorkGoalPhase')}: ${tr(row.goalPhase === 'active' ? 'SessionWorkGoalActive' : row.goalPhase === 'paused' ? 'SessionWorkGoalPaused' : row.goalPhase === 'complete' ? 'SessionWorkGoalCompleted' : row.goalPhase === 'blocked' ? 'SessionWorkGoalBlocked' : 'Unknown')}`) : null,
+            h('span', null, tr(row.runtime === 'running' ? 'SessionWorkRuntimeRunning' : row.runtime === 'idle' ? 'SessionWorkRuntimeIdle' : row.runtime === 'unavailable' ? 'SessionWorkRuntimeUnavailable' : 'SessionWorkRuntimeUnknown')),
+            h('span', null, `${tr('Snapshot')}: ${time(row.observedAt)}`))),
+        manage ? button(tr(row.excluded ? 'SessionWorkRestore' : 'SessionWorkExclude'), () => { void setSessionIncluded(row, row.excluded === true, revision) }, !!sessionWorkBusy || !revision, { className: 'saw-btn saw-text-btn' }) : null)
+    }
+    const sessionWorkPreview = () => h('section', { className: 'saw-session-work', 'aria-label': tr('SessionWorkTitle') },
+      h('div', { className: 'saw-group-head' }, h('h3', null, tr('SessionWorkTitle')), button(tr('SessionWorkMore'), () => openSystem('sources'))),
+      h('p', { className: 'saw-meta' }, tr('SessionWorkReadonly')),
+      sessionCoverage !== 'ready' ? h('p', { className: 'saw-meta' }, tr(sessionCoverage === 'partial' ? 'SessionWorkPartial' : 'SessionWorkUnavailable')) : null,
+      ...array(sessionWork?.items).filter(row => row.excluded !== true).slice(0, 6).map(row => sessionWorkCard(row)),
+      sessionCoverage === 'ready' && sessionWork.total === 0 && !array(sessionWork.items).length ? h('p', { className: 'saw-meta' }, tr('SessionWorkEmpty')) : null)
+    const sessionWorkSources = () => {
+      const included = sessionWorkPages.included, excluded = sessionWorkPages.excluded
+      const excludedTotal = included?.excludedTotal ?? sessionWork?.excludedTotal
+      return h('section', { className: 'saw-session-work saw-session-sources', 'aria-label': tr('SessionWorkSources') },
+        h('h3', null, tr('SessionWorkSources')), h('p', { className: 'saw-meta' }, tr('SessionWorkDefault')), h('p', { className: 'saw-meta' }, tr('SessionWorkReadonly')),
+        h('div', { className: 'saw-row' }, button(tr('SessionWorkRefresh'), () => { void (async () => { await readSessionWork('included'); if (excludedOpenRef.current) await readSessionWork('excluded') })() }, !!sessionWorkBusy), sessionWorkBusy ? h('span', { role: 'status', className: 'saw-meta' }, tr('Loading')) : null),
+        sessionWorkError ? h('p', { className: 'saw-error', role: 'alert' }, sessionWorkError) : null,
+        included?.state !== 'ready' ? h('p', { className: 'saw-meta' }, tr(included?.state === 'partial' ? 'SessionWorkPartial' : 'SessionWorkUnavailable')) : null,
+        included ? h('p', { className: 'saw-meta' }, `${tr('SessionWorkIncludedCount')}: ${text(included.total)} · ${tr('Snapshot')}: ${time(included.sampledAt)}`) : null,
+        ...array(included?.items).filter(row => row.excluded !== true).map(row => sessionWorkCard(row, true, included.revision)),
+        included?.state === 'ready' && included.total === 0 ? h('p', { className: 'saw-meta' }, tr('SessionWorkEmpty')) : null,
+        included?.hasMore && included.next ? button(tr('SessionWorkLoadMore'), () => { void readSessionWork('included', true) }, !!sessionWorkBusy) : null,
+        h('details', { className: 'saw-session-excluded', open: excludedOpen, onToggle: toggleExcluded }, h('summary', null, `${tr('SessionWorkExcludedList')} · ${text(excludedTotal)}`),
+          h('p', { className: 'saw-meta' }, tr('SessionWorkExcludedHint')),
+          excludedOpen ? h(React.Fragment, null,
+            !excluded ? button(tr('SessionWorkLoadExcluded'), () => { void readSessionWork('excluded') }, !!sessionWorkBusy) : null,
+            excluded && excluded.state !== 'ready' ? h('p', { className: 'saw-meta' }, tr(excluded.state === 'partial' ? 'SessionWorkPartial' : 'SessionWorkUnavailable')) : null,
+            ...array(excluded?.items).map(row => sessionWorkCard({ ...row, excluded: true }, true, excluded.revision)),
+            excluded?.state === 'ready' && excluded.total === 0 ? h('p', { className: 'saw-meta' }, tr('SessionWorkNoExcluded')) : null,
+            excluded?.hasMore && excluded.next ? button(tr('SessionWorkLoadMore'), () => { void readSessionWork('excluded', true) }, !!sessionWorkBusy) : null) : null))
+    }
     const briefingView = () => h(React.Fragment, null,
       array(workspace?.documentSources).length ? button(tr('DocumentReadEntry'), () => openSystem('sources'), false, { className: 'saw-btn saw-text-btn' }) : null,
       !workspace ? h('p', { className: 'saw-meta' }, tr(error ? 'SyncFailed' : 'Loading')) : !desk.ready ? h('div', { className: 'saw-inline-state' }, h('p', null, tr('BriefingUnavailable')), button(tr('Retry'), () => poke.current())) : null,
       error && workspace ? h('p', { className: 'saw-meta' }, tr('RecordsStale')) : null,
       newReplies && latestAssistant ? h('article', { className: 'saw-new-reply' }, h('strong', null, tr('CoordinatorReplied')), h('p', { className: 'saw-line-clamp' }, latestAssistant.text), button(tr('ReadAndReply'), openReply)) : null,
-      (desk.actions.length || (desk.actionTotal ?? 0) > 0) ? h('section', { className: 'saw-briefing-group', 'aria-label': tr('YourDecisions') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('YourDecisions')), h('span', { className: 'saw-count' }, text(desk.actionTotal))), ...desk.actions.map(decisionView), desk.moreActions ? h('div', { className: 'saw-row' }, button(tr('MorePlansApprovals'), () => openSystem('todo')), button(tr('MoreQuestions'), showAllTasks)) : null) : desk.ready && desk.actionTotal === 0 && !error && !newReplies ? h('div', { className: 'saw-idle' }, h('span', { className: 'saw-idle-icon', 'aria-hidden': true }, '+'), h('h3', null, tr(desk.idle ? 'ReadyForTask' : 'NothingToDecide')), h('p', null, tr(!boardScopeKnown ? 'CoveragePendingHint' : desk.idle ? 'DescribeOutcome' : 'ProgressOnBoard')), button(tr('StartPlanning'), startTask, !!pendingRequest || !!composer.target || oldDraft), h('small', { className: 'saw-meta' }, tr('PlanningSteps'))) : null,
+      (desk.actions.length || (desk.actionTotal ?? 0) > 0) ? h('section', { className: 'saw-briefing-group', 'aria-label': tr('YourDecisions') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('YourDecisions')), h('span', { className: 'saw-count' }, text(desk.actionTotal))), ...desk.actions.map(decisionView), desk.moreActions ? h('div', { className: 'saw-row' }, button(tr('MorePlansApprovals'), () => openSystem('todo')), button(tr('MoreQuestions'), showAllTasks)) : null) : desk.ready && desk.actionTotal === 0 && !error && !newReplies ? h('div', { className: 'saw-idle' }, h('span', { className: 'saw-idle-icon', 'aria-hidden': true }, '+'), h('h3', null, tr('SessionWorkLedgerNoDecision')), h('p', null, tr(!boardScopeKnown ? 'CoveragePendingHint' : 'SessionWorkLedgerHint')), button(tr('StartPlanning'), startTask, !!pendingRequest || !!composer.target || oldDraft), h('small', { className: 'saw-meta' }, tr('PlanningSteps'))) : null,
+      sessionWorkPreview(),
       (desk.records.length || (desk.recordTotal ?? 0) > 0) ? h('section', { className: 'saw-recent', 'aria-label': tr('RecentActivity') }, h('div', { className: 'saw-group-head' }, h('h3', null, tr('RecentActivity')), desk.moreRecords ? button(tr('AllTasks'), showAllTasks) : null), ...desk.records.map(recordView), pendingPlans.some(plan => plan.state === 'approved' && plan.expiresAt > Date.now()) && desk.moreRecords ? button(tr('MorePlansApprovals'), () => openSystem('todo')) : null) : null)
     const documentEvidenceView = (entry: any, detail: any) => {
       const allRendered = array(detail.screenshots).every(image => documentImages[image.digest]?.loaded === true)
@@ -806,7 +908,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       const data = systemData[system] || (system === 'sources' ? {} : null)
       if (!data) return h('p', null, tr('Loading'))
       if (system === 'todo') return h(React.Fragment, null, h('h3', null, tr('Admission')), ...pendingPlans.map(plan => admissionView(plan)), !pendingPlans.length ? h('p', null, tr('NoPlans')) : null, h('h3', null, tr('InformationNeeded')), h('p', { className: 'saw-meta' }, tr('QuestionsOnBoard')), button(tr('AllTasks'), showAllTasks), h('h3', null, tr('Approvals')), h('p', { className: 'saw-meta' }, tr('ApprovalWindow')), ...array(data.items).map(approvalView), !array(data.items).length ? h('p', null, tr('NoApprovals')) : null, data.next ? button(tr('MoreApprovals'), () => { void readSystem(true) }, systemBusy.current) : null)
-      if (system === 'sources') return h(React.Fragment, null, documentSourcesView(), h('p', null, tr('Readonly')), ...array(data.sources).map((source: any, i: number) => h('article', { className: 'saw-box', key: source.id || i }, h('h3', null, source.id || tr('Source')), fields([['Kind', text(source.kind)], ['Health', source.ok === true ? tr('Healthy') : source.ok === false ? tr('Unhealthy') : tr('Unknown')], ['LastEvent', time(source.lastAt)], ['Paused', source.paused === true ? tr('Yes') : source.paused === false ? tr('No') : tr('Unknown')], ['Attended', source.attended === true ? tr('Yes') : source.attended === false ? tr('No') : tr('Unknown')]]))), !array(data.sources).length ? h('p', null, tr('NoSources')) : null)
+      if (system === 'sources') return h(React.Fragment, null, sessionWorkSources(), documentSourcesView(), h('p', null, tr('Readonly')),  ...array(data.sources).map((source: any, i: number) => h('article', { className: 'saw-box', key: source.id || i }, h('h3', null, source.id || tr('Source')), fields([['Kind', text(source.kind)], ['Health', source.ok === true ? tr('Healthy') : source.ok === false ? tr('Unhealthy') : tr('Unknown')], ['LastEvent', time(source.lastAt)], ['Paused', source.paused === true ? tr('Yes') : source.paused === false ? tr('No') : tr('Unknown')], ['Attended', source.attended === true ? tr('Yes') : source.attended === false ? tr('No') : tr('Unknown')]]))), !array(data.sources).length ? h('p', null, tr('NoSources')) : null)
       if (system === 'settings') {
         const groups: Record<string, any[]> = {}
         const groupFor = (key: string) => /stateDir|dbPath|lockPath|workRoot/.test(key) ? 'storage' : /watchdog|stall|repeat|waitingHuman/.test(key) ? 'supervision' : /approval|confirm/.test(key) ? 'approvals' : /^max|queueLimit/.test(key) ? 'budgets' : /roleTools|routerReadScope|sources|acceptMode|bots/.test(key) ? 'permissions' : 'runtime'
@@ -817,7 +919,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       return h(React.Fragment, null, h('p', null, tr('Readonly')), ...[['Runtime', data.runtime], ['Database', data.db], ['Workers', data.workers], ['Supervision', data.watchdog], ['Outbox', data.outbox], ['RecentErrors', data.recentErrors]].map(([key, value]) => h('section', { key, className: 'saw-box' }, h('h3', null, tr(key)), valueView(value))))
     }
     return h('section', { className: 'saw', 'aria-label': tr('Workspace') }, h('style', null, css),
-      h('header', { className: 'saw-top' }, h('h1', null, tr('Title')), h('div', { className: 'saw-connection' }, h('span', { title: `${tr('LastSync')}: ${time(lastSync)}` }, error ? tr('Disconnected') : workspace ? tr('Connected') : tr('Connecting'))), h('span', { className: 'saw-coverage' }, tr(boardScopeKnown ? 'OtherSessionsNotIncluded' : 'BoardScopeUnknown')),
+      h('header', { className: 'saw-top' }, h('h1', null, tr('Title')), h('div', { className: 'saw-connection' }, h('span', { title: `${tr('LastSync')}: ${time(lastSync)}` }, error ? tr('Disconnected') : workspace ? tr('Connected') : tr('Connecting'))), h('span', { className: 'saw-coverage' }, tr(sessionCoverage === 'ready' ? 'SessionWorkCoverageReady' : sessionCoverage === 'partial' ? 'SessionWorkCoveragePartial' : 'SessionWorkCoverageUnavailable')),
         h('label', { className: 'saw-search' }, h('span', { className: 'saw-sr' }, tr('Search')), h('input', { type: 'search', value: query, maxLength: 200, placeholder: tr('Search'), onChange: (e: any) => changeFilter(e.target.value, outcome) })),
         h('label', null, h('span', { className: 'saw-sr' }, tr('OutcomeFilter')), h('select', { value: outcome, onChange: (e: any) => changeFilter(query, e.target.value), 'aria-label': tr('OutcomeFilter') }, h('option', { value: '' }, tr('AllOutcomes')), ...['completed', 'failed', 'stopped', 'dropped'].map(key => h('option', { value: key, key }, stateName(key))))),
         button(`${tr('Todo')}${todoCount === null ? '' : ` · ${todoCount}`}`, () => openSystem('todo')), button(tr('Sync'), () => poke.current()), button(tr('System'), () => openSystem('health'))),

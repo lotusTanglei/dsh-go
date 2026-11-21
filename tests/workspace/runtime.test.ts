@@ -42,7 +42,7 @@ const approve = (plan: AdmissionPlanDTO) => ({ epoch: plan.epoch, requestId: pla
 async function drainTasks() { for (let i = 0; i < 4; i++) await new Promise<void>(done => setImmediate(done)) }
 
 /** Real on-disk SQLite + explicit fake Host. No provider/service is reachable. */
-function fixture(options: { production?: boolean; config?: Partial<Config>; tools?: RuntimeContext['tools'] } = {}) {
+function fixture(options: { production?: boolean; config?: Partial<Config>; tools?: RuntimeContext['tools']; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string> } } = {}) {
   const dir = resolve(mkdtempSync(join(tmpdir(), 'workspace-runtime-')))
   const config = resolveConfig({ ...defaults, stateDir: dir, dbPath: '', lockPath: '', workRoot: '', sources: [],
     confirm: 'always', watchdogIntervalMs: 60_000, ...options.config } as Config)
@@ -76,6 +76,11 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; tool
   let router: any
   const ctx: RuntimeContext = {
     tools: options.tools,
+    remoteAccess: { allows({id}) { return !options.sessionWork?.denied?.has(id) } },
+    sessionProjections: { snapshot(session, keys) {
+      expect(keys).toEqual(['title','goal','todos','agentTeam','userQuestions'])
+      return { asOfSeq: 3, values: options.sessionWork?.values.get(session.id) ?? {} }
+    } },
     effect(factory) { return factory() },
     on(name, callback) {
       const set = listeners.get(name) ?? new Set(); listeners.set(name, set); set.add(callback)
@@ -122,7 +127,10 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; tool
         interruptions.push({ id, ticketState: ticket?.state, currentAssignment: ticket?.current_assignment, assignmentState: assignment?.state, endedReason: assignment?.ended_reason })
       },
     },
-    sessionQuery: { async readSession(id) {
+    sessionQuery: {
+      async listSessions() { return options.sessionWork?.records ?? [] },
+      async inspectSession(id, read) { options.sessionWork?.reads.push(id); return read({id}) },
+      async readSession(id) {
       const events = logs.get(id)
       if (!events || missingSessions.has(id)) throw Object.assign(new Error('missing fake session'), { code: 'SESSION_QUERY_SESSION_NOT_FOUND' })
       return { session: { id, agentPreset: 'dsh-superagent-router' }, events: [...events] }
@@ -207,6 +215,47 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; tool
 }
 
 describe('workspace runtime: real SQLite and explicitly fake Host contract', () => {
+  it('isolates a failed or resyncing work preview from the normal workspace and human command path', async () => {
+    const f=fixture({production:true}); await f.runtime.ready
+    const source=f.runtime.sources.all().find(source=>source.kind==='session-work') as import('../../src/sources/session-work.js').SessionWorkSource
+    vi.spyOn(source,'summary').mockRejectedValue(new Error('PRIVATE WORK PREVIEW FAILURE'))
+    const workspace=await f.runtime.panelPorts.workspace()
+    expect(workspace).toMatchObject({state:'ready',sessionWork:{state:'unavailable',total:null,items:[]}})
+    expect(JSON.stringify(workspace)).not.toContain('PRIVATE WORK PREVIEW FAILURE')
+    const receipt=await f.runtime.panelPorts.command(await f.input('Ordinary user request still works'))
+    expect(receipt.accepted).toBe(true)
+    expect(f.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+  it('defaults to read-only ordinary session work and persists manual exclusion without a Ticket or Agent wake', async () => {
+    const external=randomUUID(), fork=randomUUID(), child=randomUUID(), denied=randomUUID()
+    const observations={records:[{header:{id:external,createdAt:3}},{header:{id:fork,parentSession:external,createdAt:2}},{header:{id:child,parentSession:external,origin:'subagent',createdAt:4}},{header:{id:denied,createdAt:1}}],
+      values:new Map([[external,{title:'Ordinary work',goal:{goal:{objective:'Implement existing project request',phase:'active'},updatedAt:5},todos:[{content:'Check acceptance',status:'in_progress'}]}],[fork,{title:'Ordinary fork',userQuestions:{active:[{state:'continued',questions:[{question:'Choose the target project'}]}],settled:[{answers:['PRIVATE ANSWER']} ]}}]]), reads:[] as string[],denied:new Set([denied])}
+    const f=fixture({production:true,sessionWork:observations}); await f.runtime.ready
+    expect(observations.reads).toEqual([])
+    const first=await f.runtime.panelPorts.workspace(), work=first.sessionWork!
+    expect(work).toMatchObject({state:'ready',total:2,excludedTotal:0,scope:'current-host',defaultIncluded:true})
+    expect(work.items.map(item=>item.sessionId)).toEqual([external,fork])
+    expect(work.items[0]).toMatchObject({objective:'Implement existing project request',goalPhase:'active',runtime:'unavailable',progress:'Check acceptance'})
+    expect(work.items[1]?.decision).toContain('Choose the target project')
+    expect(JSON.stringify(work)).not.toContain('PRIVATE ANSWER')
+    expect(observations.reads).not.toContain(child); expect(observations.reads).not.toContain(denied)
+    await f.runtime.panelPorts.sessionWork({action:'set-included',epoch:first.epoch,sessionId:external,included:false,revision:work.revision!})
+    await f.restart({production:true})
+    observations.reads.length=0
+    const after=await f.runtime.panelPorts.workspace()
+    expect(after.sessionWork).toMatchObject({total:1,excludedTotal:1})
+    expect(observations.reads).not.toContain(external)
+    const excluded=await f.runtime.panelPorts.sessionWork({action:'list',epoch:after.epoch,view:'excluded'})
+    if (!('items' in excluded)) throw new Error('Expected excluded page')
+    expect(excluded.items[0]?.sessionId).toBe(external)
+    await f.runtime.panelPorts.sessionWork({action:'set-included',epoch:after.epoch,sessionId:external,included:true,revision:excluded.revision!})
+    expect((await f.runtime.panelPorts.workspace()).sessionWork).toMatchObject({total:2,excludedTotal:0})
+    expect(f.store.repos.ticket.all()).toHaveLength(0); expect(f.store.repos.trigger.all()).toHaveLength(0)
+    expect(f.calls.followup).toEqual([]);expect(f.calls.inject).toEqual([]);expect(f.calls.realActivation).not.toHaveBeenCalled()
+    await expect(f.runtime.panelPorts.sessionWork({action:'list',epoch:'old-epoch'})).rejects.toThrow('epoch_mismatch')
+  })
+
   it.each(['no','unknown'])('manually collects %s-format document evidence, binds a real request, confirms exactly once and never bypasses production execution', async initialStrike => {
     const docConfig = { id: 'docs:bugs', kind: 'wecom-document' as const, attended: false as const, doc: 'https://doc.weixin.qq.com/sheet/demo', sheet: 'tab1', range: 'A2:C5', idColumn: 'A', titleColumn: 'B', textColumns: ['B','C'] }
     let row = 2, description = 'External bug', strike = initialStrike, reads = 0

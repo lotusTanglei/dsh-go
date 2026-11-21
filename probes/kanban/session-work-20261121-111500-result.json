@@ -1,0 +1,89 @@
+{
+  "kind": "session-work-installed-host",
+  "state": "failed",
+  "startedAt": "2026-11-21T03:11:05.666Z",
+  "privateSessionContentReads": 0,
+  "externalProviderRequests": 0,
+  "boundary": "Actual installed Session list/inspect/selective projections, real SQLite and owner Peer. Directory filtered to probe-owned identities before any content inspection. Synthetic Session records, no browser DOM or real-user-work completeness claim.",
+  "initial": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "data": {
+        "epoch": "b18cd1eb-c437-420e-b3ba-e5cd494c315a",
+        "archiveEpochs": [],
+        "state": "ready",
+        "model": {
+          "available": true
+        },
+        "serverTime": 1795230666145,
+        "capabilities": {
+          "conversation": true,
+          "send": true,
+          "workerExecution": false,
+          "executionReason": "SA_EXECUTION_BOUNDARY_UNVERIFIED"
+        },
+        "documentSources": [],
+        "briefing": {
+          "snapshotAt": 1795230666145,
+          "decisions": {
+            "total": 0,
+            "items": []
+          },
+          "active": {
+            "total": 0,
+            "items": []
+          },
+          "results": {
+            "total": 0,
+            "items": []
+          },
+          "counts": {
+            "pending": 0,
+            "running": 0,
+            "waiting": 0,
+            "ended": 0
+          }
+        },
+        "admissions": [],
+        "admissionsTotal": 0,
+        "pendingPlans": 0,
+        "pendingApprovals": 0,
+        "sessionWork": {
+          "state": "ready",
+          "scope": "current-host",
+          "defaultIncluded": true,
+          "sampledAt": 1795230666145,
+          "total": 2,
+          "excludedTotal": 0,
+          "internalTotal": 2,
+          "hasMore": false,
+          "revision": "2dfaf7290bc6afb3fa3426706762c75b4e1a55392aff4b5cde11ce7b726e5486",
+          "items": [
+            {
+              "sessionId": "8d1ed5da-44d0-4b01-a76a-0334426008b9",
+              "title": "Synthetic ordinary fork",
+              "runtime": "unavailable",
+              "observedAt": 1795230666709,
+              "evidence": "structured",
+              "excluded": false
+            },
+            {
+              "sessionId": "f74ea8c3-65bd-484c-8d75-68781501713a",
+              "title": "Synthetic ordinary work",
+              "runtime": "unavailable",
+              "progress": "Verify cross-session scope",
+              "observedAt": 1795230666709,
+              "evidence": "structured",
+              "excluded": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  "error": {
+    "code": "Unexpected token 'o', \"forbidden\" is not valid JSON"
+  },
+  "finishedAt": "2026-11-21T03:11:06.734Z"
+}

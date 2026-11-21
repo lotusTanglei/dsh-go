@@ -28,7 +28,8 @@ describe('closeout deleted-main-session recovery', () => {
     const binding = h.store.repos.kv.get('mainSessionId')?.v
     expect(typeof binding).toBe('string'); expect(binding).not.toBe('gone-router')
     expect(h.created).toEqual([binding]); expect(h.resumed).toEqual([])
-    expect(h.runtime.sources.all()).toHaveLength(1)
+    expect(h.runtime.sources.all()).toHaveLength(2)
+    expect(h.runtime.sources.all().some(source=>source.id==='session-work:current-host')).toBe(true)
     expect(h.runtime.sources.all()[0]!.id).toBe(`session:${binding}`)
     expect(h.store.repos.audit.all()).toEqual([expect.objectContaining({ action: 'main_session_recreated' })])
     await h.runtime.dispose()

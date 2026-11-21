@@ -82,7 +82,9 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'call' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) routes.add(node.arguments[0].text)
       if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
         const key = ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name) ? node.name.text : ''
-        expect(key).not.toMatch(/^(?:sessionId|sessionID|mainSessionId|actor|workerId|threadKey|assignmentId|agentOptions)$/)
+        // Exact Session identity is permitted only for the membership-only route, never commands.
+        if (key === 'sessionId') expect(node.parent.getText(tree)).toContain("action: 'set-included'")
+        else expect(key).not.toMatch(/^(?:sessionID|mainSessionId|actor|workerId|threadKey|assignmentId|agentOptions)$/)
       }
     })
     for (const route of ['workspace', 'conversation', 'command', 'command-status', 'board', 'ticket']) expect(routes.has(route), route).toBe(true)
@@ -128,7 +130,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
   it('defaults to ledger tasks and decisions, keeping raw history and technical receipts behind explicit controls', () => {
     contains(workspace, ["React.useState('briefing')", 'setActivityView(view)', "activityView === 'briefing' ? briefingView()", "tr('DeskTitle')", "'BackToDesk' : 'HistoryShort'", "React.useState('chat')"])
     expect(workspace).not.toMatch(/saw-activity-tabs|tr\('BriefingVersion'\)|tr\('BriefingScope'\)|tr\('BriefingRecordHint'\)|tr\('NoStructuredDecisions'\)/)
-    contains(section('briefingView'), ['desk.actions.map(decisionView)', 'desk.records.map(recordView)', 'desk.moreActions', 'desk.moreRecords', 'desk.ready && desk.actionTotal === 0 && !error && !newReplies', '(desk.actionTotal ?? 0) > 0', "tr(desk.idle ? 'ReadyForTask' : 'NothingToDecide')", "tr('StartPlanning')", "tr('PlanningSteps')", "tr('RecordsStale')"])
+    contains(section('briefingView'), ['desk.actions.map(decisionView)', 'desk.records.map(recordView)', 'desk.moreActions', 'desk.moreRecords', 'desk.ready && desk.actionTotal === 0 && !error && !newReplies', '(desk.actionTotal ?? 0) > 0', "tr('SessionWorkLedgerNoDecision')", "tr('StartPlanning')", "tr('PlanningSteps')", "tr('RecordsStale')"])
     expect(section('briefingView')).not.toMatch(/currentMessages|message\.text|askConfirm\(/)
     contains(section('decisionView'), ["entry.kind === 'plan'", 'openPlan(data)', "entry.kind === 'approval' ? 'approvals' : 'overview'", "'ReadAndAnswer'", "'ReviewPlan'"])
     expect(section('decisionView')).not.toMatch(/askConfirm|call\(/)
@@ -163,7 +165,9 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(recognizes({ scope: { kind: 'superagent-ledger', otherSessions: 'not-included' } })).toBe(true)
     const top = workspace.slice(workspace.indexOf("h('header', { className: 'saw-top' }"), workspace.indexOf("h('details', { className: 'saw-boundary' }"))
     expect(top).toContain("className: 'saw-coverage'") // not hidden with the mobile board
-    contains(workspace, ["className: 'saw-coverage'", "tr(boardScopeKnown ? 'OtherSessionsNotIncluded' : 'BoardScopeUnknown')", "!boardScopeKnown ? tr('CountsScopeUnknown')", "!boardScopeKnown ? 'CoveragePendingHint' : desk.idle ? 'DescribeOutcome' : 'ProgressOnBoard'", "!boardScopeKnown ? 'EmptyColumnUnknownScope'", "board?.filtered ? 'EmptyFilteredColumn' : 'EmptyColumn'", "'NoLoadedTasks'"])
+    contains(workspace, ["className: 'saw-coverage'", "sessionCoverage === 'ready' ? 'SessionWorkCoverageReady'", "!boardScopeKnown ? tr('CountsScopeUnknown')", "!boardScopeKnown ? 'CoveragePendingHint' : 'SessionWorkLedgerHint'", "!boardScopeKnown ? 'EmptyColumnUnknownScope'", "board?.filtered ? 'EmptyFilteredColumn' : 'EmptyColumn'", "'NoLoadedTasks'"])
+    expect(section('sessionCoverage')).toContain("sessionWork?.scope === 'current-host'")
+    expect(section('briefingView')).toContain('sessionWorkPreview()')
     expect(section('briefingView')).not.toContain('text(desk.recordTotal)') // plans are not Ticket counts
     expect(zh.wAllCounts).toBe('超管已登记任务')
     expect(zh.wFilteredCounts).toContain('已登记任务')

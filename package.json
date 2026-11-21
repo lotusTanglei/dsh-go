@@ -20,6 +20,7 @@
     "./kanban-s1-probe": "./probes/kanban/s1-host.cjs",
     "./kanban-s3-probe": "./probes/kanban/s3-host.cjs",
     "./kanban-s4-probe": "./probes/kanban/s4-host.cjs",
+    "./session-work-probe": "./probes/kanban/session-work-host.cjs",
     "./kanban-indirect-probe": "./probes/kanban/s0-indirect.cjs",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
@@ -29,7 +30,7 @@
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-chat"] }
   },
-  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md", "integrations/wecom-readonly", "docs/WECOM-DOCUMENT-SOURCE.md"],
+  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md", "integrations/wecom-readonly", "docs/WECOM-DOCUMENT-SOURCE.md", "docs/KANBAN-SESSION-COVERAGE.md"],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

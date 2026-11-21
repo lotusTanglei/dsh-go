@@ -20,13 +20,15 @@ export interface PluginContext {
   agents?: RuntimeContext['agents']
   subagents?: RuntimeContext['subagents']
   sessionQuery?: RuntimeContext['sessionQuery']
+  sessionProjections?: RuntimeContext['sessionProjections']
+  remoteAccess?: RuntimeContext['remoteAccess']
   sessions?: RuntimeContext['sessions']
   agentDefaultModel?: RuntimeContext['agentDefaultModel']
   llm?: RuntimeContext['llm']
   on?: RuntimeContext['on']
 }
 
-export const inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagents', 'sessionQuery', 'sessions', 'llm']
+export const inject = ['tools', 'agentPresets', 'connection', 'agents', 'subagents', 'sessionQuery', 'sessions', 'llm', 'sessionProjections', 'remoteAccess']
 
 export function apply(ctx: PluginContext, input: Config): void {
   const config = resolveConfig(input)

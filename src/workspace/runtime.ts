@@ -15,6 +15,7 @@ import type { DocumentOriginAuthority } from './document-origin.js'
 export function createWorkspaceRuntime(store: Store, config: Config, policy: Policy, ports: {
   ctx: any; mainId: string; source: SessionSource; engine: any
   documentOrigins?: DocumentOriginAuthority
+  sessionWork?: () => Promise<import('../sources/session-work.js').SessionWorkList>
   deliverTicket(id: string): Promise<void>; approvalsReady(id: string): boolean; mandateValid(row: any): boolean
 }) {
   const { ctx, mainId, source, engine } = ports
@@ -99,6 +100,7 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
         capabilities: { conversation: true, send: available && !config.paused && !engine.paused(), workerExecution: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' },
         documentSources: config.sources.filter(row => row.kind === 'wecom-document').map(row => ({ id: row.id, sheet: (row as import('../config.js').WecomDocumentConfig).sheet, range: (row as import('../config.js').WecomDocumentConfig).range })),
         briefing: readWorkspaceBriefing(store),
+        ...(ports.sessionWork ? { sessionWork: await ports.sessionWork().catch((): import('../sources/session-work.js').SessionWorkList => ({ state: 'unavailable' as const, sampledAt: Date.now(), scope: 'current-host' as const, defaultIncluded: true as const, total: null, excludedTotal: null, internalTotal: null, items: [], hasMore: false, error: 'session_work_unavailable' as const })) } : {}),
         admissions: page, admissionsTotal: plans.length, pendingPlans: plans.filter(row => row.state === 'pending').length, ...(offset + page.length < plans.length ? { admissionsNext: page.at(-1)!.planId } : {}), pendingApprovals: Number(store.db.prepare("SELECT COUNT(*) n FROM approval WHERE state='pending'").get()?.n ?? 0) }
     },
     async conversation(input: { epoch: string; after?: string; before?: string; limit?: number }) {

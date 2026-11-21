@@ -57,6 +57,8 @@ export interface PanelPorts {
   readonly sources?: () => unknown | Promise<unknown>
   /** Runtime verifies the current epoch; list/detail are local observations, scan is explicit only. */
   readonly documentSource?: (input: any) => Promise<unknown>
+  /** Passive current-Host observations and persistent membership only; runtime checks epoch/revision. */
+  readonly sessionWork?: (input: any) => Promise<unknown>
   /** Exact local evidence only; never resolves a caller-provided path, URL, or tool. */
   readonly documentImage?: (input: any) => Promise<{ bytes: Buffer; mimeType: string }>
   readonly settings?: () => readonly EffectiveSetting[] | Promise<readonly EffectiveSetting[]>
@@ -74,7 +76,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/document-source', '/document-image'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/document-source', '/document-image', '/session-work'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -126,6 +128,27 @@ function documentData(value: unknown, depth = 0): unknown {
     return /token|secret|password|credential|authorization|cookie|raw|payload|workdir|path|url/i.test(key) ? [] : [[key, ['itemKey', 'revision', 'evidenceDigest', 'configVersion', 'digest', 'cursor'].includes(key) && validHash(item) ? item : documentData(item, depth + 1)]]
   }))
   return sanitize(value, depth)
+}
+function validWorkId(value: unknown): value is string { return validId(value) && !value.includes('://') }
+function validWorkCursor(value: unknown): value is string { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,1024}$/.test(value) }
+/** Exact observation DTO only: keep opaque identities/cursors, never arbitrary projections or headers. */
+function sessionWorkData(value: unknown): unknown {
+  if (!isObject(value)) return { state: 'unavailable', scope: 'current-host', items: [], total: null, hasMore: false }
+  const result: Record<string, unknown> = {}
+  for (const key of ['state', 'scope', 'defaultIncluded', 'sampledAt', 'total', 'excludedTotal', 'internalTotal', 'hasMore', 'error', 'included']) {
+    const item = value[key]
+    if (typeof item === 'string' || typeof item === 'boolean' || item === null || typeof item === 'number' && Number.isFinite(item)) result[key] = sanitize(item)
+  }
+  for (const key of ['sessionId', 'revision']) if (validWorkId(value[key])) result[key] = value[key]
+  if (validWorkCursor(value.next)) result.next = value.next
+  if (Array.isArray(value.items)) result.items = value.items.slice(0, 20).filter(item => isObject(item) && validWorkId(item.sessionId)).map(item => {
+    const row: Record<string, unknown> = { sessionId: item.sessionId }
+    // Excluded rows retain only the safe source label and membership metadata.
+    const keys = item.excluded === true ? ['title', 'excluded', 'observedAt'] : ['title', 'objective', 'runtime', 'goalPhase', 'progress', 'nextAction', 'blocker', 'decision', 'observedAt', 'evidence', 'excluded']
+    for (const key of keys) if (typeof item[key] === 'string' || typeof item[key] === 'boolean' || typeof item[key] === 'number' && Number.isFinite(item[key])) row[key] = sanitize(item[key])
+    return row
+  })
+  return result
 }
 function validRaster(bytes: Buffer, mime: string): boolean {
   if (mime === 'image/png') return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
@@ -286,7 +309,9 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     if (input.cursor !== undefined && !validId(input.cursor) || !limitOf(input.limit, 100)) return fail('invalid_input', 'Invalid plan cursor or limit', 400)
     if (!ports.workspace) return fail('workspace_unavailable', 'Workspace is unavailable', 503)
     const data = await ports.workspace(input) as any
-    return ok({ ...data, admissions: Array.isArray(data?.admissions) ? data.admissions.map(reviewPlan) : [] })
+    const { sessionWork, ...rest } = data || {}
+    const safe = sanitize({ ...rest, admissions: Array.isArray(data?.admissions) ? data.admissions.map(reviewPlan) : [] }) as Record<string, unknown>
+    return json({ ok: true, data: { ...safe, ...(sessionWork !== undefined ? { sessionWork: sessionWorkData(sessionWork) } : {}) } })
   })
   route('/conversation', async request => {
     const parsed = await body(request, ['epoch', 'after', 'before', 'limit']); if (parsed.error) return parsed.error
@@ -483,6 +508,17 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     })
     if (!changed) return fail('conflict', 'Ticket changed concurrently', 409)
     return ok(publicTicket({ ...current, state: transitioned.state, stopped_by_human: action === 'stop', ended_at: transitioned.ended?.at, ended_by: transitioned.ended?.by, outcome: transitioned.ended?.outcome, current_assignment: null, updated_at: transitioned.updatedAt }))
+  })
+  route('/session-work', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'view', 'cursor', 'limit', 'sessionId', 'included', 'revision']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    const shape = input.action === 'list'
+      ? only(input, ['action', 'epoch', 'view', 'cursor', 'limit']) && (input.view === undefined || ['included', 'excluded'].includes(String(input.view))) && (input.cursor === undefined || validWorkCursor(input.cursor)) && (input.limit === undefined || Number.isInteger(input.limit) && Number(input.limit) >= 1 && Number(input.limit) <= 20)
+      : input.action === 'set-included' && only(input, ['action', 'epoch', 'sessionId', 'included', 'revision']) && validWorkId(input.sessionId) && typeof input.included === 'boolean' && validWorkId(input.revision)
+    if (!shape || !validId(input.epoch)) return fail('invalid_input', 'Session work request fields are invalid', 400)
+    if (!ports.sessionWork) return fail('session_work_unavailable', 'Session work is unavailable', 503)
+    // This port can only observe or change membership; it cannot control/open a Session or create a Ticket.
+    return json({ ok: true, data: sessionWorkData(await ports.sessionWork(input)) })
   })
   route('/document-source', async request => {
     const parsed = await body(request, ['action', 'epoch', 'sourceId', 'itemKey', 'revision', 'cursor', 'evidenceDigest', 'decision']); if (parsed.error) return parsed.error
