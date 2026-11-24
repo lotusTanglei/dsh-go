@@ -22,7 +22,7 @@ import { createWorkspaceRuntime } from './workspace/runtime.js'
 import { createScopePreferences } from './workspace/scope-preferences.js'
 import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
-import { createDeliveries } from './workspace/deliveries.js'
+import { createDeliveries, type DeliveryDispatchRecord } from './workspace/deliveries.js'
 import { createStageModels, type StageCallConfig, type StageCatalogPort, type StageModelInfo } from './workspace/stage-models.js'
 import { createStageCallHost, createStageLocateService, type StageCallHost, type StageLlmHost, type StageLocateService } from './workspace/stage-call.js'
 import { WorkspaceError } from './workspace/commands.js'
@@ -56,6 +56,25 @@ function deliverySeen(snapshot: any, messageId: string): boolean {
   return Boolean(Array.isArray(snapshot?.events) && snapshot.events.some((event: any) =>
     event?.type === 'user/message' && event.data?.id === messageId
     || event?.type === 'agent/inbox/spliced' && Array.isArray(event.data?.inserted) && event.data.inserted.some((item: any) => item?.id === messageId)))
+}
+/** Real interruption evidence from the target's committed log: an aborted/interrupted turn that
+ * ended at or after the stop fence. Another actor's older abort never lends evidence to this stop.
+ */
+function stopAbortEvidence(snapshot: any, since: number): 'turn-aborted' | undefined {
+  if (!Array.isArray(snapshot?.events)) return undefined
+  for (const event of snapshot.events) {
+    if (event?.type !== 'turn/end' || event.data?.reason?.kind !== 'aborted' && event.data?.reason?.kind !== 'interrupted') continue
+    // An undated or older abort is never evidence for this stop fence.
+    if (typeof event.time !== 'number' || !Number.isFinite(event.time) || event.time < since) continue
+    return 'turn-aborted'
+  }
+  return undefined
+}
+/** An open turn (start without a later end) means the stop cannot be claimed as effective yet. */
+function hasOpenTurn(snapshot: any): boolean {
+  if (!Array.isArray(snapshot?.events)) return false
+  const start = snapshot.events.findLastIndex((event: any) => event?.type === 'turn/start')
+  return start >= 0 && !snapshot.events.slice(start + 1).some((event: any) => event?.type === 'turn/end')
 }
 
 /** Every tool execution obtains a fresh trusted DB snapshot, not model-supplied ids. */
@@ -93,6 +112,11 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   let heartbeat: number | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   const audit = (action: string, detail: unknown, ticket?: string) => store.repos.audit.insert({ at: Date.now(), actor: 'superagent', action, ticket_id: ticket ?? null, thread_key: null, detail })
+  // Stop audit carries the human operator and the exact reason (redacted by the store's audit sink).
+  const auditStop = (record: Readonly<DeliveryDispatchRecord>, reason: string, detail: Record<string, unknown>) => {
+    audit('session_stop', { by: 'human', sessionId: record.target.sessionId, requestId: record.requestId, confirmationId: record.confirmationId,
+      operation: 'stop', reason: typeof reason === 'string' ? reason.slice(0, 2000) : '', ...detail })
+  }
   const track = (task: Promise<unknown>) => { tasks.add(task); void task.catch(() => { if (!disposed) audit('runtime_error', { code: 'SA_RUNTIME_FAILURE' }) }).finally(() => tasks.delete(task)) }
   const sendRouter = async (text: string, wake = false, id?: string) => { if (!mainId) throw new Error('runtime: Router not ready'); const agent = ctx.agents.get(mainId); if (!agent) throw new Error('runtime: Router missing'); const value = { ...message(text), ...(id ? { id } : {}) }; await (wake ? agent.followup(value) : agent.inject(value)) }
   const engine = createEngine(store, { get policy() { return policy }, queueLimit: config.queueLimit, maxEvalRequeues: config.maxEvalRequeues, outbox: { maxRetries: config.outboxMaxAttempts, backoffMs: config.outboxBackoffMs, backoffMaxMs: config.outboxBackoffMaxMs, onDropped: row => audit('outbox_dropped', { id: row.id }) } }, {
@@ -464,7 +488,38 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (disposed) return { state: 'blocked', code: 'delivery_unavailable' }
         // A cold target is an explicit block for this issue; #6 owns any cold wake-up.
         const agent = ctx.agents.get(record.target.sessionId)
-        if (!agent) return { state: 'blocked', code: 'delivery_target_cold' }
+        if (!agent) {
+          if (record.operation === 'stop') auditStop(record, text, { outcome: 'cold', code: 'delivery_target_cold' })
+          return { state: 'blocked', code: 'delivery_target_cold' }
+        }
+        if (record.operation === 'stop') {
+          // A stop sends no message and wakes nothing. One Host cancel call, then real evidence.
+          if (typeof agent.cancel !== 'function') { auditStop(record, text, { outcome: 'blocked', code: 'delivery_stop_unavailable' }); return { state: 'blocked', code: 'delivery_stop_unavailable' } }
+          let before: any
+          try { before = await ctx.sessionQuery.readSession(record.target.sessionId) } catch { before = undefined }
+          try { await agent.cancel({ kind: 'user' }) } catch {
+            auditStop(record, text, { outcome: 'unknown', code: 'delivery_dispatch_unknown' })
+            return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
+          }
+          try {
+            // A stop's evidence is the Host cancellation plus the target's turn state, not a message
+            // durability barrier: the delivery flush contract belongs to the three text operations.
+            const after = await ctx.sessionQuery.readSession(record.target.sessionId)
+            // An observed aborted turn is the strongest evidence. Otherwise a Host-confirmed cancel
+            // counts only if no turn remains open; a still-running turn stays honestly unknown.
+            const abort = stopAbortEvidence(after, record.at)
+            if (abort) { auditStop(record, text, { outcome: 'interrupted', evidence: abort }); return { state: 'interrupted', stopEvidence: abort } }
+            if (hasOpenTurn(after)) {
+              auditStop(record, text, { outcome: 'unknown', code: 'delivery_stop_turn_still_open' })
+              return { state: 'dispatch_unknown', code: 'delivery_stop_turn_still_open' }
+            }
+            auditStop(record, text, { outcome: 'interrupted', evidence: 'cancel-accepted', activeBefore: Boolean(before && (hasOpenTurn(before) || agent.status === 'running')) })
+            return { state: 'interrupted', stopEvidence: 'cancel-accepted' }
+          } catch {
+            auditStop(record, text, { outcome: 'unknown', code: 'delivery_dispatch_unknown' })
+            return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
+          }
+        }
         // Exact DSH operation semantics: continue wakes, supplement rides the next step, steer corrects.
         const value = { ...message(text), id: record.messageId, source: { kind: 'superagent', form: 'notice', summary: 'Superagent delivery' } }
         try {
@@ -476,16 +531,26 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         try {
           if (!ctx.sessions || await ctx.sessions.flush(agent.session) !== true) return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
           const snapshot = await ctx.sessionQuery.readSession(record.target.sessionId)
-          if (!deliverySeen(snapshot, record.messageId)) return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
+          if (!deliverySeen(snapshot, record.messageId!)) return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
           return { state: 'accepted' }
         } catch { return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' } }
       },
       async evidence(record) {
         try {
           const snapshot = await ctx.sessionQuery.readSession(record.target.sessionId)
-          if (!deliverySeen(snapshot, record.messageId)) return undefined
+          if (record.operation === 'stop') {
+            const abort = stopAbortEvidence(snapshot, record.at)
+            if (!abort) {
+              // Without an abort event a crash-left stop stays unknown: a call that may never have
+              // reached the Host is never promoted to "interrupted" from local metadata alone.
+              return undefined
+            }
+            return { dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId,
+              digest: record.digest, durable: true, interrupted: true, stopEvidence: abort }
+          }
+          if (!deliverySeen(snapshot, record.messageId!)) return undefined
           return { dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId,
-            digest: record.digest, messageId: record.messageId, durable: true, accepted: true }
+            digest: record.digest, messageId: record.messageId!, durable: true, accepted: true }
         } catch { return undefined }
       },
     })

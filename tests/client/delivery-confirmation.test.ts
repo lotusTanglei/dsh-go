@@ -38,18 +38,21 @@ function receipt(input: any, state = 'prepared', extra: any = {}) {
 }
 function dispatchReceipt(input: any, state = 'accepted', extra: any = {}) {
   const dispatchId = `00000000-0000-4000-8000-${'9'.repeat(12)}`
-  return { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, dispatchId, messageId: `go:${dispatchId}`,
+  const stop = input.operation === 'stop'
+  return { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, dispatchId, ...(stop ? {} : { messageId: `go:${dispatchId}` }),
     operation: input.operation, target: { ...input.target, project: { kind: 'project', key: 'project-one' } }, digest: deliveryDigest(input),
     bodyBytes: new TextEncoder().encode(input.text).length, images: input.images.map((item: any) => ({ ...item })),
-    seq: state === 'accepted' ? 2 : 2, at: 200, updatedAt: 201, state, durable: true, humanConfirmed: true,
-    delivered: state === 'accepted', accepted: state === 'accepted', executed: state === 'blocked' ? false : null, completed: state === 'blocked' ? false : null,
-    disposition: state === 'accepted' ? 'target-durable-receipt' : state === 'blocked' ? 'not-dispatched' : 'reconcile-only', ...extra }
+    seq: state === 'accepted' || state === 'interrupted' ? 2 : 2, at: 200, updatedAt: 201, state, durable: true, humanConfirmed: true,
+    delivered: state === 'accepted', accepted: state === 'accepted', interrupted: state === 'interrupted',
+    executed: state === 'blocked' ? false : null, completed: state === 'blocked' ? false : null,
+    disposition: state === 'accepted' ? 'target-durable-receipt' : state === 'interrupted' ? 'stop-interrupted' : state === 'blocked' ? 'not-dispatched' : 'reconcile-only',
+    ...(stop && state === 'interrupted' ? { stopEvidence: 'turn-aborted' } : {}), ...extra }
 }
 const stageLocated = (target = row(), revision = scope, code?: string) => ({ version: 1, status: 'located', ...(code ? { code } : {}), stage: null, intent: { action: 'continue', confidence: 0.9 }, receipt: null, locate: located(target, revision) })
 function harness() {
   const calls: any[] = [], events: any[] = [], draft = { draft: 'Main draft must not change', target: { id: 'main-target' }, pending: { requestId: 'main-request' } }
   let id = 0
-  const target = row()
+  const target = row(), updates: any[] = [], notices: string[] = [], navigations: string[] = []
   const g: any = {
     array, TextEncoder, crypto: webcrypto, h, button, React: { Fragment: 'fragment' }, text, time: String,
     tr: (key: string) => key, mintId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
@@ -59,7 +62,9 @@ function harness() {
     imageDraftsRef: { current: {} },
     scopeProjectKey: (p: any) => p?.kind === 'project' && p.key ? `project:${p.key}` : p?.kind === 'unassigned' ? 'unassigned' : '',
     scopeProjectName: (p: any) => p?.name || p?.key, sessionSourceTitle: (value: any) => value.title,
-    composerRef: { current: draft }, updateComposer: () => { throw new Error('Delivery must not change main composer') },
+    composerRef: { current: draft }, updates, notices, navigations,
+    updateComposer: (value: any) => { updates.push(value) }, navigatePrimary: (tab: string) => { navigations.push(tab) }, setNotice: (value: string) => { notices.push(value) },
+    inputRef: { current: null }, draftEpochRef: { current: 'epoch-one' }, imageBusyRef: { current: null },
     setDeliveries: (value: any) => { g.deliveries = value; events.push(value) },
     setLocateResult: (value: any) => { g.locateResultRef.current = value; events.push(value) }, setLocateBusy: (value: any) => { g.locateBusy = value }, setLocateError: (value: any) => { g.locateError = value; events.push(value) },
     call: async (path: string, input: any) => {
@@ -72,9 +77,11 @@ function harness() {
       return receipt(input, 'prepared')
     },
   }
-  for (const name of ['sessionActionKey', 'currentSessionAction', 'deliveryKey', 'currentDelivery', 'deliveryDraftText', 'deliveryOperation', 'deliveryImageRefs',
+  for (const name of ['sessionActionKey', 'currentSessionAction', 'deliveryKey', 'currentDelivery', 'deliveryDraftText', 'deliveryStopReason', 'deliveryOperation',
+    'selectDeliveryOperation', 'editDeliveryStopReason', 'deliveryImageRefs',
     'deliveryPayload', 'deliveryDigest', 'saveDelivery', 'validDeliveryReceipt', 'deliveryStatusName', 'deliveryOperationName', 'deliverySummary',
-    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'deliveryConfirmationView', 'resetLocate',
+    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'prepareAgainDelivery',
+    'recreateFromStoppedDelivery', 'deliveryConfirmationView', 'resetLocate',
     'stageLocateEvidence', 'readLocate']) g[name] = closure(name, g)
   const edit = (textValue = '  本次人类文字\r\nKeep Unicode 🧭 exactly  ', operation = 'continue') => {
     const current = g.currentDelivery()
@@ -87,7 +94,7 @@ function harness() {
     g.imageDraftsRef.current = { ...g.imageDraftsRef.current, [epoch]: { epoch, draftId: 'draft-one', selected: '', target: { ...current.target, project: { ...current.target.project } }, items: overrides.items || [item] } }
     return item
   }
-  return { g, calls, events, draft, target, edit, bindImage, minted: () => id }
+  return { g, calls, events, draft, target, edit, bindImage, updates, notices, navigations, minted: () => id }
 }
 
 // Execute the actual extracted closures and interaction contracts; no DOM or visual claim.
@@ -153,9 +160,10 @@ describe('pre-delivery confirmation card UI contracts', () => {
     await g.confirmDelivery(key)
     expect(calls).toHaveLength(1)
     expect(g.deliveries[key]).toMatchObject({ status: 'draft', pending: null, receipt: null, error: 'DeliveryContentChanged' })
-    g.sessionActionsRef.current = { ...g.sessionActionsRef.current, [key]: { ...draftEntry, operation: 'supplement' } }
+    g.selectDeliveryOperation(key, 'supplement')
     await g.prepareDelivery()
-    expect(calls).toHaveLength(2); expect(g.deliveries[key]).toMatchObject({ status: 'prepared', receipt: { operation: 'supplement' } })
+    expect(calls).toHaveLength(2); expect(calls[1].input.operation).toBe('supplement'); expect(g.deliveries[key]).toMatchObject({ status: 'prepared', receipt: { operation: 'supplement' } })
+    g.selectDeliveryOperation(key, 'resume'); expect(g.deliveries[key].operation).toBe('supplement')
   })
 
   it('invalidates the prepared object when bound images change, keeping the draft intact', async () => {
@@ -384,3 +392,142 @@ describe('confirmed delivery dispatch UI contracts', () => {
   })
 })
 
+
+describe('stop operation in the same confirmation card (human confirm, real Host evidence, honest states)', () => {
+  const stopEntry = (h: ReturnType<typeof harness>, reason = 'Owner stopped this conversation') => {
+    const key = h.g.currentDelivery().key
+    h.g.selectDeliveryOperation(key, 'stop')
+    h.g.editDeliveryStopReason(key, reason)
+    expect(JSON.stringify(h.g.deliveryConfirmationView())).toContain('DeliveryStopHint')
+    expect(JSON.stringify(h.g.deliveryConfirmationView())).toContain('DeliveryStopReason')
+    return key
+  }
+  const buttons = (view: any) => nodes(view).filter(node => node.tag === 'button').map(node => node.children[0])
+
+  it('prepares an empty-body stop, confirms the consequence, dispatches once and renders interrupted with recreate entry', async () => {
+    const h = harness(), key = stopEntry(h)
+    await h.g.prepareDelivery()
+    expect(h.calls).toHaveLength(1)
+    expect(h.calls[0].input).toMatchObject({ action: 'prepare', operation: 'stop', text: 'Owner stopped this conversation', images: [] })
+    expect(h.g.deliveries[key]).toMatchObject({ status: 'prepared', receipt: { operation: 'stop', bodyBytes: new TextEncoder().encode('Owner stopped this conversation').length } })
+    const prepared = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(prepared).toContain('DeliveryStopConfirmSummary'); expect(prepared).toContain('DeliveryStopConfirmHint')
+    expect(buttons(h.g.deliveryConfirmationView())).not.toContain('DeliveryComplete')
+    await h.g.confirmDelivery(key)
+    expect(h.g.deliveries[key].receipt).toMatchObject({ state: 'confirmed', delivered: false, accepted: false })
+    expect(JSON.stringify(h.g.deliveryConfirmationView())).toContain('DeliveryStopDispatch')
+    h.g.call = async (path: string, input: any) => {
+      h.calls.push({ path, input })
+      if (input.action === 'dispatch') return dispatchReceipt(input, 'interrupted')
+      return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared')
+    }
+    await h.g.dispatchDelivery(key)
+    expect(h.calls.map(value => value.input?.action)).toEqual(['prepare', 'confirm', 'dispatch'])
+    expect(h.g.deliveries[key]).toMatchObject({ dispatchStatus: 'interrupted',
+      dispatch: { state: 'interrupted', accepted: false, delivered: false, interrupted: true, executed: null, completed: null, disposition: 'stop-interrupted', stopEvidence: 'turn-aborted' } })
+    expect(h.g.deliveries[key].dispatch.messageId).toBeUndefined()
+    const view = h.g.deliveryConfirmationView(), content = JSON.stringify(view)
+    expect(content).toContain('DeliveryStopInterrupted'); expect(content).toContain('DeliveryStopInterruptedHint')
+    expect(content).toContain('DeliveryStopEvidenceTurn'); expect(content).not.toContain('DeliveryAccepted')
+    expect(content).toContain('RecreateTask')
+    // Same confirmed stop replays the stored receipt; the Host is never asked to cancel twice.
+    await h.g.dispatchDelivery(key)
+    expect(h.calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(1)
+  })
+
+  it('renders a cold stop as blocked without retry, then allows one fresh human confirmation', async () => {
+    const h = harness(), key = stopEntry(h, '')
+    h.g.call = async (path: string, input: any) => {
+      h.calls.push({ path, input })
+      if (input.action === 'dispatch') return dispatchReceipt(input, 'blocked', { code: 'delivery_target_cold' })
+      return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared')
+    }
+    await h.g.prepareDelivery(); await h.g.confirmDelivery(key); await h.g.dispatchDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ dispatchStatus: 'blocked', error: 'DeliveryStopTargetCold', dispatch: { state: 'blocked', code: 'delivery_target_cold', accepted: false, delivered: false } })
+    const blocked = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(blocked).toContain('DeliveryStopTargetCold'); expect(blocked).toContain('DeliveryStopBlockedHint'); expect(blocked).not.toContain('DeliveryStopInterrupted')
+    await h.g.dispatchDelivery(key)
+    expect(h.calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(1)
+    // A blocked fence is terminal for its exact IDs; retry means a new human confirmation.
+    h.g.prepareAgainDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ status: 'draft', dispatch: undefined, operation: 'stop', stopReason: '' })
+    await h.g.prepareDelivery()
+    const prepares = h.calls.filter(value => value.input?.action === 'prepare')
+    expect(prepares).toHaveLength(2)
+    expect(prepares[1].input.operation).toBe('stop'); expect(prepares[1].input.text).toBe('')
+    expect(prepares[1].input.requestId).not.toBe(prepares[0].input.requestId)
+    expect(prepares[1].input.confirmationId).not.toBe(prepares[0].input.confirmationId)
+  })
+
+  it('keeps an uncertain stop unknown and reconciles only the original dispatch', async () => {
+    const h = harness(), key = stopEntry(h)
+    await h.g.prepareDelivery(); await h.g.confirmDelivery(key)
+    h.g.call = async (path: string, input: any) => {
+      h.calls.push({ path, input })
+      if (input.action === 'dispatch') throw new Error('lost cancel reply')
+      return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared')
+    }
+    await h.g.dispatchDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ status: 'confirmed', dispatchStatus: 'dispatch_unknown', error: 'DeliveryStopUnknown' })
+    const unknown = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(unknown).toContain('DeliveryStopUnknown'); expect(unknown).toContain('DeliveryQueryDispatch'); expect(unknown).not.toContain('DeliveryStopInterrupted')
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input }); return dispatchReceipt(input, 'interrupted', { seq: 3, at: 200, updatedAt: 210 }) }
+    await h.g.dispatchDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ dispatchStatus: 'interrupted', dispatch: { state: 'interrupted', seq: 3 } })
+    expect(h.calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(2)
+    expect(h.g.deliveries[key].dispatch.requestId).toBe(h.g.deliveries[key].pending.requestId)
+  })
+
+  it('rejects forged stop receipts instead of claiming interruption', async () => {
+    for (const forged of [
+      { state: 'interrupted', accepted: true, delivered: true },
+      { state: 'interrupted', messageId: 'go:00000000-0000-4000-8000-000000000009' },
+      { state: 'interrupted', stopEvidence: undefined },
+      { state: 'accepted', interrupted: false, accepted: true, delivered: true },
+    ]) {
+      const h = harness(), key = stopEntry(h)
+      await h.g.prepareDelivery(); await h.g.confirmDelivery(key)
+      h.g.call = async (path: string, input: any) => { h.calls.push({ path, input }); return { ...dispatchReceipt(input, 'interrupted'), ...forged } }
+      await h.g.dispatchDelivery(key)
+      expect(h.g.deliveries[key].dispatch, JSON.stringify(forged)).toBeUndefined()
+      expect(h.g.deliveries[key].dispatchStatus).toBe('dispatch_unknown')
+      expect(JSON.stringify(h.g.deliveryConfirmationView())).not.toContain('DeliveryStopInterrupted')
+    }
+  })
+
+  it('new-task entry from an interrupted stop copies the requirement and never sends a session recreateFrom', async () => {
+    const h = harness(), key = stopEntry(h)
+    await h.g.prepareDelivery(); await h.g.confirmDelivery(key)
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input }); return dispatchReceipt(input, 'interrupted') }
+    await h.g.dispatchDelivery(key)
+    const recreate = nodes(h.g.deliveryConfirmationView()).find(node => node.tag === 'button' && node.children[0] === 'RecreateTask')
+    expect(recreate).toBeDefined()
+    // The explicit entry refuses to silently replace an occupied main draft.
+    recreate.props.onClick(); expect(h.updates).toEqual([])
+    h.g.composerRef.current = { draft: '', pending: null, target: null, origin: null }
+    recreate.props.onClick()
+    expect(h.updates).toHaveLength(1)
+    expect(h.updates[0]).toMatchObject({ intent: 'new-task', target: null, draft: 'Same session title', origin: { id: 'session-one', source: 'session', title: 'Same session title' } })
+    expect(h.navigations).toEqual(['chat'])
+    expect(h.draft.draft).toBe('Main draft must not change')
+    expect(h.calls.map(value => value.input?.action)).toEqual(['prepare', 'confirm', 'dispatch'])
+    // The growing origin chip keeps the source visible; only ticket origins may become recreateFrom.
+    expect(initializer('recreate')).toContain("source: 'ticket'")
+    expect(initializer('submit')).toContain("saved.origin.source !== 'session'")
+    expect(initializer('submit')).toContain('recreateFrom: saved.origin.id')
+    expect(initializer('recreateFromStoppedDelivery')).not.toMatch(/call\('delivery'|call\('command'|call\('session-action'/)
+  })
+
+  it('ships localized stop copy for the consequence, three honest states and the new-task entry', () => {
+    const languages = ['zh', 'en'].map(language => JSON.parse(readFileSync(`locale/${language}.json`, 'utf8')).panel)
+    for (const key of ['wSessionActionStop', 'wDeliveryStopHint', 'wDeliveryStopReason', 'wDeliveryStopReasonHint', 'wDeliveryStopNoReason', 'wDeliveryStopConfirmSummary', 'wDeliveryStopConfirmHint',
+      'wDeliveryStopConfirm', 'wDeliveryStopDispatch', 'wDeliveryStopDispatching', 'wDeliveryStopInterrupted', 'wDeliveryStopInterruptedHint', 'wDeliveryStopEvidence',
+      'wDeliveryStopEvidenceTurn', 'wDeliveryStopEvidenceCancel', 'wDeliveryStopUnknown', 'wDeliveryStopBlocked', 'wDeliveryStopBlockedHint', 'wDeliveryStopTargetCold',
+      'wDeliveryStopPrepare', 'wDeliveryStopRecreateHint', 'wDeliveryStopReasonBytes', 'wDeliveryPrepareAgain']) for (const locale of languages) expect(locale[key], key).toBeTruthy()
+    expect(languages[0].wDeliveryStopHint).toContain('不撤销已外发内容'); expect(languages[0].wDeliveryStopHint).toContain('不保证模型已完全停止')
+    expect(languages[1].wDeliveryStopHint).toContain('does not undo content already sent'); expect(languages[1].wDeliveryStopHint).toContain('does not guarantee the model has fully stopped')
+    expect(languages[0].wDeliveryStopInterruptedHint).toContain('不保证'); expect(languages[1].wDeliveryStopInterruptedHint).toContain('does not guarantee')
+    expect(languages[0].wDeliveryStopConfirmHint).toContain('不会撤销已外发内容'); expect(languages[1].wDeliveryStopConfirmHint).toContain('does not undo content already sent')
+    expect(languages[0].wDeliveryStopRecreateHint).toContain('不会被恢复'); expect(languages[1].wDeliveryStopRecreateHint).toContain('not resumed')
+  })
+})

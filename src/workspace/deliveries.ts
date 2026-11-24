@@ -3,7 +3,9 @@ import { encodeJson, type Store } from '../store/index.js'
 import { WorkspaceError } from './commands.js'
 import type { SessionTargetBinding } from './session-actions.js'
 
-export type DeliveryOperation = 'continue' | 'supplement' | 'steer'
+export type DeliveryOperation = 'continue' | 'supplement' | 'steer' | 'stop'
+/** The only honest interruption evidence this slice accepts from the Host adapter. */
+export type DeliveryStopEvidenceKind = 'turn-aborted' | 'cancel-accepted'
 export interface DeliveryImageReference { imageId: string; digest: string; seq: number }
 export interface DeliveryTargetInput { sessionId: string; scopeRevision: string; factRevision: string }
 export interface DeliveryInput {
@@ -24,25 +26,43 @@ export interface DeliveryConfirmationReceipt {
   disposition: 'not-confirmed' | 'confirmed-pending-delivery' | 'canceled'; code?: string
 }
 /** One durable dispatch fence per confirmed confirmation. Raw text is never stored. */
-export type DeliveryDispatchState = 'dispatching' | 'accepted' | 'dispatch_unknown' | 'blocked'
+export type DeliveryDispatchState = 'dispatching' | 'accepted' | 'interrupted' | 'dispatch_unknown' | 'blocked'
 export type DeliveryDispatchTerminalState = Exclude<DeliveryDispatchState, 'dispatching'>
 export interface DeliveryDispatchRecord {
   version: 1; epoch: string; requestId: string; confirmationId: string; dispatchId: string; operation: DeliveryOperation
-  target: SessionTargetBinding; digest: string; messageId: string; seq: number; at: number; updatedAt: number
+  target: SessionTargetBinding; digest: string; seq: number; at: number; updatedAt: number
   state: DeliveryDispatchState; code?: string
+  /** Exact injected message identity for a text delivery; absent for a stop (no message is sent). */
+  messageId?: string
+  /** Present only for stop, and only once real Host interruption evidence exists. */
+  stopEvidence?: DeliveryStopEvidenceKind
 }
-/** accepted means the target has durable evidence of receiving this exact message; never completion. */
+/** accepted means the target has durable evidence of receiving this exact message; never completion.
+ * interrupted means a Host cancel was accepted or an aborted turn was observed; neither proves the
+ * model has fully stopped, and neither undoes content that was already sent.
+ */
 export interface DeliveryDispatchReceipt {
-  version: 1; epoch: string; requestId: string; confirmationId: string; dispatchId: string; messageId: string
+  version: 1; epoch: string; requestId: string; confirmationId: string; dispatchId: string
   operation: DeliveryOperation; target: SessionTargetBinding; digest: string; bodyBytes: number; images: DeliveryImageReference[]
   seq: number; at: number; updatedAt: number; state: DeliveryDispatchTerminalState
-  durable: true; humanConfirmed: true; delivered: boolean; accepted: boolean; executed: boolean | null; completed: boolean | null
-  disposition: 'not-dispatched' | 'reconcile-only' | 'target-durable-receipt'; code?: string
+  durable: true; humanConfirmed: true; delivered: boolean; accepted: boolean; interrupted: boolean
+  executed: boolean | null; completed: boolean | null
+  disposition: 'not-dispatched' | 'reconcile-only' | 'target-durable-receipt' | 'stop-interrupted'
+  messageId?: string; stopEvidence?: DeliveryStopEvidenceKind; code?: string
 }
-export interface DeliveryDispatchDecision { state: DeliveryDispatchTerminalState; code?: string }
-export interface DeliveryDispatchEvidence {
+export interface DeliveryDispatchDecision {
+  state: DeliveryDispatchTerminalState
+  code?: string
+  /** Required for a stop; ignored (and therefore never trusted) for text deliveries. */
+  stopEvidence?: DeliveryStopEvidenceKind
+}
+interface DeliveryMessageEvidence {
   dispatchId: string; confirmationId: string; sessionId: string; digest: string; messageId: string; durable: true; accepted: true
 }
+interface DeliveryStopEvidence {
+  dispatchId: string; confirmationId: string; sessionId: string; digest: string; durable: true; interrupted: true; stopEvidence: DeliveryStopEvidenceKind
+}
+export type DeliveryDispatchEvidence = DeliveryMessageEvidence | DeliveryStopEvidence
 export interface DeliveryPorts {
   requireEpoch(epoch: string): void
   /** Must read current authorized facts. A returned binding is not an execution grant. */
@@ -51,28 +71,32 @@ export interface DeliveryPorts {
   images?(input: { epoch: string; references: readonly DeliveryImageReference[]; target: DeliveryTargetInput }): Promise<{ references: readonly DeliveryImageReference[]; fence(): void }>
   /**
    * Host-owned live control adapter, invoked once after the durable dispatch fence.
-   * `accepted` requires durable evidence at the target; a cold target is `blocked` without
-   * any resume; an ambiguous Host call is `dispatch_unknown`, never retried.
+   * A text delivery is `accepted` only with durable target evidence; a stop is `interrupted`
+   * only with observed interruption evidence; a cold target is `blocked` without any resume;
+   * an ambiguous Host call is `dispatch_unknown`, never retried.
    */
   dispatch?(record: Readonly<DeliveryDispatchRecord>, text: string): Promise<DeliveryDispatchDecision>
-  /** Read-only durable target evidence lookup by exact message id; never resends. */
+  /** Read-only durable target evidence lookup by exact dispatch identity; never resends or wakes. */
   evidence?(record: Readonly<DeliveryDispatchRecord>): Promise<DeliveryDispatchEvidence | undefined>
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const HASH = /^[a-f0-9]{64}$/, ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/, CODE = /^[A-Za-z][A-Za-z0-9_]{0,95}$/
-const ops: readonly DeliveryOperation[] = ['continue', 'supplement', 'steer']
+const STOP_EVIDENCE_KINDS: readonly DeliveryStopEvidenceKind[] = ['turn-aborted', 'cancel-accepted']
+const ops: readonly DeliveryOperation[] = ['continue', 'supplement', 'steer', 'stop']
 const KIND = 'delivery-confirmation-v1', DISPATCH_KIND = 'delivery-dispatch-v1'
 const key = (id: string) => `delivery-confirmation:v1:${id}`
 const dispatchKey = (id: string) => `delivery-dispatch:v1:${id}`
 const requestKey = (epoch: string, requestId: string) => `delivery-request:v1:${hash([epoch, requestId])}`
-const MAX_TEXT = 16_384, MAX_IMAGES = 5
+const MAX_TEXT = 16_384, MAX_STOP_REASON = 2000, MAX_IMAGES = 5
 const plain = (value: unknown): value is Record<string, any> => Boolean(value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)))
 const only = (value: Record<string, any>, keys: string[]) => Object.keys(value).every(name => keys.includes(name)) && Object.getOwnPropertySymbols(value).length === 0
 const id = (value: unknown): value is string => typeof value === 'string' && ID.test(value) && !value.includes('://')
 const uuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value)
 const digestValid = (value: unknown): value is string => typeof value === 'string' && HASH.test(value)
 const codeValid = (value: unknown): value is string => typeof value === 'string' && CODE.test(value)
-const textValid = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && !value.includes('\0') && Buffer.byteLength(value, 'utf8') <= MAX_TEXT
+const stopEvidenceValid = (value: unknown): value is DeliveryStopEvidenceKind => typeof value === 'string' && (STOP_EVIDENCE_KINDS as readonly string[]).includes(value)
+const messageTextValid = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && !value.includes('\0') && Buffer.byteLength(value, 'utf8') <= MAX_TEXT
+const stopReasonValid = (value: unknown): value is string => typeof value === 'string' && !value.includes('\0') && Buffer.byteLength(value, 'utf8') <= MAX_STOP_REASON
 const integer = (value: unknown, min = 0): value is number => Number.isSafeInteger(value) && (value as number) >= min
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 function fail(code: string, status = 409): never { throw new WorkspaceError(code, status) }
@@ -96,9 +120,12 @@ const freeze = <T>(value: T): T => {
 const sameTarget = (a: DeliveryTargetInput, b: DeliveryTargetInput) => a.sessionId === b.sessionId && a.scopeRevision === b.scopeRevision && a.factRevision === b.factRevision
 
 export function validDeliveryInput(value: unknown): value is DeliveryInput {
-  return plain(value) && only(value, ['epoch', 'requestId', 'confirmationId', 'operation', 'text', 'target', 'images'])
+  if (!(plain(value) && only(value, ['epoch', 'requestId', 'confirmationId', 'operation', 'text', 'target', 'images'])
     && id(value.epoch) && uuid(value.requestId) && uuid(value.confirmationId) && ops.includes(value.operation)
-    && textValid(value.text) && targetValid(value.target) && imagesValid(value.images)
+    && targetValid(value.target) && imagesValid(value.images))) return false
+  // A stop carries no delivered body. Its text is an optional human reason, never a message.
+  if (value.operation === 'stop') return stopReasonValid(value.text) && value.images.length === 0
+  return messageTextValid(value.text)
 }
 export function deliveryDigest(value: DeliveryInput): string {
   // Exact Unicode/newline semantics. No normalization or redacted replay copy.
@@ -109,25 +136,48 @@ export function deliveryDigest(value: DeliveryInput): string {
 function recordValid(value: unknown): value is DeliveryConfirmationRecord {
   if (!plain(value) || !only(value, ['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code'])
     || value.version !== 1 || !id(value.epoch) || !uuid(value.requestId) || !uuid(value.confirmationId) || !ops.includes(value.operation)
-    || !bindingValid(value.target) || !digestValid(value.digest) || !integer(value.bodyBytes, 1) || value.bodyBytes > MAX_TEXT
-    || !imagesValid(value.images) || !integer(value.at) || !integer(value.updatedAt) || value.updatedAt < value.at) return false
+    || !bindingValid(value.target) || !digestValid(value.digest) || !integer(value.bodyBytes) || value.bodyBytes > MAX_TEXT
+    || value.operation !== 'stop' && value.bodyBytes < 1 || value.operation === 'stop' && value.bodyBytes > MAX_STOP_REASON
+    || !imagesValid(value.images) || value.operation === 'stop' && value.images.length > 0
+    || !integer(value.at) || !integer(value.updatedAt) || value.updatedAt < value.at) return false
   const sequence = { prepared: 1, confirmed: 2, canceled: 2 } as Record<string, number>
   if (!(value.state in sequence) || value.seq !== sequence[value.state]) return false
   return (value.code === undefined || codeValid(value.code))
 }
-const dispatchSequence: Record<DeliveryDispatchState, readonly number[]> = { dispatching: [1], accepted: [2, 3], dispatch_unknown: [2], blocked: [2] }
+const dispatchSequence: Record<DeliveryDispatchState, readonly number[]> = { dispatching: [1], accepted: [2, 3], interrupted: [2, 3], dispatch_unknown: [2], blocked: [2] }
 function dispatchRecordValid(value: unknown): value is DeliveryDispatchRecord {
-  return plain(value) && only(value, ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'operation', 'target', 'digest', 'messageId', 'seq', 'at', 'updatedAt', 'state', 'code'])
-    && value.version === 1 && id(value.epoch) && uuid(value.requestId) && uuid(value.confirmationId) && uuid(value.dispatchId) && ops.includes(value.operation)
-    && bindingValid(value.target) && digestValid(value.digest) && value.messageId === `go:${value.dispatchId}`
-    && typeof value.state === 'string' && value.state in dispatchSequence && dispatchSequence[value.state as DeliveryDispatchState].includes(value.seq)
-    && integer(value.at) && integer(value.updatedAt) && value.updatedAt >= value.at
-    && (value.code === undefined || codeValid(value.code))
+  if (!plain(value) || !only(value, ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'operation', 'target', 'digest', 'messageId', 'stopEvidence', 'seq', 'at', 'updatedAt', 'state', 'code'])
+    || value.version !== 1 || !id(value.epoch) || !uuid(value.requestId) || !uuid(value.confirmationId) || !uuid(value.dispatchId) || !ops.includes(value.operation)
+    || !bindingValid(value.target) || !digestValid(value.digest)
+    || typeof value.state !== 'string' || !(value.state in dispatchSequence) || !dispatchSequence[value.state as DeliveryDispatchState].includes(value.seq)
+    || !integer(value.at) || !integer(value.updatedAt) || value.updatedAt < value.at
+    || !(value.code === undefined || codeValid(value.code))) return false
+  const stopEvidence = value.stopEvidence
+  if (stopEvidence !== undefined && !stopEvidenceValid(stopEvidence)) return false
+  if (value.operation === 'stop') {
+    // A stop never produces a message identity and never claims message acceptance.
+    return value.messageId === undefined && value.state !== 'accepted'
+      && (value.state === 'interrupted' ? stopEvidenceValid(stopEvidence) : stopEvidence === undefined)
+  }
+  return value.messageId === `go:${value.dispatchId}` && stopEvidence === undefined && value.state !== 'interrupted'
 }
-const dispatchEvidenceValid = (value: unknown): value is DeliveryDispatchEvidence => plain(value) && only(value, ['dispatchId', 'confirmationId', 'sessionId', 'digest', 'messageId', 'durable', 'accepted'])
-  && uuid(value.dispatchId) && uuid(value.confirmationId) && id(value.sessionId) && digestValid(value.digest)
-  && typeof value.messageId === 'string' && value.messageId === `go:${value.dispatchId}`
-  && value.durable === true && value.accepted === true
+function messageEvidenceValid(value: unknown): value is DeliveryMessageEvidence {
+  return plain(value) && only(value, ['dispatchId', 'confirmationId', 'sessionId', 'digest', 'messageId', 'durable', 'accepted'])
+    && uuid(value.dispatchId) && uuid(value.confirmationId) && id(value.sessionId) && digestValid(value.digest)
+    && typeof value.messageId === 'string' && value.messageId === `go:${value.dispatchId}`
+    && value.durable === true && value.accepted === true
+}
+function stopDispatchEvidenceValid(value: unknown): value is DeliveryStopEvidence {
+  return plain(value) && only(value, ['dispatchId', 'confirmationId', 'sessionId', 'digest', 'durable', 'interrupted', 'stopEvidence'])
+    && uuid(value.dispatchId) && uuid(value.confirmationId) && id(value.sessionId) && digestValid(value.digest)
+    && value.durable === true && value.interrupted === true && stopEvidenceValid(value.stopEvidence)
+}
+function dispatchEvidenceMatches(record: DeliveryDispatchRecord, evidence: DeliveryDispatchEvidence): boolean {
+  return evidence.dispatchId === record.dispatchId && evidence.confirmationId === record.confirmationId
+    && evidence.sessionId === record.target.sessionId && evidence.digest === record.digest
+    // A stop may only cite interruption evidence; a text delivery may only cite a committed message.
+    && (record.operation === 'stop' ? stopDispatchEvidenceValid(evidence) : messageEvidenceValid(evidence) && evidence.messageId === record.messageId)
+}
 function receipt(record: DeliveryConfirmationRecord): DeliveryConfirmationReceipt {
   return freeze({ version: 1 as const, epoch: record.epoch, requestId: record.requestId, confirmationId: record.confirmationId,
     operation: record.operation, target: copyBinding(record.target), digest: record.digest, bodyBytes: record.bodyBytes,
@@ -140,14 +190,16 @@ function receipt(record: DeliveryConfirmationRecord): DeliveryConfirmationReceip
 function dispatchReceipt(record: DeliveryDispatchRecord, confirmation: DeliveryConfirmationRecord): DeliveryDispatchReceipt {
   // `dispatching` is an internal fence; a reader must reconcile it to an honest unknown first.
   if (record.state === 'dispatching') return fail('delivery_dispatch_record_invalid', 503)
-  const accepted = record.state === 'accepted', blocked = record.state === 'blocked'
+  const accepted = record.state === 'accepted', blocked = record.state === 'blocked', interrupted = record.state === 'interrupted'
   return freeze({ version: 1 as const, epoch: record.epoch, requestId: record.requestId, confirmationId: record.confirmationId,
-    dispatchId: record.dispatchId, messageId: record.messageId, operation: record.operation,
+    dispatchId: record.dispatchId, ...(record.messageId === undefined ? {} : { messageId: record.messageId }),
+    operation: record.operation,
     target: copyBinding(record.target), digest: record.digest, bodyBytes: confirmation.bodyBytes, images: copyImages(confirmation.images),
     seq: record.seq, at: record.at, updatedAt: record.updatedAt, state: record.state,
-    durable: true as const, humanConfirmed: true as const, delivered: accepted, accepted,
+    durable: true as const, humanConfirmed: true as const, delivered: accepted, accepted, interrupted,
     executed: blocked ? false : null, completed: blocked ? false : null,
-    disposition: accepted ? 'target-durable-receipt' as const : blocked ? 'not-dispatched' as const : 'reconcile-only' as const,
+    disposition: accepted ? 'target-durable-receipt' as const : interrupted ? 'stop-interrupted' as const : blocked ? 'not-dispatched' as const : 'reconcile-only' as const,
+    ...(record.stopEvidence === undefined ? {} : { stopEvidence: record.stopEvidence }),
     ...(record.code ? { code: record.code } : {}) })
 }
 function metadata(record: DeliveryConfirmationRecord): DeliveryConfirmationRecord {
@@ -159,14 +211,17 @@ function metadata(record: DeliveryConfirmationRecord): DeliveryConfirmationRecor
 function dispatchMetadata(record: DeliveryDispatchRecord): DeliveryDispatchRecord {
   // Strict allowlist contains no body text and no raw caller payload.
   return { version: 1, epoch: record.epoch, requestId: record.requestId, confirmationId: record.confirmationId, dispatchId: record.dispatchId,
-    operation: record.operation, target: copyBinding(record.target), digest: record.digest, messageId: record.messageId,
+    operation: record.operation, target: copyBinding(record.target), digest: record.digest,
+    ...(record.messageId === undefined ? {} : { messageId: record.messageId }), ...(record.stopEvidence === undefined ? {} : { stopEvidence: record.stopEvidence }),
     seq: record.seq, at: record.at, updatedAt: record.updatedAt, state: record.state, ...(record.code ? { code: record.code } : {}) }
 }
 
 /**
  * Human pre-delivery confirmation, then one durable, non-replaying dispatch to the exact confirmed
  * live target. A `confirmed` record has no external effect; `dispatch` performs the single Host
- * control call after persisting a fence and returns only accepted / unknown / blocked evidence.
+ * control call after persisting a fence and returns only accepted / interrupted / unknown / blocked
+ * evidence. `stop` sends no message: it asks the live Host to cancel, and reports `interrupted` only
+ * when the Host adapter returns real interruption evidence (an aborted turn or an accepted cancel).
  * No Agent, Worker, message or Session API is reachable from the confirmation service itself.
  */
 export function createDeliveries(store: Store, ports: DeliveryPorts) {
@@ -213,13 +268,15 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
     if (row.kind !== DISPATCH_KIND || !dispatchRecordValid(value) || value.confirmationId !== confirmationId || row.state !== `v1:${value.seq}`) fail('delivery_dispatch_record_invalid', 503)
     return value
   }
-  function updateDispatch(record: DeliveryDispatchRecord, state: DeliveryDispatchTerminalState, code?: string): DeliveryDispatchRecord {
+  function updateDispatch(record: DeliveryDispatchRecord, state: DeliveryDispatchTerminalState, patch: { code?: string; stopEvidence?: DeliveryStopEvidenceKind } = {}): DeliveryDispatchRecord {
     const transitions: Record<DeliveryDispatchState, readonly DeliveryDispatchState[]> = {
-      dispatching: ['accepted', 'dispatch_unknown', 'blocked'], dispatch_unknown: ['accepted'], accepted: [], blocked: [],
+      dispatching: ['accepted', 'interrupted', 'dispatch_unknown', 'blocked'], dispatch_unknown: ['accepted', 'interrupted'], accepted: [], interrupted: [], blocked: [],
     }
     if (!transitions[record.state].includes(state)) fail('delivery_dispatch_conflict')
-    const next: DeliveryDispatchRecord = { ...dispatchMetadata(record), state, seq: record.seq + 1, updatedAt: Math.max(Date.now(), record.updatedAt), ...(code === undefined ? {} : { code }) }
-    if (code === undefined) delete next.code
+    const next: DeliveryDispatchRecord = { ...dispatchMetadata(record), state, seq: record.seq + 1, updatedAt: Math.max(Date.now(), record.updatedAt),
+      ...(patch.code === undefined ? {} : { code: patch.code }), ...(patch.stopEvidence === undefined ? {} : { stopEvidence: patch.stopEvidence }) }
+    if (patch.code === undefined) delete next.code
+    if (state !== 'interrupted') delete next.stopEvidence
     if (!dispatchRecordValid(next)) fail('delivery_dispatch_record_invalid', 503)
     // Strict schema contains only bounded metadata. Raw text is never persisted or redacted into a record.
     const changed = store.db.prepare('UPDATE side_effect SET state=?, detail=? WHERE key=? AND state=?')
@@ -282,7 +339,7 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
         record = store.transaction(() => {
           const current = readDispatch(record.confirmationId)
           if (!current) return fail('delivery_dispatch_record_invalid', 503)
-          return current.state === 'dispatching' ? updateDispatch(current, 'dispatch_unknown', 'delivery_dispatch_unknown') : current
+          return current.state === 'dispatching' ? updateDispatch(current, 'dispatch_unknown', { code: 'delivery_dispatch_unknown' }) : current
         })
       } catch (error) {
         if (error instanceof WorkspaceError) throw error
@@ -293,11 +350,13 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
     let evidence: DeliveryDispatchEvidence | undefined
     try { evidence = await ports.evidence(freeze(record)) } catch { return record }
     try { ports.requireEpoch(record.epoch) } catch { return record }
-    if (!dispatchEvidenceValid(evidence) || evidence.dispatchId !== record.dispatchId || evidence.confirmationId !== record.confirmationId
-      || evidence.sessionId !== record.target.sessionId || evidence.digest !== record.digest || evidence.messageId !== record.messageId) return record
+    if (!plain(evidence) || !dispatchEvidenceMatches(record, evidence as DeliveryDispatchEvidence)) return record
     return store.transaction(() => {
       const current = readDispatch(record.confirmationId)!
-      return current.state === 'dispatch_unknown' ? updateDispatch(current, 'accepted') : current
+      if (current.state !== 'dispatch_unknown') return current
+      return current.operation === 'stop'
+        ? updateDispatch(current, 'interrupted', { stopEvidence: (evidence as DeliveryStopEvidence).stopEvidence })
+        : updateDispatch(current, 'accepted')
     })
   }
   return {
@@ -385,7 +444,8 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
             try { images.fence() } catch { return fail('delivery_image_changed') }
             const at = Date.now(), dispatchId = randomUUID()
             const value: DeliveryDispatchRecord = { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId,
-              dispatchId, operation: input.operation, target: copyBinding(current.target), digest: current.digest, messageId: `go:${dispatchId}`,
+              dispatchId, operation: input.operation, target: copyBinding(current.target), digest: current.digest,
+              ...(input.operation === 'stop' ? {} : { messageId: `go:${dispatchId}` }),
               seq: 1, at, updatedAt: at, state: 'dispatching' }
             if (!dispatchRecordValid(value)) return fail('delivery_dispatch_record_invalid', 503)
             store.db.prepare('INSERT INTO side_effect(key,kind,ticket_id,at,state,detail) VALUES (?,?,NULL,?,?,?)').run(dispatchKey(input.confirmationId), DISPATCH_KIND, at, 'v1:1', encodeJson(value, false))
@@ -396,18 +456,29 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
           return fail('delivery_target_changed')
         }
         if (record.state !== 'dispatching') return dispatchReceipt(await reconcile(record), confirmation)
-        if (!ports.dispatch) return dispatchReceipt(updateDispatch(record, 'blocked', 'delivery_adapter_unavailable'), confirmation)
+        if (!ports.dispatch) return dispatchReceipt(updateDispatch(record, 'blocked', { code: 'delivery_adapter_unavailable' }), confirmation)
         // No await between the persisted fence and the one Host control call.
         let decision: DeliveryDispatchDecision | undefined
         try { decision = await ports.dispatch(freeze(record), input.text) } catch { /* possibly accepted: reconcile only */ }
-        const state: DeliveryDispatchTerminalState = decision?.state === 'accepted' ? 'accepted' : decision?.state === 'blocked' ? 'blocked' : 'dispatch_unknown'
-        const code = state === 'blocked' ? (codeValid(decision?.code) ? decision!.code : 'delivery_dispatch_blocked')
-          : state === 'dispatch_unknown' ? 'delivery_dispatch_unknown' : undefined
+        const stop = input.operation === 'stop'
+        let state: DeliveryDispatchTerminalState
+        let code: string | undefined
+        let stopEvidence: DeliveryStopEvidenceKind | undefined
+        if (stop) {
+          // A stop is never `accepted` (no message) and never `interrupted` without Host evidence.
+          if (decision?.state === 'interrupted' && stopEvidenceValid(decision.stopEvidence)) { state = 'interrupted'; stopEvidence = decision.stopEvidence }
+          else if (decision?.state === 'blocked') { state = 'blocked'; code = codeValid(decision.code) ? decision.code : 'delivery_dispatch_blocked' }
+          else { state = 'dispatch_unknown'; code = codeValid(decision?.code) ? decision!.code : 'delivery_dispatch_unknown' }
+        } else {
+          state = decision?.state === 'accepted' ? 'accepted' : decision?.state === 'blocked' ? 'blocked' : 'dispatch_unknown'
+          code = state === 'blocked' ? (codeValid(decision?.code) ? decision!.code : 'delivery_dispatch_blocked')
+            : state === 'dispatch_unknown' ? 'delivery_dispatch_unknown' : undefined
+        }
         const updated = store.transaction(() => {
           const current = readDispatch(input.confirmationId)
           if (!current) return fail('delivery_dispatch_record_invalid', 503)
           if (current.state !== 'dispatching') return current
-          return updateDispatch(current, state, code)
+          return updateDispatch(current, state, { ...(code === undefined ? {} : { code }), ...(stopEvidence === undefined ? {} : { stopEvidence }) })
         })
         return dispatchReceipt(updated, confirmation)
       })
@@ -416,16 +487,16 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
     async reconcile() {
       return serialize(async () => {
         const rows = store.db.prepare('SELECT key FROM side_effect WHERE kind=?').all(DISPATCH_KIND) as { key: string }[]
-        let accepted = 0, unknown = 0, blocked = 0
+        let accepted = 0, interrupted = 0, unknown = 0, blocked = 0
         for (const row of rows) {
           const confirmationId = typeof row.key === 'string' && row.key.startsWith('delivery-dispatch:v1:') ? row.key.slice('delivery-dispatch:v1:'.length) : ''
           if (!uuid(confirmationId)) continue
           let record = readDispatch(confirmationId)
-          if (!record || !['dispatching', 'dispatch_unknown'].includes(record.state)) { if (record?.state === 'accepted') accepted++; else if (record?.state === 'blocked') blocked++; continue }
+          if (!record || !['dispatching', 'dispatch_unknown'].includes(record.state)) { if (record?.state === 'accepted') accepted++; else if (record?.state === 'interrupted') interrupted++; else if (record?.state === 'blocked') blocked++; continue }
           try { record = await reconcile(record) } catch { /* keep the durable unknown fence */ }
-          if (record.state === 'accepted') accepted++; else if (record.state === 'dispatch_unknown') unknown++; else if (record.state === 'blocked') blocked++
+          if (record.state === 'accepted') accepted++; else if (record.state === 'interrupted') interrupted++; else if (record.state === 'dispatch_unknown') unknown++; else if (record.state === 'blocked') blocked++
         }
-        return { accepted, unknown, blocked }
+        return { accepted, interrupted, unknown, blocked }
       })
     },
     async cancel(raw: { epoch: string; confirmationId: string }) {

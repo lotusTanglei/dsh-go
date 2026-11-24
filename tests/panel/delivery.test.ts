@@ -39,7 +39,7 @@ function deliveryFixture() {
     generation: 0,
     binding: { sessionId: 'session-delivery-target', scopeRevision: digest(['scope', 0]), factRevision: digest(['fact', 0]), project: { kind: 'project' as const, key: 'project-one' } } as SessionTargetBinding,
     calls: [] as Array<{ record: any; text: string }>,
-    decision: { state: 'accepted' } as { state: 'accepted' | 'dispatch_unknown' | 'blocked'; code?: string },
+    decision: { state: 'accepted' } as { state: 'accepted' | 'interrupted' | 'dispatch_unknown' | 'blocked'; code?: string; stopEvidence?: 'turn-aborted' | 'cancel-accepted' },
     evidence: undefined as undefined | ((record: any) => DeliveryDispatchEvidence | undefined),
   }
   const service = createDeliveries(store, {
@@ -239,4 +239,81 @@ describe('POST /delivery action=dispatch: one confirmed live control call over t
       expect((await port('delivery', { action: 'dispatch', ...input })).status, JSON.stringify(forged)).toBe(503)
     }
   })
+describe('POST /delivery operation=stop: real interruption receipt over the same HTTP seam', () => {
+  const stopInput = (f: ReturnType<typeof deliveryFixture>, patch: any = {}) =>
+    f.input({ operation: 'stop', text: '', images: [], ...patch })
+
+  it('prepares an empty reason, confirms, dispatches once and projects interrupted without a message id', async () => {
+    const f = deliveryFixture(), input = stopInput(f, { text: 'Owner stops this exact conversation' })
+    const prepared = await f.post('delivery', { action: 'prepare', ...input })
+    expect(prepared.status).toBe(200)
+    expect(prepared.data).toMatchObject({ version: 1, operation: 'stop', state: 'prepared', bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [],
+      humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', durable: true })
+    expect(JSON.stringify(prepared.data)).not.toContain('Owner stops this exact conversation')
+    expect((await f.post('delivery', { action: 'confirm', ...input })).data).toMatchObject({ state: 'confirmed', humanConfirmed: true, delivered: false, accepted: false })
+    f.state.decision = { state: 'interrupted', stopEvidence: 'turn-aborted' }
+    const dispatched = await f.post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.status).toBe(200)
+    expect(dispatched.data).toMatchObject({ version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'stop',
+      state: 'interrupted', durable: true, humanConfirmed: true, delivered: false, accepted: false, interrupted: true, executed: null, completed: null,
+      disposition: 'stop-interrupted', stopEvidence: 'turn-aborted' })
+    expect(dispatched.data.messageId).toBeUndefined()
+    expect(f.state.calls).toHaveLength(1); expect(f.state.calls[0]).toMatchObject({ text: 'Owner stops this exact conversation', record: { operation: 'stop', state: 'dispatching' } })
+    expect(await f.post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(f.state.calls).toHaveLength(1)
+    // The stop reason never persists as a body.
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('Owner stops this exact conversation')
+  })
+
+  it('rejects malformed stop shapes and forged interruption receipts without a Host call', async () => {
+    const f = deliveryFixture(), input = stopInput(f), path = 'delivery'
+    for (const bad of [
+      { action: 'prepare', ...input, images: [{ imageId: randomUUID(), digest: digest(['x']), seq: 1 }] },
+      { action: 'prepare', ...input, text: 'x'.repeat(2001) },
+      { action: 'prepare', ...input, operation: 'resume' },
+      { action: 'prepare', ...input, actor: 'owner' },
+    ]) expect((await f.post(path, bad)).status, JSON.stringify(bad)).toBe(400)
+    await f.post(path, { action: 'prepare', ...input }); await f.post(path, { action: 'confirm', ...input })
+    expect((await f.post(path, { action: 'dispatch', ...input })).status).toBe(200)
+    expect(f.state.calls).toHaveLength(1)
+    // A stop receipt with broken evidence is refused by the route projection.
+    const forged = (extra: any) => routesFixture({ delivery: async () => ({ version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId,
+      dispatchId: randomUUID(), operation: 'stop', target: { sessionId: 'session-delivery-target', scopeRevision: digest(['scope', 0]), factRevision: digest(['fact', 0]), project: { kind: 'project', key: 'project-one' } },
+      digest: digest(['d']), bodyBytes: 0, images: [], seq: 2, at: 1, updatedAt: 2, state: 'interrupted', durable: true, humanConfirmed: true,
+      delivered: false, accepted: false, interrupted: true, executed: null, completed: null, disposition: 'stop-interrupted', stopEvidence: 'turn-aborted', ...extra }) })
+    for (const extra of [
+      { state: 'accepted', accepted: true, delivered: true, interrupted: false, stopEvidence: undefined },
+      { messageId: 'go:00000000-0000-4000-8000-000000000000' },
+      { stopEvidence: undefined },
+      { interrupted: false },
+    ]) {
+      const post = forged(extra)
+      const response = await post('delivery', { action: 'dispatch', ...input })
+      expect(response.status, JSON.stringify(extra)).toBe(503)
+    }
+    // A malformed optional code is dropped, not trusted or echoed.
+    const dropped = await forged({ code: 'x'.repeat(120) })('delivery', { action: 'dispatch', ...input })
+    expect(dropped.status).toBe(200); expect(dropped.data.code).toBeUndefined()
+  })
+
+  it('keeps a stop blocked and unknown honest at the HTTP seam', async () => {
+    const cold = deliveryFixture(), coldInput = stopInput(cold)
+    await cold.post('delivery', { action: 'prepare', ...coldInput }); await cold.post('delivery', { action: 'confirm', ...coldInput })
+    cold.state.decision = { state: 'blocked', code: 'delivery_target_cold' }
+    const blocked = await cold.post('delivery', { action: 'dispatch', ...coldInput })
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_target_cold', accepted: false, interrupted: false, disposition: 'not-dispatched' })
+    expect(cold.state.calls).toHaveLength(1)
+    expect(await cold.post('delivery', { action: 'dispatch', ...coldInput })).toEqual(blocked)
+    expect(cold.state.calls).toHaveLength(1)
+    const lost = deliveryFixture(), lostInput = stopInput(lost)
+    await lost.post('delivery', { action: 'prepare', ...lostInput }); await lost.post('delivery', { action: 'confirm', ...lostInput })
+    lost.state.decision = { state: 'dispatch_unknown' }
+    const unknown = await lost.post('delivery', { action: 'dispatch', ...lostInput })
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', accepted: false, interrupted: false, executed: null, completed: null, disposition: 'reconcile-only' })
+    expect(unknown.data.messageId).toBeUndefined()
+    expect(await lost.post('delivery', { action: 'dispatch', ...lostInput })).toEqual(unknown)
+    expect(lost.state.calls).toHaveLength(1)
+  })
+})
+
 })

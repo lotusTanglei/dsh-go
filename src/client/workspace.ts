@@ -996,7 +996,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       if (!existing && (new TextEncoder().encode(saved.draft).length > 16384 || saved.draft.includes('\0'))) { setNotice(tr('TextLimit')); return }
       let payload: any = existing
       try {
-        if (!payload) payload = { epoch, requestId: mintId(), intent: saved.target ? 'ticket-input' : saved.intent, text: saved.draft, ...(saved.target ? { ticketId: saved.target.id } : saved.origin ? { recreateFrom: saved.origin.id } : {}) }
+        if (!payload) payload = { epoch, requestId: mintId(), intent: saved.target ? 'ticket-input' : saved.intent, text: saved.draft, ...(saved.target ? { ticketId: saved.target.id } : saved.origin && saved.origin.source !== 'session' ? { recreateFrom: saved.origin.id } : {}) }
       } catch { setNotice(tr('SecureIdUnavailable')); return }
       // A send may race the first history read; its first real reply must still be discoverable.
       if (!replyBaselineReady.current[epoch]) {
@@ -1155,7 +1155,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const recreate = (item: any) => {
       if (composerRef.current.pending || composerRef.current.draft.trim() || composerRef.current.target || composerRef.current.origin || imageBusyRef.current || array(imageDraftsRef.current[epochRef.current]?.items).length || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); return }
       if (item.state !== 'ended' || item.stoppedByHuman !== true || !detailRef.current?.brief?.goal) return
-      updateComposer({ draft: detailRef.current.brief.goal, intent: 'new-task', target: null, origin: { id: item.id, title: item.title || tr('Untitled') } })
+      updateComposer({ draft: detailRef.current.brief.goal, intent: 'new-task', target: null, origin: { id: item.id, title: item.title || tr('Untitled'), source: 'ticket' } })
       navigatePrimary('chat'); inputRef.current?.focus()
     }
     const approvalView = (item: any) => {
@@ -1423,15 +1423,34 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const currentDelivery = () => {
       const current = currentSessionAction()
       if (!current) return null
-      return { key: deliveryKey(current.epoch, current.target), epoch: current.epoch, target: current.target, title: current.title, projectName: current.projectName }
+      const target = locateResultRef.current?.target
+      // A requirement summary for the explicit new-task entry, never a delivery body.
+      const requirement = target?.matchField === 'objective' && typeof target.matchText === 'string' && target.matchText.trim() ? target.matchText.trim() : current.title
+      return { key: deliveryKey(current.epoch, current.target), epoch: current.epoch, target: current.target, title: current.title, requirement, projectName: current.projectName }
     }
     const deliveryDraftText = (key: string) => {
       const entry = sessionActionsRef.current?.[key]
       return entry && typeof entry.text === 'string' ? entry.text : ''
     }
+    const deliveryStopReason = (key: string) => {
+      const entry = deliveriesRef.current?.[key]
+      return entry && typeof entry.stopReason === 'string' ? entry.stopReason : ''
+    }
     const deliveryOperation = (key: string) => {
-      const entry = sessionActionsRef.current?.[key]
-      return entry && ['continue', 'supplement', 'steer'].includes(entry.operation) ? entry.operation : 'continue'
+      const own = deliveriesRef.current?.[key]?.operation
+      if (['continue', 'supplement', 'steer', 'stop'].includes(own)) return own
+      const shared = sessionActionsRef.current?.[key]?.operation
+      return ['continue', 'supplement', 'steer'].includes(shared) ? shared : 'continue'
+    }
+    const selectDeliveryOperation = (key: string, value: string) => {
+      const current = currentDelivery(), entry = deliveriesRef.current?.[key]
+      if (!alive.current || !current || current.key !== key || entry?.busy || entry?.pending || entry?.status && entry.status !== 'draft' || !['continue', 'supplement', 'steer', 'stop'].includes(value)) return
+      saveDelivery(key, { ...(entry || { ...current, text: '', busy: null, receipt: null, pending: null, status: 'draft', error: '' }), operation: value, error: '' })
+    }
+    const editDeliveryStopReason = (key: string, value: string) => {
+      const current = currentDelivery(), entry = deliveriesRef.current?.[key]
+      if (!alive.current || !current || current.key !== key || entry?.busy || entry?.pending || entry?.status && entry.status !== 'draft' || typeof value !== 'string' || value.includes('\0')) return
+      saveDelivery(key, { ...(entry || { ...current, operation: 'stop', text: '', busy: null, receipt: null, pending: null, status: 'draft', error: '' }), operation: 'stop', stopReason: value, error: '' })
     }
     const deliveryImageRefs = () => {
       const current = currentDelivery(), draft = current ? imageDraftsRef.current?.[current.epoch] : null, target = draft?.target
@@ -1443,9 +1462,11 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         .map((row: any) => ({ imageId: row.receipt.imageId, digest: row.receipt.digest, seq: row.receipt.seq }))
     }
     const deliveryPayload = (entry: any, requestId: string, confirmationId: string) => {
-      const target = entry.target
-      const payload = { epoch: entry.epoch, requestId, confirmationId, operation: deliveryOperation(entry.key), text: deliveryDraftText(entry.key),
-        target: { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision }, images: deliveryImageRefs() }
+      const target = entry.target, operation = deliveryOperation(entry.key)
+      const payload = { epoch: entry.epoch, requestId, confirmationId, operation,
+        text: operation === 'stop' ? deliveryStopReason(entry.key) : deliveryDraftText(entry.key),
+        target: { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision },
+        images: operation === 'stop' ? [] : deliveryImageRefs() }
       return payload
     }
     const deliveryDigest = async (payload: any) => {
@@ -1481,7 +1502,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       return true
     }
     const deliveryStatusName = (entry: any) => tr(({ draft: 'DeliveryDraft', pending: 'DeliveryPreparing', prepared: 'DeliveryPrepared', unknown: 'DeliveryUnknown', confirmed: 'DeliveryConfirmed', canceled: 'DeliveryDraft' } as any)[entry?.busy ? 'pending' : entry?.status] || 'DeliveryDraft')
-    const deliveryOperationName = (value: string) => tr(({ continue: 'SessionActionContinue', supplement: 'SessionActionSupplement', steer: 'SessionActionSteer' } as any)[value] || 'SessionActionContinue')
+    const deliveryOperationName = (value: string) => tr(({ continue: 'SessionActionContinue', supplement: 'SessionActionSupplement', steer: 'SessionActionSteer', stop: 'SessionActionStop' } as any)[value] || 'SessionActionContinue')
     const deliverySummary = (value: string) => {
       const line = value.split(/[\r\n]/, 1)[0]!.trim(), points = Array.from(line)
       return points.length > 90 ? `${points.slice(0, 90).join('').trimEnd()}…` : line
@@ -1489,13 +1510,18 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const prepareDelivery = async () => {
       const current = currentDelivery(), old = current ? deliveriesRef.current[current.key] : null
       if (!alive.current || deliveryBusyRef.current || !current || old?.busy || ['pending', 'prepared', 'confirmed'].includes(old?.status) || old?.status === 'unknown' && old?.pending) return
-      const bodyText = deliveryDraftText(current.key), images = deliveryImageRefs()
-      const base = { key: current.key, epoch: current.epoch, target: current.target, title: current.title, projectName: current.projectName, operation: deliveryOperation(current.key), text: bodyText, images, busy: null, receipt: null, error: '' }
-      if (!bodyText.trim() || new TextEncoder().encode(bodyText).length > 16_384 || bodyText.includes('\0')) { saveDelivery(current.key, { ...base, pending: null, status: 'draft', error: tr(!bodyText.trim() ? 'DeliveryTextRequired' : 'TextLimit') }); return }
+      const operation = deliveryOperation(current.key), stop = operation === 'stop'
+      const bodyText = stop ? deliveryStopReason(current.key) : deliveryDraftText(current.key)
+      const images = stop ? [] : deliveryImageRefs()
+      const base = { key: current.key, epoch: current.epoch, target: current.target, title: current.title, projectName: current.projectName, requirement: current.requirement,
+        operation, text: bodyText, ...(stop ? { stopReason: bodyText } : {}), images, busy: null, receipt: null, error: '' }
+      // A stop carries no delivered body; its optional reason is still bounded and digest-bound.
+      const limit = stop ? 2000 : 16_384
+      if (new TextEncoder().encode(bodyText).length > limit || bodyText.includes('\0') || !stop && !bodyText.trim()) { saveDelivery(current.key, { ...base, pending: null, status: 'draft', error: tr(!stop && !bodyText.trim() ? 'DeliveryTextRequired' : 'TextLimit') }); return }
       let payload: any
       try { payload = deliveryPayload(current, mintId(), mintId()) } catch { saveDelivery(current.key, { ...base, pending: null, status: 'draft', error: tr('DeliveryUnavailable') }); return }
-      const operation = {}; deliveryBusyRef.current = operation
-      const entry = { ...base, pending: payload, busy: operation, status: 'pending' }
+      const operationBusy = {}; deliveryBusyRef.current = operationBusy
+      const entry = { ...base, pending: payload, busy: operationBusy, status: 'pending' }
       saveDelivery(current.key, entry)
       let requested = false
       try {
@@ -1512,18 +1538,18 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         const saved = deliveriesRef.current[current.key] || entry
         if (requested && e?.status === 409) saveDelivery(current.key, { ...saved, busy: null, pending: null, status: 'draft', error: tr('DeliveryChanged') })
         else saveDelivery(current.key, { ...saved, busy: null, pending: requested ? payload : null, status: requested ? 'unknown' : 'draft', error: tr(requested ? 'DeliveryUnknown' : 'DeliveryUnavailable') })
-      } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+      } finally { if (deliveryBusyRef.current === operationBusy) deliveryBusyRef.current = null }
     }
     const confirmDelivery = async (key: string) => {
       const entry = deliveriesRef.current[key], current = currentDelivery()
       if (!alive.current || deliveryBusyRef.current || !entry?.pending || entry.busy || entry.status !== 'prepared' || !current || current.key !== key || entry.epoch !== epochRef.current) return
       const payload = deliveryPayload(current, entry.pending.requestId, entry.pending.confirmationId)
-      const operation = {}; deliveryBusyRef.current = operation
-      saveDelivery(key, { ...entry, busy: operation })
+      const operationBusy = {}; deliveryBusyRef.current = operationBusy
+      saveDelivery(key, { ...entry, busy: operationBusy })
       try {
         const digest = await deliveryDigest(payload)
         if (!alive.current || currentDelivery()?.key !== key) { saveDelivery(key, { ...entry, busy: null }); return }
-        // Any body/image/target change invalidates the local prepared object before any confirm request.
+        // Any body/reason/image/target change invalidates the local prepared object before any confirm request.
         if (digest !== entry.digest) { saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: tr('DeliveryContentChanged') }); return }
         const receipt = await call('delivery', { action: 'confirm', ...payload })
         if (!validDeliveryReceipt(receipt, entry) || receipt.state !== 'confirmed') throw new Error('invalid_delivery_confirmation')
@@ -1531,37 +1557,45 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       } catch (e: any) {
         if (e?.status === 409) saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: tr('DeliveryChanged') })
         else saveDelivery(key, { ...entry, busy: null, status: 'unknown', error: tr('DeliveryConfirmUnknown') })
-      } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+      } finally { if (deliveryBusyRef.current === operationBusy) deliveryBusyRef.current = null }
     }
     const validDeliveryDispatchReceipt = (receipt: any, entry: any) => {
       const input = entry?.pending, previous = entry?.dispatch, hash = (value: any) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
       const uuid = (value: any) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-      const keys = ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'messageId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'durable', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition']
+      const evidence = receipt?.stopEvidence, evidenceValid = evidence === 'turn-aborted' || evidence === 'cancel-accepted'
+      const keys = ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'messageId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'durable', 'humanConfirmed', 'delivered', 'accepted', 'interrupted', 'executed', 'completed', 'disposition', 'stopEvidence']
       if (!input || !receipt || typeof receipt !== 'object' || Array.isArray(receipt) || Object.getOwnPropertySymbols(receipt).length
         || Object.keys(receipt).some(key => !keys.includes(key))
         || receipt.version !== 1 || !['epoch', 'requestId', 'confirmationId', 'operation'].every(key => receipt[key] === input[key])
         || !receipt.target || typeof receipt.target !== 'object' || Array.isArray(receipt.target) || Object.keys(receipt.target).length !== 4
         || ['sessionId', 'scopeRevision', 'factRevision'].some(key => receipt.target[key] !== input.target[key])
         || receipt.target.project?.kind !== entry.target.project.kind || receipt.target.project?.key !== entry.target.project.key
-        || !hash(receipt.digest) || receipt.digest !== entry.digest || !uuid(receipt.dispatchId) || receipt.messageId !== `go:${receipt.dispatchId}`
+        || !hash(receipt.digest) || receipt.digest !== entry.digest || !uuid(receipt.dispatchId)
         || receipt.bodyBytes !== new TextEncoder().encode(entry.text).length
         || !Array.isArray(receipt.images) || receipt.images.length !== array(input.images).length
         || receipt.images.some((row: any, index: number) => !row || Object.keys(row).length !== 3 || row.imageId !== input.images[index]?.imageId || row.digest !== input.images[index]?.digest || row.seq !== input.images[index]?.seq)
-        || !['accepted', 'dispatch_unknown', 'blocked'].includes(receipt.state)
-        || ![2, 3].includes(receipt.seq) || receipt.state !== 'accepted' && receipt.seq !== 2
+        || !['accepted', 'interrupted', 'dispatch_unknown', 'blocked'].includes(receipt.state)
+        || ![2, 3].includes(receipt.seq) || receipt.state !== 'accepted' && receipt.state !== 'interrupted' && receipt.seq !== 2
         || receipt.accepted !== (receipt.state === 'accepted') || receipt.delivered !== (receipt.state === 'accepted')
+        || receipt.interrupted !== (receipt.state === 'interrupted')
         || receipt.executed !== (receipt.state === 'blocked' ? false : null) || receipt.completed !== (receipt.state === 'blocked' ? false : null)
-        || receipt.disposition !== (receipt.state === 'accepted' ? 'target-durable-receipt' : receipt.state === 'blocked' ? 'not-dispatched' : 'reconcile-only')
+        || receipt.disposition !== (receipt.state === 'accepted' ? 'target-durable-receipt' : receipt.state === 'interrupted' ? 'stop-interrupted' : receipt.state === 'blocked' ? 'not-dispatched' : 'reconcile-only')
         || receipt.durable !== true || receipt.humanConfirmed !== true
         || !Number.isSafeInteger(receipt.at) || receipt.at < 0 || !Number.isSafeInteger(receipt.updatedAt) || receipt.updatedAt < receipt.at
         || receipt.code !== undefined && (typeof receipt.code !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(receipt.code))) return false
+      // A stop never claims a message identity and needs explicit evidence; a text delivery keeps its message ref.
+      if (input.operation === 'stop') {
+        if (receipt.messageId !== undefined || receipt.state === 'accepted' || (receipt.state === 'interrupted') !== evidenceValid || receipt.state === 'interrupted' && !evidenceValid) return false
+        if (receipt.state !== 'interrupted' && receipt.stopEvidence !== undefined) return false
+      } else if (receipt.messageId !== `go:${receipt.dispatchId}` || receipt.interrupted || receipt.stopEvidence !== undefined) return false
       // A higher sequence cannot rewrite facts; terminal dispatch outcomes cannot roll back.
       if (previous) {
         if (receipt.seq < previous.seq || receipt.at !== previous.at || receipt.updatedAt < previous.updatedAt) return false
         if (receipt.seq === previous.seq && ['state', 'code', 'updatedAt', 'digest', 'dispatchId', 'messageId'].some(key => receipt[key] !== previous[key])) return false
         if (previous.state === 'accepted' && receipt.state !== 'accepted') return false
+        if (previous.state === 'interrupted' && receipt.state !== 'interrupted') return false
         if (previous.state === 'blocked' && receipt.state !== 'blocked') return false
-        if (previous.state === 'dispatch_unknown' && !['dispatch_unknown', 'accepted'].includes(receipt.state)) return false
+        if (previous.state === 'dispatch_unknown' && !['dispatch_unknown', 'accepted', 'interrupted'].includes(receipt.state)) return false
       }
       return true
     }
@@ -1573,45 +1607,45 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         || !current || current.key !== key || entry.epoch !== epochRef.current) return
       const payload = { epoch: entry.epoch, requestId: entry.pending.requestId, confirmationId: entry.pending.confirmationId, operation: entry.pending.operation,
         text: entry.text, target: { ...entry.pending.target }, images: array(entry.pending.images).map((row: any) => ({ ...row })) }
-      const operation = {}; deliveryBusyRef.current = operation
-      saveDelivery(key, { ...entry, busy: operation, error: '' })
+      const operationBusy = {}; deliveryBusyRef.current = operationBusy
+      saveDelivery(key, { ...entry, busy: operationBusy, error: '' })
       try {
         const digest = await deliveryDigest(payload)
         if (!alive.current || currentDelivery()?.key !== key) { saveDelivery(key, { ...entry, busy: null }); return }
         if (digest !== entry.digest) { saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryDispatchChanged') }); return }
         const receipt = await call('delivery', { action: 'dispatch', ...payload })
         if (!validDeliveryDispatchReceipt(receipt, entry)) throw new Error('invalid_delivery_dispatch_receipt')
-        const error = receipt.state === 'blocked' ? tr(receipt.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked') : ''
+        const error = receipt.state === 'blocked' ? tr(entry.operation === 'stop' ? (receipt.code === 'delivery_target_cold' ? 'DeliveryStopTargetCold' : 'DeliveryStopBlocked') : (receipt.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked')) : ''
         saveDelivery(key, { ...entry, busy: null, dispatch: receipt, dispatchStatus: receipt.state, error })
       } catch (e: any) {
         if (e?.status === 409) saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryDispatchChanged') })
-        else saveDelivery(key, { ...entry, busy: null, dispatchStatus: entry.dispatch?.state === 'accepted' ? 'accepted' : 'dispatch_unknown', error: tr('DeliveryDispatchUnknown') })
-      } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+        else saveDelivery(key, { ...entry, busy: null, dispatchStatus: entry.dispatch?.state === 'accepted' ? 'accepted' : 'dispatch_unknown', error: tr(entry.operation === 'stop' ? 'DeliveryStopUnknown' : 'DeliveryDispatchUnknown') })
+      } finally { if (deliveryBusyRef.current === operationBusy) deliveryBusyRef.current = null }
     }
     const cancelDelivery = async (key: string) => {
       const entry = deliveriesRef.current[key]
       if (!alive.current || !entry || entry.busy) return
       const clear = () => saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: '' })
       if (!entry.pending || entry.status === 'confirmed') { if (entry.status === 'confirmed') return; clear(); return }
-      const operation = {}; deliveryBusyRef.current = operation
-      saveDelivery(key, { ...entry, busy: operation })
+      const operationBusy = {}; deliveryBusyRef.current = operationBusy
+      saveDelivery(key, { ...entry, busy: operationBusy })
       try {
         // Tombstone the prepared id when possible; cancelling itself never sends or dispatches.
         const receipt = await call('delivery', { action: 'cancel', epoch: entry.epoch, confirmationId: entry.pending.confirmationId })
         if (receipt?.state !== 'canceled' || !validDeliveryReceipt(receipt, entry)) { clear(); return }
       } catch (e: any) {
         // Already confirmed elsewhere: never hide that behind a local draft.
-        if (e?.code === 'delivery_confirmation_confirmed') { saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryCancelConfirmed') }); if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null; return }
+        if (e?.code === 'delivery_confirmation_confirmed') { saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryCancelConfirmed') }); if (deliveryBusyRef.current === operationBusy) deliveryBusyRef.current = null; return }
         /* the local draft is retained regardless of the cancel receipt */
       }
       clear()
-      if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null
+      if (deliveryBusyRef.current === operationBusy) deliveryBusyRef.current = null
     }
     const checkDeliveryStatus = async (key: string) => {
       const entry = deliveriesRef.current[key]
       if (!alive.current || !entry?.pending || entry.busy || entry.epoch !== epochRef.current) return
-      const operation = {}; deliveryBusyRef.current = operation
-      saveDelivery(key, { ...entry, busy: operation, error: '' })
+      const operationBusy = {}; deliveryBusyRef.current = operationBusy
+      saveDelivery(key, { ...entry, busy: operationBusy, error: '' })
       try {
         const receipt = await call('delivery', { action: 'status', epoch: entry.epoch, confirmationId: entry.pending.confirmationId })
         if (!validDeliveryReceipt(receipt, { ...entry, receipt: null })) throw new Error('invalid_delivery_status')
@@ -1623,12 +1657,32 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         if (e?.status === 404) saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: tr('DeliveryNotFound') })
         else saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryErrorUnknown') })
       }
-      finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+      finally { if (deliveryBusyRef.current === operationBusy) deliveryBusyRef.current = null }
+    }
+    const prepareAgainDelivery = (key: string) => {
+      const entry = deliveriesRef.current?.[key], current = currentDelivery()
+      if (!alive.current || !entry || entry.busy || !current || current.key !== key || entry.epoch !== epochRef.current || entry.dispatch?.state !== 'blocked') return
+      // A blocked dispatch is terminal for its exact IDs. A fresh human confirmation (new IDs) is the
+      // only retry; the old fence stays as immutable evidence and is never replayed.
+      saveDelivery(key, { ...entry, pending: null, receipt: null, digest: undefined, dispatch: undefined, dispatchStatus: undefined, status: 'draft', error: '' })
+    }
+    const recreateFromStoppedDelivery = (key: string) => {
+      const current = currentDelivery()
+      if (composerRef.current.pending || composerRef.current.draft.trim() || composerRef.current.target || composerRef.current.origin || imageBusyRef.current || array(imageDraftsRef.current[epochRef.current]?.items).length || draftEpochRef.current !== epochRef.current) { setNotice(tr('ResolveDraftFirst')); return }
+      if (!alive.current || !current || current.key !== key) return
+      const requirement = typeof current.requirement === 'string' && current.requirement.trim() ? current.requirement.trim() : typeof current.title === 'string' ? current.title.trim() : ''
+      if (!requirement) { setNotice(tr('DeliveryStopRecreateUnavailable')); return }
+      // The requirement summary is copied into a fresh new-task draft. The stopped conversation is
+      // never resumed, and a session origin is never sent as a ticket recreateFrom.
+      updateComposer({ draft: requirement, intent: 'new-task', target: null, origin: { id: current.target.sessionId, title: requirement, source: 'session' } })
+      navigatePrimary('chat'); inputRef.current?.focus()
     }
     const deliveryConfirmationView = () => {
       const current = currentDelivery(), entry = current ? deliveries[current.key] : null
-      const bodyText = current ? deliveryDraftText(current.key) : '', operation = current ? deliveryOperation(current.key) : 'continue'
-      const images = current ? deliveryImageRefs() : [], busy = !!entry?.busy
+      const operation = current ? deliveryOperation(current.key) : 'continue', stop = operation === 'stop'
+      const bodyText = current ? (stop ? deliveryStopReason(current.key) : deliveryDraftText(current.key)) : ''
+      const images = current && !stop ? deliveryImageRefs() : []
+      const busy = !!entry?.busy, dispatch = entry?.dispatch
       const body = bodyText.trim() ? new TextEncoder().encode(bodyText).length : 0
       return h('section', { className: 'saw-box saw-delivery', 'aria-label': tr('DeliveryTitle') },
         h('h3', null, tr('DeliveryTitle')),
@@ -1636,9 +1690,21 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         !current ? h('p', { className: 'saw-meta' }, tr('DeliveryNoTarget')) : h(React.Fragment, null,
           h('p', { className: 'saw-meta' }, `${tr('Project')}: ${current.projectName} · ${current.target.project.key}`),
           h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('SessionIdentity')}: ${current.target.sessionId}`),
-          h('p', { className: 'saw-meta' }, `${tr('Operation')}: ${deliveryOperationName(operation)}`),
+          h('label', { className: 'saw-setting' }, tr('Operation'), h('select', { value: operation, disabled: busy || !!entry?.pending || entry?.status && entry.status !== 'draft', onChange: (e: any) => selectDeliveryOperation(current.key, e.target.value) },
+            ...['continue', 'supplement', 'steer', 'stop'].map(value => h('option', { key: value, value }, tr(({ continue: 'SessionActionContinue', supplement: 'SessionActionSupplement', steer: 'SessionActionSteer', stop: 'SessionActionStop' } as any)[value]))))),
+          stop ? h('p', { className: 'saw-error' }, tr('DeliveryStopHint')) : null,
           entry?.busy || entry?.status === 'pending' ? h('p', { className: 'saw-meta', role: 'status', 'aria-live': 'polite' }, tr('DeliveryPreparing')) : null,
-          entry?.status === 'prepared' && entry.receipt ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryConfirmSummary') },
+          entry?.status === 'prepared' && entry.receipt ? (stop ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryStopConfirmSummary') },
+            h('h4', null, tr('DeliveryStopConfirmSummary')),
+            h('p', null, `${tr('Project')}: ${current.projectName} · ${current.title}`),
+            h('p', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(current.target.sessionId).slice(-8)} · ${tr('Operation')}: ${tr('SessionActionStop')}`),
+            entry.receipt.bodyBytes ? h('p', { className: 'saw-pre' }, deliverySummary(entry.text)) : h('p', { className: 'saw-meta' }, tr('DeliveryStopNoReason')),
+            h('p', { className: 'saw-meta' }, tr('DeliveryStopConfirmHint')),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('SessionActionScopeRevision')}: ${entry.receipt.target.scopeRevision}`),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('LocateFactRevision')}: ${entry.receipt.target.factRevision}`),
+            h('div', { className: 'saw-row' }, button(tr('DeliveryStopConfirm'), () => { void confirmDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }),
+              button(tr('DeliveryCancel'), () => { void cancelDelivery(current.key) }, busy))) : h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryConfirmSummary') },
             h('h4', null, tr('DeliveryConfirmSummary')),
             h('p', null, `${tr('Project')}: ${current.projectName} · ${current.title}`),
             h('p', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(current.target.sessionId).slice(-8)} · ${tr('Operation')}: ${deliveryOperationName(entry.receipt.operation)}`),
@@ -1650,42 +1716,55 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('p', { className: 'saw-meta' }, tr('DeliveryConfirmHint')),
             h('div', { className: 'saw-row' }, button(tr('DeliveryConfirm'), () => { void confirmDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }),
               button(tr('DeliveryCancel'), () => { void cancelDelivery(current.key) }, busy)),
-            h('p', { className: 'saw-meta' }, tr('DeliveryPrepared'))) : null,
+            h('p', { className: 'saw-meta' }, tr('DeliveryPrepared')))) : null,
           entry?.status === 'confirmed' && entry.receipt ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryConfirmed') },
             h('strong', null, tr('DeliveryConfirmed')),
             h('p', { className: 'saw-meta' }, tr('DeliveryConfirmedHint')),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryHandoff')}: ${entry.receipt.disposition}`),
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
             h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.receipt.updatedAt)}`),
-            entry.busy ? h('p', { className: 'saw-meta', role: 'status', 'aria-live': 'polite' }, tr('DeliveryDispatching')) : null,
-            !entry.dispatch ? button(tr('DeliveryDispatch'), () => { void dispatchDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }) : null,
-            entry.dispatch ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryDispatchState') },
-              h('strong', null, tr(entry.dispatch.state === 'accepted' ? 'DeliveryAccepted' : entry.dispatch.state === 'blocked' ? 'DeliveryDispatchBlocked' : 'DeliveryDispatchUnknown')),
-              entry.dispatch.state === 'accepted' ? h(React.Fragment, null,
+            entry.busy ? h('p', { className: 'saw-meta', role: 'status', 'aria-live': 'polite' }, tr(stop ? 'DeliveryStopDispatching' : 'DeliveryDispatching')) : null,
+            !dispatch ? button(tr(stop ? 'DeliveryStopDispatch' : 'DeliveryDispatch'), () => { void dispatchDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }) : null,
+            dispatch ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryDispatchState') },
+              h('strong', null, tr(dispatch.state === 'accepted' ? 'DeliveryAccepted' : dispatch.state === 'interrupted' ? 'DeliveryStopInterrupted' : dispatch.state === 'blocked' ? (stop ? 'DeliveryStopBlocked' : 'DeliveryDispatchBlocked') : (stop ? 'DeliveryStopUnknown' : 'DeliveryDispatchUnknown'))),
+              dispatch.state === 'accepted' ? h(React.Fragment, null,
                 h('p', { className: 'saw-meta' }, tr('DeliveryAcceptedHint')),
-                h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDispatchId')}: ${entry.dispatch.dispatchId}`),
-                h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.dispatch.updatedAt)}`)) : null,
-              entry.dispatch.state === 'dispatch_unknown' ? h(React.Fragment, null,
-                h('p', { className: 'saw-error' }, tr('DeliveryDispatchUnknown')),
+                h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDispatchId')}: ${dispatch.dispatchId}`),
+                h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(dispatch.updatedAt)}`)) : null,
+              dispatch.state === 'interrupted' ? h(React.Fragment, null,
+                h('p', { className: 'saw-meta' }, tr('DeliveryStopInterruptedHint')),
+                h('p', { className: 'saw-meta' }, `${tr('DeliveryStopEvidence')}: ${tr(dispatch.stopEvidence === 'turn-aborted' ? 'DeliveryStopEvidenceTurn' : 'DeliveryStopEvidenceCancel')}`),
+                h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDispatchId')}: ${dispatch.dispatchId}`),
+                h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(dispatch.updatedAt)}`),
+                h('p', { className: 'saw-meta' }, tr('DeliveryStopRecreateHint')),
+                button(tr('RecreateTask'), () => recreateFromStoppedDelivery(current.key), busy)) : null,
+              dispatch.state === 'dispatch_unknown' ? h(React.Fragment, null,
+                h('p', { className: 'saw-error' }, tr(stop ? 'DeliveryStopUnknown' : 'DeliveryDispatchUnknown')),
                 button(tr('DeliveryQueryDispatch'), () => { void dispatchDelivery(current.key) }, busy)) : null,
-              entry.dispatch.state === 'blocked' ? h(React.Fragment, null,
-                h('p', { className: 'saw-error' }, tr(entry.dispatch.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked')),
-                h('p', { className: 'saw-meta' }, tr('DeliveryDispatchBlockedHint')),
-                entry.dispatch.code ? h('p', { className: 'saw-meta' }, `${tr('Code')}: ${entry.dispatch.code}`) : null) : null) : null,
-            !entry.dispatch && entry.dispatchStatus === 'dispatch_unknown' ? h('div', { className: 'saw-row' },
-              h('p', { className: 'saw-error' }, tr('DeliveryDispatchUnknown')),
+              dispatch.state === 'blocked' ? h(React.Fragment, null,
+                h('p', { className: 'saw-error' }, tr(stop ? (dispatch.code === 'delivery_target_cold' ? 'DeliveryStopTargetCold' : 'DeliveryStopBlocked') : (dispatch.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked'))),
+                h('p', { className: 'saw-meta' }, tr(stop ? 'DeliveryStopBlockedHint' : 'DeliveryDispatchBlockedHint')),
+                dispatch.code ? h('p', { className: 'saw-meta' }, `${tr('Code')}: ${dispatch.code}`) : null,
+                button(tr('DeliveryPrepareAgain'), () => prepareAgainDelivery(current.key), busy)) : null) : null,
+            !dispatch && entry.dispatchStatus === 'dispatch_unknown' ? h('div', { className: 'saw-row' },
+              h('p', { className: 'saw-error' }, tr(stop ? 'DeliveryStopUnknown' : 'DeliveryDispatchUnknown')),
               button(tr('DeliveryQueryDispatch'), () => { void dispatchDelivery(current.key) }, busy)) : null,
-            !entry.dispatch && entry.dispatchStatus === 'blocked' ? h('p', { className: 'saw-error' }, entry.error || tr('DeliveryDispatchBlocked')) : null,
-            !entry.dispatch && entry.dispatchStatus !== 'dispatch_unknown' && entry.dispatchStatus !== 'blocked' ? entry.error ? h('p', { className: 'saw-error', role: 'alert' }, entry.error) : null : null) : null,
+            !dispatch && entry.dispatchStatus === 'blocked' ? h('p', { className: 'saw-error' }, entry.error || tr(stop ? 'DeliveryStopBlocked' : 'DeliveryDispatchBlocked')) : null,
+            !dispatch && entry.dispatchStatus !== 'dispatch_unknown' && entry.dispatchStatus !== 'blocked' ? entry.error ? h('p', { className: 'saw-error', role: 'alert' }, entry.error) : null : null) : null,
           entry?.status === 'unknown' ? h('div', { className: 'saw-row' },
-            h('p', { className: 'saw-error' }, entry.error || tr('DeliveryErrorUnknown')),
+            h('p', { className: 'saw-error' }, entry.error || tr(stop ? 'DeliveryStopUnknown' : 'DeliveryErrorUnknown')),
             button(tr('DeliveryQueryStatus'), () => { void checkDeliveryStatus(current.key) }, busy)) : null,
-          !entry || entry.status === 'draft' ? h(React.Fragment, null,
+          !entry || entry.status === 'draft' ? (stop ? h(React.Fragment, null,
+            h('p', { className: 'saw-meta' }, tr('DeliveryStopReasonHint')),
+            h('label', { className: 'saw-setting' }, tr('DeliveryStopReason'), h('textarea', { value: deliveryStopReason(current.key), rows: 3, maxLength: 2000, disabled: busy, onChange: (e: any) => editDeliveryStopReason(current.key, e.target.value) })),
+            h('p', { className: 'saw-meta' }, `${tr('DeliveryStopReasonBytes')}: ${body}`),
+            h('p', { className: 'saw-meta' }, entry?.error || deliveryStatusName(entry)),
+            button(tr('DeliveryStopPrepare'), () => { void prepareDelivery() }, busy, { className: 'saw-btn saw-action-primary' })) : h(React.Fragment, null,
             h('p', { className: 'saw-meta' }, tr('DeliveryBodySummary')),
             bodyText.trim() ? h('p', { className: 'saw-pre' }, deliverySummary(bodyText)) : h('p', { className: 'saw-meta' }, tr('DeliveryTextRequired')),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryBodyBytes')}: ${body} · ${tr('DeliveryImages')}: ${images.length}`),
             h('p', { className: 'saw-meta' }, entry?.error || deliveryStatusName(entry)),
-            button(tr('DeliveryPrepare'), () => { void prepareDelivery() }, busy || !bodyText.trim(), { className: 'saw-btn saw-action-primary' })) : null))
+            button(tr('DeliveryPrepare'), () => { void prepareDelivery() }, busy || !bodyText.trim(), { className: 'saw-btn saw-action-primary' }))) : null))
     }
     const locateView = (actions?: () => any, images?: () => any) => {
       const result = locateResult

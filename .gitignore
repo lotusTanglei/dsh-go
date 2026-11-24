@@ -11,3 +11,4 @@ coverage/
 .superagent-state/
 *.lock.recovery
 *.pending
+probes/kanban/test-runs/

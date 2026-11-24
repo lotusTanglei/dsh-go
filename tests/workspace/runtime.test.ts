@@ -170,7 +170,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
       return { assignmentId, sessionId, agent }
     },
     /** An already-live ordinary managed target with real Host operation semantics. */
-    seedLiveTarget(sessionId: string, options: { failFollowup?: boolean } = {}) {
+    seedLiveTarget(sessionId: string, options: { failFollowup?: boolean; failCancel?: boolean; abortOnCancel?: boolean; keepTurnOpenOnCancel?: boolean } = {}) {
       logs.set(sessionId, [])
       const received = { followup: [] as Message[], inject: [] as Message[], steer: [] as Message[] }
       const agent: any = {
@@ -185,10 +185,15 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
         steer(value: Message) {
           received.steer.push(value); append(sessionId, 'agent/inbox/spliced', { target: 'next-step', start: received.steer.length - 1, removedCount: 0, inserted: [value] })
         },
-        cancel: calls.cancel,
+        cancel(cause: any) {
+          calls.cancel(cause)
+          if (options.failCancel) throw new Error('Host cancel outcome lost')
+          if (options.abortOnCancel) append(sessionId, 'turn/end', { turn: 0, reason: { kind: 'aborted' } })
+          if (options.keepTurnOpenOnCancel) append(sessionId, 'turn/start', { turn: 1 })
+        },
       }
       agents.set(sessionId, agent)
-      return { sessionId, agent, received }
+      return { sessionId, agent, received, emit: (type: string, data: unknown) => append(sessionId, type, data), openTurn: () => append(sessionId, 'turn/start', { turn: 0 }) }
     },
     setDurable(value: boolean) { durable = value }, setModelVerified(value: boolean) { modelVerified = value }, setModelWait(value: (() => Promise<void>) | undefined) { modelWait = value },
     async input(text = 'same task body', patch: Partial<WorkspaceCommand> = {}): Promise<WorkspaceCommand> {
@@ -1119,6 +1124,156 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     const reconciled = await post('delivery', { action: 'dispatch', ...input })
     expect(reconciled.data).toMatchObject({ state: 'accepted', accepted: true, delivered: true, executed: null, completed: null, seq: 3 })
     expect(live.received.steer).toHaveLength(1)
+  })
+
+  it('stops a live managed session once through the HTTP seam with real aborted-turn evidence and an audit reason', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id, { abortOnCancel: true }); live.openTurn()
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: 'Owner stops this exact conversation', target, images: [] as any[] }
+    expect((await post('delivery', { action: 'prepare', ...input })).status).toBe(200)
+    expect((await post('delivery', { action: 'confirm', ...input })).data).toMatchObject({ state: 'confirmed', operation: 'stop', delivered: false, accepted: false })
+    expect(f.calls.cancel).not.toHaveBeenCalled()
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.status).toBe(200)
+    expect(dispatched.data).toMatchObject({ version: 1, operation: 'stop', state: 'interrupted', durable: true, humanConfirmed: true, delivered: false, accepted: false,
+      interrupted: true, executed: null, completed: null, disposition: 'stop-interrupted', stopEvidence: 'turn-aborted',
+      digest: expect.stringMatching(/^[a-f0-9]{64}$/), target: { ...target, project: { kind: 'project', key: 'p' } } })
+    expect(dispatched.data.messageId).toBeUndefined()
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1); expect(f.calls.cancel).toHaveBeenCalledWith({ kind: 'user' })
+    // A stop is not a message and does not execute a text operation on the target.
+    expect(live.received.followup).toEqual([]); expect(live.received.inject).toEqual([]); expect(live.received.steer).toEqual([])
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+    expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+    const audits = f.store.repos.audit.all().filter(row => row.action === 'session_stop')
+    expect(audits.at(-1)).toMatchObject({ ticket_id: null, detail: { by: 'human', sessionId: observations.id, reason: 'Owner stops this exact conversation', outcome: 'interrupted', evidence: 'turn-aborted' } })
+    // Same confirmed stop replays the stored receipt; the Host is never cancelled twice.
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1')).toHaveLength(1)
+  })
+
+  it('reports an accepted Host cancel as interrupted only when no turn stays open, and never as message acceptance', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedLiveTarget(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: '', target, images: [] as any[] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    // A text delivery needs the Host flush barrier; a stop's evidence is the cancel plus turn state.
+    f.setDurable(false)
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.data).toMatchObject({ state: 'interrupted', accepted: false, interrupted: true, stopEvidence: 'cancel-accepted', disposition: 'stop-interrupted' })
+    expect(dispatched.data.messageId).toBeUndefined()
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+  })
+
+  it('keeps a cancel with a still-open turn as dispatch_unknown instead of claiming interruption', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id, { keepTurnOpenOnCancel: true })
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: 'Try to stop a running turn', target, images: [] as any[] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const unknown = await post('delivery', { action: 'dispatch', ...input })
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', accepted: false, interrupted: false, executed: null, completed: null, disposition: 'reconcile-only', code: 'delivery_stop_turn_still_open' })
+    expect(unknown.data.messageId).toBeUndefined()
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(unknown)
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(live.received.followup).toEqual([])
+  })
+
+  it('keeps a lost cancel unknown across restart, never resends, and reconciles only from an aborted turn', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id, { failCancel: true })
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: 'Cancel outcome lost', target, images: [] as any[] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const unknown = await post('delivery', { action: 'dispatch', ...input })
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', code: 'delivery_dispatch_unknown', disposition: 'reconcile-only' })
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(f.store.repos.audit.all().filter(row => row.action === 'session_stop').at(-1)).toMatchObject({ detail: { outcome: 'unknown' } })
+    await f.restart({ production: true })
+    const replay = await httpPanel(f)('delivery', { action: 'dispatch', ...input })
+    expect(replay.data).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(f.calls.resume).not.toHaveBeenCalled()
+    // Only a committed aborted turn may promote the crash-left fence; startup reconciliation never resends.
+    live.emit('turn/end', { turn: 0, reason: { kind: 'aborted' } })
+    await f.restart({ production: true })
+    const reconciled = await httpPanel(f)('delivery', { action: 'dispatch', ...input })
+    expect(reconciled.data).toMatchObject({ state: 'interrupted', interrupted: true, stopEvidence: 'turn-aborted', seq: 3, disposition: 'stop-interrupted' })
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(f.calls.resume).not.toHaveBeenCalled()
+  })
+
+  it('blocks a cold stop without waking it, and rejects unconfirmed, revoked, retargeted and cross-epoch stops with zero cancel', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const cold = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: 'Cold target stop', target, images: [] as any[] }
+    expect((await post('delivery', { action: 'dispatch', ...cold })).status).toBe(404)
+    await post('delivery', { action: 'prepare', ...cold })
+    expect((await post('delivery', { action: 'dispatch', ...cold })).status).toBe(409)
+    await post('delivery', { action: 'confirm', ...cold })
+    const blocked = await post('delivery', { action: 'dispatch', ...cold })
+    expect(blocked.status).toBe(200)
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_target_cold', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched' })
+    expect(f.calls.cancel).not.toHaveBeenCalled(); expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+    expect(f.store.repos.audit.all().filter(row => row.action === 'session_stop').at(-1)).toMatchObject({ detail: { outcome: 'cold', reason: 'Cold target stop', by: 'human' } })
+    expect(await post('delivery', { action: 'dispatch', ...cold })).toEqual(blocked)
+    // Facts changed after confirmation: rejected before the Host call.
+    const live = f.seedLiveTarget(observations.id, { abortOnCancel: true })
+    const changed = { ...cold, requestId: randomUUID(), confirmationId: randomUUID(), text: 'Facts change after confirm' }
+    await post('delivery', { action: 'prepare', ...changed }); await post('delivery', { action: 'confirm', ...changed })
+    observations.values.set(observations.id, { title: 'Ordinary target', goal: { goal: { phase: 'active', objective: 'Changed facts' } } })
+    expect((await post('delivery', { action: 'dispatch', ...changed })).status).toBe(409)
+    expect(f.calls.cancel).not.toHaveBeenCalled()
+    observations.values.set(observations.id, { title: 'Ordinary target', goal: { goal: { phase: 'active', objective: 'Repair callback' } } })
+    // Managed-scope revocation: rejected before the Host call and not restored by re-adding.
+    const scoped = { ...cold, requestId: randomUUID(), confirmationId: randomUUID(), text: 'Scope revoked before stop' }
+    await post('delivery', { action: 'prepare', ...scoped }); await post('delivery', { action: 'confirm', ...scoped })
+    const excluded = await f.runtime.panelPorts.sessionWork({ action: 'set-included', epoch, sessionId: observations.id, included: false, revision: target.scopeRevision })
+    expect((await post('delivery', { action: 'dispatch', ...scoped })).status).toBe(409)
+    await f.runtime.panelPorts.sessionWork({ action: 'set-included', epoch, sessionId: observations.id, included: true, revision: excluded.revision! })
+    expect((await post('delivery', { action: 'dispatch', ...scoped })).status).toBe(409)
+    expect(f.calls.cancel).not.toHaveBeenCalled()
+    await f.restart({ production: true, missingRouter: true })
+    expect((await httpPanel(f)('delivery', { action: 'dispatch', ...changed })).status).toBe(409)
+    expect(f.calls.cancel).not.toHaveBeenCalled(); expect(live.received.followup).toEqual([])
+  })
+
+  it('allows a new confirmed task from a stopped managed session without resuming it or inheriting approvals', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id, { abortOnCancel: true })
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const stop = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: 'Owner stopped this work', target, images: [] as any[] }
+    await post('delivery', { action: 'prepare', ...stop }); await post('delivery', { action: 'confirm', ...stop })
+    expect((await post('delivery', { action: 'dispatch', ...stop })).data).toMatchObject({ state: 'interrupted', stopEvidence: 'turn-aborted' })
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    // The explicit "new task from this requirement" entry submits a normal new-task command.
+    const next = await f.input('Fresh interpretation of the stopped requirement')
+    const receipt = await f.runtime.panelPorts.command(next)
+    const command = f.store.repos.side_effect.get(`workspace-command:v1:${next.requestId}`)!.detail as CommandRecord
+    expect(command).toMatchObject({ intent: 'new-task', threadKey: `workspace:${next.requestId}` })
+    expect(command.originTicket).toBeUndefined()
+    expect(command.threadKey).not.toBe(`session:${observations.id}`)
+    f.admit(receipt)
+    const plan = await f.propose(brief('Fresh interpretation of the stopped requirement')); f.endTurn()
+    expect(plan).toMatchObject({ requestId: next.requestId, state: 'pending' })
+    expect(plan.planId).toBeDefined(); expect(plan.fingerprint).toMatch(/^[a-f0-9]{64}$/)
+    // No ticket exists before the independent plan confirmation.
+    expect(f.store.repos.ticket.all()).toEqual([]); expect(f.store.repos.approval.all()).toEqual([])
+    expect(f.calls.cancel).toHaveBeenCalledTimes(1); expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+    const created = await f.runtime.panelPorts.admission(approve(plan))
+    expect(created).toMatchObject({ state: 'consumed', ticketId: `ticket:admission:${plan.planId}` })
+    const fresh = f.store.repos.ticket.get(created.ticketId!)!
+    expect(fresh).toMatchObject({ state: 'open', stopped_by_human: 0 })
+    expect(fresh.thread_key).toBe(`workspace:${next.requestId}`)
+    expect(f.store.repos.approval.all()).toEqual([])
+    // The stopped live conversation is untouched: no resume, no extra cancel, no injected text.
+    expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.cancel).toHaveBeenCalledTimes(1)
+    expect(live.received.followup).toEqual([]); expect(live.received.inject).toEqual([]); expect(live.received.steer).toEqual([])
+    expect(f.calls.followup).toHaveLength(1)
   })
 
 })

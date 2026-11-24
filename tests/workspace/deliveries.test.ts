@@ -45,7 +45,7 @@ function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
     images: new Map<string, ImageRow>(),
     counts: { target: 0, image: 0, fence: 0, dispatch: 0 },
     calls: [] as Array<{ record: DeliveryDispatchRecord; text: string; fencePersisted: boolean }>,
-    decision: { state: 'accepted', code: undefined } as { state: 'accepted' | 'dispatch_unknown' | 'blocked'; code?: string },
+    decision: { state: 'accepted', code: undefined } as { state: 'accepted' | 'interrupted' | 'dispatch_unknown' | 'blocked'; code?: string; stopEvidence?: 'turn-aborted' | 'cancel-accepted' },
     throwDispatch: false,
     evidence: undefined as undefined | ((record: DeliveryDispatchRecord) => DeliveryDispatchEvidence | undefined),
   }
@@ -78,7 +78,7 @@ function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
         const persisted: any = db.store.repos.side_effect.get(`delivery-dispatch:v1:${record.confirmationId}`)
         state.calls.push({ record: { ...record, target: { ...record.target, project: { ...record.target.project } } } as DeliveryDispatchRecord, text, fencePersisted: persisted?.state === `v1:${record.seq}` })
         if (state.throwDispatch) throw new Error('Host call outcome lost')
-        return { state: state.decision.state, ...(state.decision.code === undefined ? {} : { code: state.decision.code }) }
+        return { state: state.decision.state, ...(state.decision.code === undefined ? {} : { code: state.decision.code }), ...(state.decision.stopEvidence === undefined ? {} : { stopEvidence: state.decision.stopEvidence }) }
       },
       async evidence(record: Readonly<DeliveryDispatchRecord>) { return state.evidence?.(record as DeliveryDispatchRecord) as DeliveryDispatchEvidence | undefined },
     }),
@@ -370,11 +370,11 @@ describe('dispatch: one durable control call for the exact confirmed payload', (
     f.reopen()
     expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown' })
     expect(f.state.calls).toHaveLength(1)
-    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
     expect(f.state.calls).toHaveLength(1)
     expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('Unknown outcome body')
     // Exact target evidence may reconcile the unknown later; it never becomes a resend.
-    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId!, durable: true, accepted: true })
     const reconciled = await f.service.dispatch(input)
     expect(reconciled).toMatchObject({ state: 'accepted', accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt', seq: 3 })
     expect(f.state.calls).toHaveLength(1)
@@ -389,7 +389,7 @@ describe('dispatch: one durable control call for the exact confirmed payload', (
     expect(f.state.calls).toHaveLength(1)
     expect(await f.service.dispatch(input)).toMatchObject({ state: 'blocked', seq: 2 })
     expect(f.state.calls).toHaveLength(1)
-    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 0, blocked: 1 })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 0, blocked: 1 })
   })
 
   it('blocks visibly when no Host dispatch adapter is wired', async () => {
@@ -407,10 +407,10 @@ describe('dispatch: one durable control call for the exact confirmed payload', (
     const unknown = await f.service.dispatch(input)
     expect(unknown).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
     expect(f.state.calls).toEqual([])
-    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
     expect(f.state.calls).toEqual([])
-    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
-    expect(await f.service.reconcile()).toEqual({ accepted: 1, unknown: 0, blocked: 0 })
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId!, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 1, interrupted: 0, unknown: 0, blocked: 0 })
     expect(await f.service.dispatch(input)).toMatchObject({ state: 'accepted', seq: 3 })
     expect(f.state.calls).toEqual([])
   })
@@ -420,9 +420,108 @@ describe('dispatch: one durable control call for the exact confirmed payload', (
     await f.service.prepare(input); await f.service.confirm(input)
     f.state.throwDispatch = true
     await f.service.dispatch(input)
-    f.state.evidence = record => ({ dispatchId: randomUUID(), confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
-    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
-    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: 'other-session', digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
-    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
+    f.state.evidence = record => ({ dispatchId: randomUUID(), confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId!, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: 'other-session', digest: record.digest, messageId: record.messageId!, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
   })
+describe('stop: one Host cancellation with honest interruption evidence', () => {
+  const stop = (f: ReturnType<typeof fixture>, patch: Partial<DeliveryInput> = {}) => f.input({ operation: 'stop', text: '', images: [], ...patch })
+
+  it('prepares and confirms an optional reason as metadata only, with no body or image semantics', async () => {
+    const f = fixture(), withReason = stop(f, { text: 'Owner stops this exact work' }), withoutReason = stop(f)
+    const prepared = await f.service.prepare(withReason)
+    expect(prepared).toMatchObject({ operation: 'stop', bodyBytes: Buffer.byteLength('Owner stops this exact work', 'utf8'), images: [], state: 'prepared', humanConfirmed: false,
+      delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', digest: deliveryDigest(withReason) })
+    const confirmed = await f.service.confirm(withReason)
+    expect(confirmed).toMatchObject({ state: 'confirmed', humanConfirmed: true, delivered: false, accepted: false, disposition: 'confirmed-pending-delivery' })
+    expect(await f.service.confirm(withReason)).toEqual(confirmed)
+    expect(f.state.counts.dispatch).toBe(0)
+    const bare = await f.service.prepare(withoutReason)
+    expect(bare.bodyBytes).toBe(0)
+    expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('Owner stops this exact work')
+    // A stop carries no message and no images; malformed or over-long reasons never reach persistence.
+    for (const bad of [
+      stop(f, { images: [{ imageId: randomUUID(), digest: digest(['image']), seq: 1 }] }),
+      stop(f, { text: 'x'.repeat(2001) }),
+      { ...stop(f), operation: 'resume' } as any,
+    ]) await rejectsWith(f.service.prepare(bad as DeliveryInput), 'delivery_invalid', 400)
+  })
+
+  it('dispatches one Host cancel, reports interrupted with evidence and never fakes a message delivery', async () => {
+    const f = fixture(), input = stop(f, { text: 'Owner stops this exact work' })
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.decision = { state: 'interrupted', stopEvidence: 'turn-aborted' }
+    const receipt = await f.service.dispatch(input)
+    expect(receipt).toMatchObject({ version: 1, operation: 'stop', state: 'interrupted', durable: true, humanConfirmed: true,
+      delivered: false, accepted: false, interrupted: true, executed: null, completed: null, disposition: 'stop-interrupted', stopEvidence: 'turn-aborted', seq: 2 })
+    expect(receipt.messageId).toBeUndefined()
+    expect(f.state.calls).toHaveLength(1)
+    expect(f.state.calls[0]).toMatchObject({ text: 'Owner stops this exact work', fencePersisted: true, record: { operation: 'stop', state: 'dispatching', seq: 1 } })
+    expect(f.state.calls[0]!.record.messageId).toBeUndefined()
+    // Same confirmed stop replays the stored receipt; the Host is never cancelled twice.
+    expect(await f.service.dispatch(input)).toEqual(receipt)
+    expect(f.state.calls).toHaveLength(1)
+    expect(f.dispatchRows()).toHaveLength(1)
+    expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('turn-aborted' in {} ? '' : 'Owner stops this exact work')
+    for (const cancelAccepted of ['cancel-accepted', 'turn-aborted'] as const) {
+      const g = fixture(), other = stop(g)
+      await g.service.prepare(other); await g.service.confirm(other)
+      g.state.decision = { state: 'interrupted', stopEvidence: cancelAccepted }
+      expect(await g.service.dispatch(other)).toMatchObject({ state: 'interrupted', stopEvidence: cancelAccepted })
+    }
+  })
+
+  it('keeps a lost cancel unknown, never resends, and promotes only with stop interruption evidence', async () => {
+    const f = fixture(), input = stop(f, { text: 'Unknown cancel' })
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.throwDispatch = true
+    const unknown = await f.service.dispatch(input)
+    expect(unknown).toMatchObject({ state: 'dispatch_unknown', accepted: false, interrupted: false, delivered: false, executed: null, completed: null, disposition: 'reconcile-only', code: 'delivery_dispatch_unknown' })
+    expect(unknown.messageId).toBeUndefined()
+    expect(f.state.calls).toHaveLength(1)
+    f.reopen()
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
+    expect(f.state.calls).toHaveLength(1)
+    // A message-shaped evidence object can never prove an interruption.
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId!, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, durable: true, interrupted: true, stopEvidence: 'turn-aborted' })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 1, unknown: 0, blocked: 0 })
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'interrupted', seq: 3, interrupted: true, stopEvidence: 'turn-aborted' })
+    expect(f.state.calls).toHaveLength(1)
+  })
+
+  it('enforces per-operation adapter contracts and never upgrades a stop to acceptance', async () => {
+    const f = fixture(), input = stop(f)
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.decision = { state: 'accepted' as any }
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown', accepted: false, interrupted: false, disposition: 'reconcile-only' })
+    const g = fixture(), uncorroborated = stop(g)
+    await g.service.prepare(uncorroborated); await g.service.confirm(uncorroborated)
+    g.state.decision = { state: 'interrupted' }
+    expect(await g.service.dispatch(uncorroborated)).toMatchObject({ state: 'dispatch_unknown', interrupted: false })
+    const h = fixture(), text = h.input()
+    await h.service.prepare(text); await h.service.confirm(text)
+    h.state.decision = { state: 'interrupted', stopEvidence: 'turn-aborted' }
+    expect(await h.service.dispatch(text)).toMatchObject({ state: 'dispatch_unknown', accepted: false, delivered: false })
+    const cold = fixture(), coldText = cold.input()
+    await cold.service.prepare(coldText); await cold.service.confirm(coldText)
+    cold.state.decision = { state: 'blocked', code: 'delivery_target_cold' }
+    expect(await cold.service.dispatch(coldText)).toMatchObject({ state: 'blocked', code: 'delivery_target_cold' })
+  })
+
+  it('rejects target facts that changed after stop confirmation before any Host cancel', async () => {
+    const f = fixture(), input = stop(f)
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.binding = { ...f.state.binding, factRevision: digest(['fact', 9]) }
+    await rejectsWith(f.service.dispatch(input), 'delivery_target_changed', 409)
+    f.state.binding = { ...f.state.binding, factRevision: input.target.factRevision }
+    f.state.denied = true
+    await rejectsWith(f.service.dispatch(input), 'delivery_target_changed', 409)
+    expect(f.state.calls).toEqual([]); expect(f.dispatchRows()).toEqual([])
+  })
+})
+
 })
