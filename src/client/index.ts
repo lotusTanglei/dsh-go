@@ -4,9 +4,8 @@ import { workspaceStyles } from './workspace-style.js'
 import { deriveDeskState } from './desk-model.js'
 import { createGoSettings } from './go-settings.js'
 import { createGoDecisions } from './go-decisions.js'
-import { createGoTencent } from './go-tencent.js'
 import { createGoProjects } from './go-projects.js'
-export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>, channelDefinitions: readonly unknown[], workspaceFactory = createWorkspacePage, styleFactory = workspaceStyles, deskFactory = deriveDeskState, settingsFactory = createGoSettings, decisionsFactory = createGoDecisions, tencentFactory = createGoTencent, projectsFactory = createGoProjects) {
+export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>, channelDefinitions: readonly unknown[], workspaceFactory = createWorkspacePage, styleFactory = workspaceStyles, deskFactory = deriveDeskState, settingsFactory = createGoSettings, decisionsFactory = createGoDecisions, projectsFactory = createGoProjects) {
   const h = React.createElement
   const NS = 'superagent'
   return {
@@ -21,8 +20,7 @@ export function createClientPlugin(React: any, dictionaries: Record<string, Reco
       ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'superagent-channel-notice', locale: NS }, ChannelNotice))
       async function request(path: string, body = {}, signal?: AbortSignal) {
         const timeout = new AbortController()
-        const documentScan = path === 'document-source' && (body as any)?.action === 'scan'
-        const timer = setTimeout(() => timeout.abort(), documentScan ? 190000 : 15000)
+        const timer = setTimeout(() => timeout.abort(), 15000)
         const abort = () => timeout.abort()
         signal?.addEventListener('abort', abort, { once: true })
         if (signal?.aborted) timeout.abort()
@@ -49,7 +47,7 @@ export function createClientPlugin(React: any, dictionaries: Record<string, Reco
       function Icon() {
         return h('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true }, h('path', { d: 'M3 4h18v16H3zM8 4v16M13 4v16M18 4v16' }))
       }
-      const Page = workspaceFactory(React, request, t, styleFactory(), deskFactory, settingsFactory, decisionsFactory, tencentFactory, projectsFactory)
+      const Page = workspaceFactory(React, request, t, styleFactory(), deskFactory, settingsFactory, decisionsFactory, projectsFactory)
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'superagent', order: 100, label: () => t('title'), locale: NS }, Icon))
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'superagent', inject: () => ({}), locale: NS }, Page))
     },

@@ -6,9 +6,18 @@
   "description": "Go task orchestration bundle for DeepSeek Harness (P1)",
   "main": "host.cjs",
   "exports": {
-    ".": { "types": "./lib/index.d.ts", "default": "./host.cjs" },
-    "./client": { "types": "./lib/client/index.d.ts", "default": "./lib/client.js" },
-    "./domain": { "types": "./lib/domain/index.d.ts", "default": "./lib/domain/index.js" },
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./host.cjs"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./domain": {
+      "types": "./lib/domain/index.d.ts",
+      "default": "./lib/domain/index.js"
+    },
     "./router": "./lib/p2/router.js",
     "./worker": "./lib/p2/worker.js",
     "./watchdog": "./lib/p2/watchdog.js",
@@ -25,12 +34,39 @@
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
-  "engines": { "node": ">=24.0.0", "dsh": ">=0.2.2-rc.3 <0.3.0" },
-  "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-chat"] }
+  "engines": {
+    "node": ">=24.0.0",
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
   },
-  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md", "integrations/wecom-readonly", "docs/WECOM-DOCUMENT-SOURCE.md", "docs/KANBAN-SESSION-COVERAGE.md", "docs/KANBAN-TASK-FIRST.md", "docs/GO-IMPLEMENTATION-20261121.md", "docs/GO-SESSION-ACTIONS.md", "docs/GO-IMAGE-LIFECYCLE.md", "docs/GO-LOCAL-SOURCES.md", "docs/GO-TENCENT-SOURCE.md", "docs/GO-STAGE-MODELS.md", "docs/GO-DECISIONS.md", "docs/GO-CONFIG-MUTATIONS.md"],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    }
+  },
+  "files": [
+    "lib",
+    "host.cjs",
+    "host-runtime.json",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "docs/KANBAN-SESSION-COVERAGE.md",
+    "docs/KANBAN-TASK-FIRST.md",
+    "docs/GO-IMPLEMENTATION-20261121.md",
+    "docs/GO-SESSION-ACTIONS.md",
+    "docs/GO-IMAGE-LIFECYCLE.md",
+    "docs/GO-STAGE-MODELS.md",
+    "docs/GO-DECISIONS.md",
+    "docs/GO-CONFIG-MUTATIONS.md"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

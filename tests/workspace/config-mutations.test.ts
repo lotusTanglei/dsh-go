@@ -40,8 +40,8 @@ function fixture() {
     write(value = 'configured') { store.db.prepare('INSERT INTO synthetic_core(k,v) VALUES (?,?)').run('settings', value) },
   }
 }
-function input(payload: ConfigMutationJSON = { sourceId: 'synthetic-local', scope: ['safe-config'] }): ConfigMutationInput {
-  return { epoch: EPOCH, requestId: randomUUID(), kind: 'local-configure', payload }
+function input(payload: ConfigMutationJSON = { scope: ['safe-config'] }): ConfigMutationInput {
+  return { epoch: EPOCH, requestId: randomUUID(), kind: 'stage-save', payload }
 }
 const status = (action: ConfigMutationInput) => ({ epoch: action.epoch, requestId: action.requestId })
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done }); return { resolve, promise } }
@@ -242,13 +242,13 @@ describe('config mutation journal: caller-owned core transaction and no automati
     expect(f.store.repos.kv.all()).toHaveLength(1)
   })
 
-  it('closed/rejected/recorded request IDs cannot change payload or kind; genuinely new ID is explicit', async () => {
+  it('closed/rejected/recorded request IDs cannot change payload; genuinely new ID is explicit', async () => {
     const f = fixture()
     for (const state of ['closed', 'rejected', 'recorded']) {
       const action = input()
       if (state === 'closed') await f.mutations.close(action)
-      else await f.mutations.run(action, () => { if (state === 'rejected') throw new WorkspaceError('local_source_conflict', 409); return null })
-      for (const changed of [{ ...action, payload: { changed: true } }, { ...action, kind: 'stage-save' as const }]) {
+      else await f.mutations.run(action, () => { if (state === 'rejected') throw new WorkspaceError('config_conflict', 409); return null })
+      for (const changed of [{ ...action, payload: { changed: true } }]) {
         await rejects(f.mutations.run(changed, unused), 'config_mutation_request_conflict', 409)
         await rejects(f.mutations.close(changed), 'config_mutation_request_conflict', 409)
       }
@@ -363,18 +363,6 @@ describe('config mutation journal: caller-owned core transaction and no automati
     await rejects(f.mutations.status(status(action)), 'config_mutation_not_found', 404)
     f.reopen()
     expect((await f.mutations.close(action)).mutation.state).toBe('closed')
-  })
-
-  it('accepts the three Tencent configuration kinds while rejecting unknown kinds before journaling', async () => {
-    const f = fixture()
-    for (const kind of ['tencent-configure', 'tencent-remove', 'tencent-scan'] as const) {
-      const action = { ...input(), kind }
-      const receipt = await f.mutations.run(action, commit => { f.store.transaction(() => commit({ configured: true })); return null })
-      expect(receipt).toMatchObject({ mutation: { kind, state: 'settled' }, value: { configured: true } })
-      expect(await f.mutations.status(status(action))).toEqual(receipt)
-    }
-    await rejects(f.mutations.close({ ...input(), kind: 'tencent-dispatch' } as any), 'config_mutation_invalid', 400)
-    expect(f.store.repos.kv.all()).toHaveLength(3)
   })
 
   it('handler that leaves a transaction open cannot expose uncommitted settled as durable', async () => {

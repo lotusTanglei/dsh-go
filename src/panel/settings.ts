@@ -37,7 +37,7 @@ export function effectiveSettings(config: Partial<Config>, raw?: Record<string, 
   return keys.flatMap(key => {
     if (key === 'roleTools') return Object.entries(config.roleTools ?? {}).map(([role, value]) => ({ key: `roleTools.${role}`, value: redact(value), ...origin(role, key) }))
     const path = ['stateDir', 'dbPath', 'lockPath', 'workRoot'].includes(key)
-    const value = key === 'localSourceRoots' ? (config.localSourceRoots ?? []).map(root => ({ id: root.id, name: root.name ?? root.id })) : path ? '[REDACTED_PATH]' : redact(values[key])
+    const value = path ? '[REDACTED_PATH]' : redact(values[key])
     return [{ key, value, ...origin(key), ...(path ? { redacted: true } : {}) }]
   })
 }

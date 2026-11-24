@@ -1,7 +1,6 @@
 import type { Store } from '../store/index.js'
 import { foldConversation } from './conversation.js'
 import { queueCapacityUsed } from '../engine/capacity.js'
-import type { DocumentOriginAuthority } from './document-origin.js'
 import { createCommandJournal, commandError, commandDigest, validateCommand, WorkspaceError, type WorkspaceCommand, type CommandRecord, type WorkspaceBinding } from './commands.js'
 
 export interface IngressPorts {
@@ -14,7 +13,6 @@ export interface IngressPorts {
   queueLimit: number
   target(id: string): { threadKey: string } | undefined
   ingest(record: CommandRecord, event: any): Promise<void>
-  readonly documentOrigins?: DocumentOriginAuthority
 }
 /** One authority for UI receipt, event catch-up and restart reconciliation. No message-body copy. */
 export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
@@ -27,11 +25,6 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
   const reconciliation = new Map<string, Promise<CommandRecord>>()
   function capacityUsed(): number {
     return queueCapacityUsed(store)
-  }
-  function validateOrigin(record: Pick<CommandRecord, 'documentOrigin' | 'requestId'>): void {
-    if (!record.documentOrigin) return
-    if (!ports.documentOrigins) return commandError('document_origin_unavailable', 503)
-    ports.documentOrigins.validate(record.documentOrigin, record.requestId)
   }
   async function reconcileUnlocked(stale: CommandRecord, events?: any[]): Promise<CommandRecord> {
     let record = journal.read(stale.requestId) ?? stale
@@ -66,7 +59,6 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
     if (!['processing', 'published'].includes(record.stage) && (record.stage !== stage || record.durable !== durable)) next = journal.update(record.requestId, { stage, durable, ...(durable ? { error: undefined } : { error: 'durability_unavailable' }) })
     const admissionEvent = admitted ?? (record.targetTicket ? insertion : undefined)
     if (admissionEvent && Number(admissionEvent.seq) <= watermark && durable && !['processing', 'published', 'rejected', 'canceled'].includes(next.stage)) {
-      validateOrigin(next)
       await ports.ingest(next, admissionEvent)
       // Ingest may publish/reject while awaited. Never replace that terminal receipt.
       next = journal.read(next.requestId) ?? next
@@ -87,7 +79,6 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
     validateCommand(input)
     const binding = ports.binding()
     if (input.epoch !== binding.epoch) return commandError('epoch_mismatch')
-    validateOrigin(input)
     const prior = journal.read(input.requestId)
     if (prior && prior.digest !== commandDigest(input)) return commandError('request_conflict')
     if (prior) {
@@ -105,11 +96,8 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
     if (ports.paused()) return commandError('workspace_paused', 429)
     // No await between the union-count reservation check and durable receive.
     if (!prior && capacityUsed() >= ports.queueLimit) return commandError('queue_full', 429)
-    validateOrigin(input)
     // Claim and command receipt commit atomically: a crash cannot strand a claim without its request.
-    const record = prior ?? journal.receive(input, target?.threadKey ?? `workspace:${input.requestId}`, () => {
-      if (input.documentOrigin) ports.documentOrigins!.reserve(input.documentOrigin, input.requestId)
-    })
+    const record = prior ?? journal.receive(input, target?.threadKey ?? `workspace:${input.requestId}`)
     // Fence commits before the void call. A crash here needs explicit unknown resolution,
     // never a new id or blind repeat. Exact input remains only in client draft/Session.
     journal.update(record.requestId, { stage: 'unknown', error: 'dispatch_uncertain', durable: false })
@@ -126,9 +114,6 @@ export function createWorkspaceIngress(store: Store, ports: IngressPorts) {
     journal, receipt, reconcile,
     async submit(input: WorkspaceCommand) {
       validateCommand(input)
-      // Hold a primitive-only provenance snapshot across awaited Host/model checks.
-      input = { ...input, ...(input.documentOrigin ? { documentOrigin: Object.freeze({ ...input.documentOrigin }) } : {}) }
-      validateOrigin(input)
       const running = locks.get(input.requestId)
       if (running) {
         const record = await running

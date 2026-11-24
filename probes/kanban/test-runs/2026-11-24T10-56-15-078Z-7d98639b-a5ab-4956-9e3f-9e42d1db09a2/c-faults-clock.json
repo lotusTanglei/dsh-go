@@ -1,0 +1,95 @@
+{
+  "case": "clock",
+  "recordedAt": "2026-11-24T10:56:15.482Z",
+  "mode": "offline-real-sqlite-fake-host",
+  "times": [
+    9000,
+    1000,
+    0,
+    9999,
+    10000,
+    10001
+  ],
+  "samples": [
+    {
+      "now": 9000,
+      "metrics": {
+        "at": 9000,
+        "lastProgressAt": 10000,
+        "steps": 0,
+        "tokens": 0,
+        "stallMs": 0,
+        "durationMs": 0,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      }
+    },
+    {
+      "now": 1000,
+      "metrics": {
+        "at": 1000,
+        "lastProgressAt": 10000,
+        "steps": 0,
+        "tokens": 0,
+        "stallMs": 0,
+        "durationMs": 0,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      }
+    },
+    {
+      "now": 0,
+      "metrics": {
+        "at": 0,
+        "lastProgressAt": 10000,
+        "steps": 0,
+        "tokens": 0,
+        "stallMs": 0,
+        "durationMs": 0,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      }
+    },
+    {
+      "now": 9999,
+      "metrics": {
+        "at": 9999,
+        "lastProgressAt": 10000,
+        "steps": 0,
+        "tokens": 0,
+        "stallMs": 0,
+        "durationMs": 0,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      }
+    },
+    {
+      "now": 10000,
+      "metrics": {
+        "at": 10000,
+        "lastProgressAt": 10000,
+        "steps": 0,
+        "tokens": 0,
+        "stallMs": 0,
+        "durationMs": 0,
+        "repeatedCalls": 0,
+        "waitingMs": 0
+      }
+    },
+    {
+      "now": 10001,
+      "metrics": {
+        "at": 10001,
+        "lastProgressAt": 10000,
+        "steps": 0,
+        "tokens": 0,
+        "stallMs": 1,
+        "durationMs": 1,
+        "repeatedCalls": 0,
+        "waitingMs": 1
+      }
+    }
+  ],
+  "actualCalls": [],
+  "audit": []
+}

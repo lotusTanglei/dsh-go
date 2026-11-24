@@ -38,14 +38,14 @@ describe('peer primary-view navigation without hidden sends or draft retargeting
     g.autoScroll.current = false; node.scrollTop = 110; node.scrollHeight = 1800; layout(); expect(node.scrollTop).toBe(110)
     g.autoScroll.current = true; layout(); expect(node.scrollTop).toBe(1800)
   })
-  it('changes only navigation and preserves independent draft, pending request, image target and source material', () => {
+  it('changes only navigation and preserves independent draft, pending request, image target and local material', () => {
     const calls: any[] = []
-    const retained = { composer: { draft: 'Keep exact text', target: { id: 'original' }, pending: { requestId: 'original-request' } }, imageDraft: { target: { sessionId: 'original-image-target' }, items: [{ digest: 'a'.repeat(64) }] }, sourceDraft: { text: 'Untrusted material', authorization: 'not-granted' } }
+    const retained = { composer: { draft: 'Keep exact text', target: { id: 'original' }, pending: { requestId: 'original-request' } }, imageDraft: { target: { sessionId: 'original-image-target' }, items: [{ digest: 'a'.repeat(64) }] }, materialDraft: { text: 'Untrusted material', authorization: 'not-granted' } }
     const before = JSON.stringify(retained), systemFocus = { current: { id: 'old-settings-opener' } as any }
     const navigate = closure('navigatePrimary', { ...retained, detailIdRef: { current: '' }, setDetailId: () => {}, systemFocus, syncViewRoute: (route: any) => calls.push(['route', route]), closeSystem: () => { expect(systemFocus.current).toBeNull(); calls.push('close') }, setMobileTab: (value: any) => calls.push(['view', value]), setCollapsed: (value: any) => calls.push(['collapsed', value]), openSystem: (value: any) => calls.push(['system', value]) })
-    for (const tab of ['chat', 'board', 'decisions-home', 'sources', 'settings']) navigate(tab)
-    expect(calls).toEqual(['close', ['view', 'chat'], ['collapsed', false], ['route', { view: 'chat' }], 'close', ['view', 'board'], ['collapsed', false], ['route', { view: 'board' }], ['system', 'decisions-home'], ['system', 'sources'], ['system', 'settings']])
-    navigate('forged-session-id'); expect(calls).toHaveLength(11)
+    for (const tab of ['chat', 'board', 'decisions-home', 'settings']) navigate(tab)
+    expect(calls).toEqual(['close', ['view', 'chat'], ['collapsed', false], ['route', { view: 'chat' }], 'close', ['view', 'board'], ['collapsed', false], ['route', { view: 'board' }], ['system', 'decisions-home'], ['system', 'settings']])
+    navigate('forged-session-id'); expect(calls).toHaveLength(10)
     expect(JSON.stringify(retained)).toBe(before)
   })
   it('keeps global dialogue discoverable and its unread mark without acknowledging or sending on navigation', () => {
@@ -60,11 +60,10 @@ describe('peer primary-view navigation without hidden sends or draft retargeting
   })
   it('opens only an explicitly selected setting category and keeps all substantive forms out of the home', () => {
     const opened: string[] = [], g: any = { h, tr: (key: string) => key, button: (label: string, click: any) => h('button', { onClick: click }, label), openSystem: (tab: string) => opened.push(tab) }
-    const scope = closure('scopeSettingsEntry', g)(), sources = closure('sourceSettingsEntry', g)()
+    const scope = closure('scopeSettingsEntry', g)()
     expect(nodes(scope).filter(row => row.tag === 'button')).toHaveLength(1)
-    expect(nodes(sources).filter(row => row.tag === 'button')).toHaveLength(1)
-    nodes(scope).find(row => row.tag === 'button').props.onClick(); nodes(sources).find(row => row.tag === 'button').props.onClick()
-    expect(opened).toEqual(['scope', 'sources-settings'])
-    expect([...nodes(scope), ...nodes(sources)].some(row => ['input', 'textarea', 'select', 'form'].includes(row.tag))).toBe(false)
+    nodes(scope).find(row => row.tag === 'button').props.onClick()
+    expect(opened).toEqual(['scope'])
+    expect(nodes(scope).some(row => ['input', 'textarea', 'select', 'form'].includes(row.tag))).toBe(false)
   })
 })

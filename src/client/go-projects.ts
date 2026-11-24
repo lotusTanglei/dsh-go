@@ -4,7 +4,7 @@ export function createGoProjects(React: any, request: (path: string, body: any, 
   const strings: Record<string, string> = {
     Projects: '项目', Intro: '从可信 Host 项目索引查看当前工作观察与原会话；浏览不改变对话草稿或发送目标。',
     Refresh: '刷新项目与范围', MoreProjects: '加载更多项目', MoreSessions: '加载更多会话', BackProjects: '返回项目集合', BackWork: '返回项目工作', OpenProject: '进入项目', OpenObservation: '查看当前工作观察', OpenSession: '查看原会话上下文', Inspect: '核对当前目标（不执行）',
-    Work: '事项观察', Sessions: '关联会话', Sources: '任务来源', Overview: '概览', Progress: '进展', Relations: '关联', Results: '结果',
+    Work: '事项观察', Sessions: '关联会话', Overview: '概览', Progress: '进展', Relations: '关联', Results: '结果',
     Untitled: '未命名项目', UntitledSession: '未提供会话标题', Unassigned: '未归属', Unknown: '归属暂不可用',
     Loading: '正在读取已纳入范围…', Failed: '读取失败；已加载内容仅为上次观察，可能过期。未自动重试，可显式刷新项目与范围。', Changed: '范围或项目事实版本已变化，旧内容已失效；请刷新项目与范围。', Invalid: 'Host 数据不完整或与当前项目不一致；未发布正文，请刷新核实。',
     Partial: '部分范围尚未核实；已加载内容不代表全部项目或工作。', Empty: '当前已加载范围没有可展示的项目。',
@@ -17,7 +17,6 @@ export function createGoProjects(React: any, request: (path: string, body: any, 
     ObservationEmpty: '已加载会话中暂无可用的结构化目标观察；不等于项目没有工作。可查看会话上下文或继续分页。',
     SessionIntro: '这里只列实际的原会话上下文，不复制成额外事项实体。运行状态不等于业务结果。',
     SessionEmpty: '已加载页没有纳入的原会话。', NoObjective: '该会话尚无可信的结构化目标观察。可核对原会话上下文，不能据标题创造事项。',
-    SourceGap: '当前 API 没有可信的项目—任务来源关联，不能把所有来源归属于此项目，也不能据此断言项目没有来源。', SourceSettings: '前往任务来源配置',
     CurrentObservation: '当前工作观察（来源：原会话结构化事实）', Objective: '结构化目标', Done: '已报告完成步骤（不是验收证明）', Current: '当前进展', Next: '下一步', Blocker: '阻塞', Decision: '原会话问题观察（不是操作审批）',
     MissingFact: '暂未取得可靠事实', NoTimeline: '仅展示当前事实快照；没有可信事件时间线，不编造历史或完成证明。',
     ApprovalGap: '审批覆盖缺口：普通会话的通用工具审批 / 旧阻塞问题没有完整可信投影；这里不能批准或声称全部处理。',
@@ -42,7 +41,7 @@ export function createGoProjects(React: any, request: (path: string, body: any, 
   const button = (label: string, onClick: any, disabled = false, extra: any = {}) => h('button', { type: 'button', className: 'saw-btn', disabled, onClick, ...extra }, tr(label))
   const fact = (label: string, value: any) => h('div', { className: 'saw-work-fact' }, h('h4', null, tr(label)), h('p', null, text(value)))
   const initial = () => ({ catalog: null as any, page: null as any, busy: null as any, attempted: null as any, error: '', stale: false, sequence: 0 })
-  function Projects(props: { epoch: string; active: boolean; scopeRevision?: string; projectKey?: string; sessionId?: string; tab?: string; onNavigate: (view: { projectKey?: string; sessionId?: string; tab?: string }) => void; onInspectTarget?: (row: any, revision: string) => void; onSources?: () => void }) {
+  function Projects(props: { epoch: string; active: boolean; scopeRevision?: string; projectKey?: string; sessionId?: string; tab?: string; onNavigate: (view: { projectKey?: string; sessionId?: string; tab?: string }) => void; onInspectTarget?: (row: any, revision: string) => void }) {
     const [, repaint] = React.useState(0)
     const ref = React.useRef(null as any)
     const projectKey = props.projectKey || '', sessionId = props.sessionId || ''
@@ -107,9 +106,9 @@ export function createGoProjects(React: any, request: (path: string, body: any, 
       })
     }
     const project = selectedProject()
-    const tab = sessionId ? ['overview', 'progress', 'relations', 'results'].includes(props.tab || '') ? props.tab! : 'overview' : ['work', 'sessions', 'sources'].includes(props.tab || '') ? props.tab! : 'work'
+    const tab = sessionId ? ['overview', 'progress', 'relations', 'results'].includes(props.tab || '') ? props.tab! : 'overview' : ['work', 'sessions'].includes(props.tab || '') ? props.tab! : 'work'
     React.useEffect(() => { if (current() && !s.catalog && !s.stale && !s.busy) void readProjects() }, [epoch, props.active, props.scopeRevision, target])
-    React.useEffect(() => { if (current() && project && !project.excluded && project.kind !== 'unknown' && tab !== 'sources' && !s.page && !s.stale && !s.busy && s.attempted !== JSON.stringify([target, s.catalog.revision, s.sequence])) void readSessions() }, [epoch, props.active, props.scopeRevision, target, s.catalog, s.sequence, s.busy])
+    React.useEffect(() => { if (current() && project && !project.excluded && project.kind !== 'unknown' && !s.page && !s.stale && !s.busy && s.attempted !== JSON.stringify([target, s.catalog.revision, s.sequence])) void readSessions() }, [epoch, props.active, props.scopeRevision, target, s.catalog, s.sequence, s.busy])
     const navigate = (view: any) => { if (current()) props.onNavigate(view) }
     const safeRow = (row: any) => current() && !s.stale && s.catalog?.revision === s.page?.revision && s.page?.projectKey === projectKey && selectedProject() && !selectedProject().excluded && selectedProject().kind !== 'unknown' && s.page.items.includes(row) && row.excluded === false && scopeProjectKey(row.project) === projectKey
     const inspect = (row: any) => { if (safeRow(row) && row.evidence !== 'unavailable' && hash(row.factRevision)) props.onInspectTarget?.(row, s.page.revision) }
@@ -141,7 +140,7 @@ export function createGoProjects(React: any, request: (path: string, body: any, 
           tab === 'relations' && h('section', { className: 'saw-work-summary' }, fact('ProjectRelation', projectName(project)), fact('OriginalSession', sessionName(row)), identity(row), h('p', null, tr('RelationGap')), button('OpenSession', () => navigate({ projectKey, tab: 'sessions' }))),
           tab === 'results' && h('section', { className: 'saw-work-summary' }, h('p', { role: 'note' }, tr('ResultGap')), row.evidence === 'structured' && row.result ? h('div', null, h('h4', null, tr(row.result.state === 'goal-complete' ? 'GoalComplete' : 'Unverified')), h('p', null, text(row.result.summary))) : h('p', null, tr('NoResult'))),
           observed(row), h('p', { role: 'note' }, tr('ApprovalGap')), identity(row), row.factRevision && h('details', null, h('summary', null, tr('FactRevision')), h('code', null, row.factRevision)), props.onInspectTarget && button('Inspect', () => inspect(row), row.evidence === 'unavailable' || !hash(row.factRevision))), coverage)
-      } else body = h('div', null, tabs('project', ['work', 'sessions', 'sources']), tab === 'sources' ? h('section', { className: 'saw-work-summary' }, h('p', null, tr('SourceGap')), props.onSources && button('SourceSettings', () => { if (current()) props.onSources?.() })) : h('div', null, h('p', null, tr(tab === 'work' ? 'ObservationIntro' : 'SessionIntro')), h('div', { className: 'saw-work-list' }, ...(tab === 'work' ? observations : rows).map(value => tab === 'work' ? h('button', { type: 'button', className: 'saw-work-row', key: value.sessionId, onClick: () => { if (safeRow(value)) navigate({ projectKey, sessionId: value.sessionId, tab: 'overview' }) } }, h('strong', null, value.objective), h('p', null, text(value.progress)), h('span', null, runtime(value.runtime)), observed(value)) : h('article', { className: 'saw-work-row', key: value.sessionId }, h('h3', null, sessionName(value)), h('small', null, `#${value.sessionId.slice(0, 8)}`), h('p', null, `${tr('Runtime')}: ${runtime(value.runtime)}`), observed(value), identity(value), button('OpenObservation', () => { if (safeRow(value)) navigate({ projectKey, sessionId: value.sessionId, tab: 'overview' }) }), props.onInspectTarget && button('Inspect', () => inspect(value), value.evidence === 'unavailable' || !hash(value.factRevision))))), page && !(tab === 'work' ? observations : rows).length && h('p', null, tr(tab === 'work' ? 'ObservationEmpty' : 'SessionEmpty')), coverage))
+      } else body = h('div', null, tabs('project', ['work', 'sessions']), h('div', null, h('p', null, tr(tab === 'work' ? 'ObservationIntro' : 'SessionIntro')), h('div', { className: 'saw-work-list' }, ...(tab === 'work' ? observations : rows).map(value => tab === 'work' ? h('button', { type: 'button', className: 'saw-work-row', key: value.sessionId, onClick: () => { if (safeRow(value)) navigate({ projectKey, sessionId: value.sessionId, tab: 'overview' }) } }, h('strong', null, value.objective), h('p', null, text(value.progress)), h('span', null, runtime(value.runtime)), observed(value)) : h('article', { className: 'saw-work-row', key: value.sessionId }, h('h3', null, sessionName(value)), h('small', null, `#${value.sessionId.slice(0, 8)}`), h('p', null, `${tr('Runtime')}: ${runtime(value.runtime)}`), observed(value), identity(value), button('OpenObservation', () => { if (safeRow(value)) navigate({ projectKey, sessionId: value.sessionId, tab: 'overview' }) }), props.onInspectTarget && button('Inspect', () => inspect(value), value.evidence === 'unavailable' || !hash(value.factRevision))))), page && !(tab === 'work' ? observations : rows).length && h('p', null, tr(tab === 'work' ? 'ObservationEmpty' : 'SessionEmpty')), coverage))
     }
     return h('section', { className: 'saw-section saw-projects', 'aria-busy': busy, onKeyDown: (event: any) => { if (event.key === 'Escape' && (projectKey || sessionId) && current()) { event.preventDefault(); event.stopPropagation(); navigate(sessionId && projectKey ? { projectKey, tab: 'work' } : {}) } } }, header, busy && h('p', { role: 'status' }, tr('Loading')), s.error && h('p', { role: 'alert' }, s.error), (s.catalog?.state === 'partial' || s.page?.state === 'partial') && h('p', { role: 'note' }, tr('Partial')), body)
   }

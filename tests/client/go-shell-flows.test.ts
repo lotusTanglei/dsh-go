@@ -16,7 +16,7 @@ function closure(name: string, globals: Record<string, any>): any {
 const array = (v: any) => Array.isArray(v) ? v : []
 const h = (tag: any, props: any, ...children: any[]) => ({ tag, props: props || {}, children })
 const nodes = (v: any): any[] => Array.isArray(v) ? v.flatMap(nodes) : v && typeof v === 'object' ? [v, ...array(v.children).flatMap(nodes)] : []
-const routeGlobals: any = { URLSearchParams, routeSystem: ['settings', 'scope', 'sources-settings', 'sources', 'local-sources', 'tencent-source', 'stage-models', 'settings-runtime', 'health', 'locate', 'images', 'decisions'] }
+const routeGlobals: any = { URLSearchParams, routeSystem: ['settings', 'scope', 'stage-models', 'settings-runtime', 'health', 'locate', 'images', 'decisions'] }
 routeGlobals.routeId = closure('routeId', routeGlobals)
 routeGlobals.parseViewRoute = closure('parseViewRoute', routeGlobals)
 routeGlobals.viewRouteHash = closure('viewRouteHash', routeGlobals)
@@ -25,7 +25,7 @@ const row = { sessionId: 'session-one', excluded: false, evidence: 'structured',
 
 describe('Go original-design shell navigation and single-item interaction contracts', () => {
   it('round-trips namespaced routes and opaque stable identities without turning them into commands', () => {
-    for (const route of [{ view: 'overview' }, { view: 'decisions-home' }, { view: 'board' }, { view: 'ticket', id: 'ticket:one/a', tab: 'results' }, { view: 'projects', projectKey: 'project:one/a:@', sessionId: 'session:one/a', tab: 'relations' }, { view: 'projects', projectKey: 'unassigned', tab: 'sessions' }, { view: 'local-sources' }, { view: 'images' }]) expect(routeGlobals.parseViewRoute(routeGlobals.viewRouteHash(route))).toEqual(route)
+    for (const route of [{ view: 'overview' }, { view: 'decisions-home' }, { view: 'board' }, { view: 'ticket', id: 'ticket:one/a', tab: 'results' }, { view: 'projects', projectKey: 'project:one/a:@', sessionId: 'session:one/a', tab: 'relations' }, { view: 'projects', projectKey: 'unassigned', tab: 'sessions' }, { view: 'images' }]) expect(routeGlobals.parseViewRoute(routeGlobals.viewRouteHash(route))).toEqual(route)
     for (const hash of ['', '#host/panel', '#go/unknown', '#go/ticket?id=https%3A%2F%2Fevil', '#go/projects?project=bad&session=one', '#go/projects?session=one', '#go/projects?project=project%3Aone&session=https%3A%2F%2Fevil', '#go/projects?project=project%3Aone&project=project%3Atwo', '#go/chat?actor=one', '#go/' + 'x'.repeat(1800)]) expect(routeGlobals.parseViewRoute(hash)).toEqual({ view: 'overview' })
     expect(routeGlobals.parseViewRoute('#go/projects?project=project%3Aone&tab=results')).toEqual({ view: 'projects', projectKey: 'project:one' })
   })
@@ -40,8 +40,8 @@ describe('Go original-design shell navigation and single-item interaction contra
   it('runs the actual initial Workspace factory without captured imports and starts in overview, not Kanban', () => {
     const slots: any[] = []; let cursor = 0
     const React = { Fragment: 'fragment', createElement: h, useRef(v: any) { const i = cursor++; return slots[i] ||= { current: v } }, useState(v: any) { const i = cursor++; if (!(i in slots)) slots[i] = typeof v === 'function' ? v() : v; return [slots[i], (next: any) => { slots[i] = typeof next === 'function' ? next(slots[i]) : next }] }, useEffect() {}, useLayoutEffect() {} }
-    const calls: any[] = [], factory = () => ({ LocalSources: () => null, StageModels: () => null, Decisions: () => null, TencentSources: () => null, Projects: () => null })
-    const Page = createWorkspacePage(React, async (...args) => { calls.push(args) }, (v: string) => v, '', () => ({ ready: false, idle: false, actionTotal: null, actions: [], recordTotal: null, records: [], moreActions: false, moreRecords: false }), factory, factory, factory, factory)
+    const calls: any[] = [], factory = () => ({ StageModels: () => null, Decisions: () => null, Projects: () => null })
+    const Page = createWorkspacePage(React, async (...args) => { calls.push(args) }, (v: string) => v, '', () => ({ ready: false, idle: false, actionTotal: null, actions: [], recordTotal: null, records: [], moreActions: false, moreRecords: false }), factory, factory, factory)
     const render = () => { cursor = 0; return Page() }, initial = render(), all = nodes(initial)
     expect(initial.props.className).toBe('saw-frame'); expect(all.find(v => v.props.className === 'saw-overview-host').props.hidden).toBe(false)
     expect(all.find(v => v.props.className === 'saw-workspace').props.hidden).toBe(true)
@@ -67,9 +67,9 @@ describe('Go original-design shell navigation and single-item interaction contra
     const oldNavigation = inspect(row, scope); g.navigationGeneration.current += 2; resolve({ status: 'located', revision: scope, target: row, coverage: 'complete', controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }); await oldNavigation; expect(opened).toHaveLength(1)
     expect(source).toContain("setDecisionLocation(null)\n            resetScope(); resetLocate()")
   })
-  it('keeps occupied drafts, source origins and image attachments out of explicit ticket retargeting', () => {
-    for (const state of [{ draft: 'unsent words' }, { pending: { requestId: 'pending' } }, { target: { id: 'original' } }, { origin: { id: 'source' } }, { documentOrigin: { itemKey: 'source' } }, { images: [{ id: 'image' }] }, { hashing: true }]) {
-      const updates: any[] = [], notices: string[] = [], initial = { draft: '', pending: null, target: null, origin: null, documentOrigin: null, ...state }
+  it('keeps occupied drafts, recreate origins and image attachments out of explicit ticket retargeting', () => {
+    for (const state of [{ draft: 'unsent words' }, { pending: { requestId: 'pending' } }, { target: { id: 'original' } }, { origin: { id: 'source' } }, { images: [{ id: 'image' }] }, { hashing: true }]) {
+      const updates: any[] = [], notices: string[] = [], initial = { draft: '', pending: null, target: null, origin: null, ...state }
       const g: any = { array, composerRef: { current: initial }, epochRef: { current: 'epoch' }, draftEpochRef: { current: 'epoch' }, imageBusyRef: { current: (state as any).hashing || null }, imageDraftsRef: { current: { epoch: { items: (state as any).images || [] } } }, tr: (v: string) => v, setNotice: (v: string) => notices.push(v), updateComposer: (v: any) => updates.push(v) }
       closure('supplement', g)({ id: 'another-ticket' }); expect(updates).toEqual([]); expect(notices).toEqual(['ResolveDraftFirst']); expect(g.composerRef.current).toBe(initial)
     }

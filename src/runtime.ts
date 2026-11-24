@@ -19,25 +19,19 @@ import type { WorkerGuardSnapshot, RoleGuardRuntime } from './tools/runtime.js'
 import { createWatchdog, type WatchdogAssignment } from './engine/watchdog.js'
 import { sampleDeviation } from './sessions/watchdog.js'
 import { createWorkspaceRuntime } from './workspace/runtime.js'
-import { createWorkspaceDocuments } from './workspace/documents.js'
-import { validDocumentOrigin, type DocumentOrigin, type DocumentOriginAuthority } from './workspace/document-origin.js'
 import { createScopePreferences } from './workspace/scope-preferences.js'
 import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
-import { createLocalSources } from './workspace/local-sources.js'
 import { createStageModels, type StageCatalogPort } from './workspace/stage-models.js'
 import { WorkspaceError } from './workspace/commands.js'
 import { createSessionDecisions, sessionDecisionSnapshotDigest, type SessionDecisionProjection } from './workspace/session-decisions.js'
 import { createConfigMutations, type ConfigMutationJSON, type ConfigMutationKind } from './workspace/config-mutations.js'
-import { createTencentSheets } from './sources/tencent-sheet.js'
-import type { WecomToolsPort } from './sources/wecom-connector.js'
 import type { Spawner } from './sessions/worker.js'
 import { approvalImpact } from './engine/approval-impact.js'
 
 /** Narrow Host adapter; DSH's live APIs remain at this boundary. */
 export interface RuntimeContext {
   readonly agents: { get(id: string): any; create(input: any): Promise<any>; resume?(input: any): Promise<any> }
-  readonly tools?: WecomToolsPort
   readonly agentPresets: { mount(ctx: any, id: string): Promise<unknown>; composedPreset(ctx: any): string | undefined }
   readonly subagents: { startActivation(input: any): Promise<any>; interrupt?(id: string, cause: any): unknown }
   readonly sessionQuery: { readSession(id: string): Promise<any>; listSessions?(signal?: AbortSignal): Promise<readonly any[]>; inspectSession?<T>(id: string, read: (session: any) => T, signal?: AbortSignal): Promise<T> }
@@ -74,16 +68,13 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   const controller = new AbortController()
   let mainId: string | undefined
   let workspace: ReturnType<typeof createWorkspaceRuntime> | undefined
-  let documents: ReturnType<typeof createWorkspaceDocuments> | undefined
   let sessionWork: SessionWorkSource | undefined
   let sessionActions: ReturnType<typeof createSessionActions> | undefined
   let images: ReturnType<typeof createWorkspaceImages> | undefined
-  let localSources: ReturnType<typeof createLocalSources> | undefined
   let stageModels: ReturnType<typeof createStageModels> | undefined
   let stageCatalog: StageCatalogPort | undefined
   let sessionDecisions: ReturnType<typeof createSessionDecisions> | undefined
   let configMutations: ReturnType<typeof createConfigMutations> | undefined
-  let tencentSources: ReturnType<typeof createTencentSheets> | undefined
   let disposed = false
   let initialization: 'starting' | 'ready' | 'failed' = 'starting'
   let heartbeat: number | undefined
@@ -402,10 +393,6 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     const ownedSessions = [mainId!, ...(ownedBindings?.current?.sessionId ? [ownedBindings.current.sessionId] : []), ...(ownedBindings?.archives ?? []).flatMap(row => typeof row.sessionId === 'string' && row.sessionId ? [row.sessionId] : [])]
     if (policy.acceptedSources.length) policy = createPolicy({ ...policy, acceptedSources: [...new Set([...policy.acceptedSources, ...ownedSessions.map(id => `session:${id}` as typeof source.id)])] })
     store.repos.thread.insertOrIgnore({ key: `session:${mainId}`, source: source.id, ref_json: { source: source.id, kind: 'session', id: mainId, address: {} }, created_at: Date.now(), last_at: Date.now(), seq: 0, paused: false, evaluating: null })
-    if (config.sources.some(row => row.kind === 'wecom-document')) documents = createWorkspaceDocuments(store, config, {
-      tools: ctx.tools, signal: controller.signal, registry: sources,
-      ingest: trigger => engine.ingest(trigger), reply: (body, idem) => source.reply('session', threadKey(`session:${mainId}`), body, idem),
-    })
     const scopePreferences = createScopePreferences(store)
     sessionWork = new SessionWorkSource({
       signal: controller.signal,
@@ -436,23 +423,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     await sessionWork.start()
     // The facade is created before workspace binding; services are resolved lazily after ready.
     // Source kinds never share an authority merely because their opaque hashes happen to match.
-    const originCall = (method: keyof DocumentOriginAuthority, origin: DocumentOrigin, ...ids: string[]) => {
-      if (!validDocumentOrigin(origin)) throw new WorkspaceError('document_origin_invalid', 400)
-      const authority = origin.kind === 'wecom-document' ? documents?.authority : localSources?.authority
-      if (!authority) throw new WorkspaceError('document_origin_unavailable', 503)
-      try { return (authority[method] as (...args: any[]) => unknown).call(authority, origin, ...ids) }
-      catch (error) {
-        if (error instanceof Error && /^local_source_[a-z_]+$/.test(error.message)) throw new WorkspaceError(`document_${error.message}`, [400, 403, 404, 409, 413, 415, 429, 503].includes((error as any).status) ? (error as any).status : 409)
-        throw error
-      }
-    }
-    const documentOrigins: DocumentOriginAuthority = {
-      validate(origin, requestId) { originCall('validate', origin, requestId) },
-      reserve(origin, requestId) { originCall('reserve', origin, requestId) },
-      link(origin, requestId, ticketId) { originCall('link', origin, requestId, ticketId) },
-      context(origin, requestId) { return originCall('context', origin, requestId) },
-    }
-    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, documentOrigins, sessionWork: () => sessionWork!.summary() })
+    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, sessionWork: () => sessionWork!.summary() })
     sessionActions = createSessionActions(store, {
       requireEpoch(epoch) {
         if (disposed || !workspace) throw Object.assign(new Error('session_action_unavailable'), { code: 'session_action_unavailable', status: 503 })
@@ -498,9 +469,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       if (disposed || !workspace) throw new WorkspaceError('workspace_unavailable', 503)
       workspace.requireEpoch(epoch)
     }
-    localSources = createLocalSources(store, { roots: () => config.localSourceRoots ?? [], requireEpoch: requireGoEpoch, signal: controller.signal })
     configMutations = createConfigMutations(store, { requireEpoch: requireGoEpoch })
-    tencentSources = createTencentSheets(store, { requireEpoch: requireGoEpoch, signal: controller.signal })
     // OAuth credentials and remote image/version authority are not configured by this slice.
     const llm = ctx.llm ?? (ctx.get ? ctx.get('llm') : undefined)
     if (llm?.listProviders && llm?.listModels && llm?.resolveModelInfo) stageCatalog = {
@@ -508,7 +477,6 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     }
     stageModels = createStageModels(store, { ...(stageCatalog ? { catalog: stageCatalog } : {}) })
     // Catalog inspection/configuration only: no call, bind, or provider authorization port.
-    await documents?.start()
     if (!testAdapter) {
       // Upgrades/reloads cannot keep an old, unverified Worker executable.
       for (const assignment of store.repos.assignment.all().filter(row => row.state === 'running')) {
@@ -552,13 +520,8 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       if (disposed) return { ok: false, code: 'SA_RUNTIME_STOPPED' }
       const sessionId = exec?.agent?.id
       const worker = sessionId ? assignmentFor(sessionId) : undefined
-      const routerCommands = ['task_source_context', 'ticket_list', 'ticket_status', 'ticket_cancel', 'assignment_start', 'assignment_stop', 'ticket_resume', 'ticket_create', 'channel_reply', 'human_ask']
+      const routerCommands = ['ticket_list', 'ticket_status', 'ticket_cancel', 'assignment_start', 'assignment_stop', 'ticket_resume', 'ticket_create', 'channel_reply', 'human_ask']
       if (routerCommands.includes(name) && (sessionId !== mainId || ctx.agents.get(mainId!) !== exec.agent)) return { ok: false, code: 'SA_ROUTER_IDENTITY_REQUIRED' }
-      if (['ticket_cancel', 'assignment_start', 'assignment_stop', 'ticket_resume'].includes(name) && await workspace?.isDocumentPlanningTurn()) return { ok: false, code: 'SA_DOCUMENT_PLANNING_ONLY' }
-      if (name === 'task_source_context') {
-        try { return { ok: true, code: 'SA_EXTERNAL_SOURCE_CONTEXT', evidence: await workspace?.sourceContext() } }
-        catch (error) { return { ok: false, code: (error as any)?.code || 'SA_DOCUMENT_CONTEXT_DENIED' } }
-      }
       if (name === 'ticket_list') return { ok: true, code: 'SA_OK', items: store.repos.ticket.all().map(row => ({ id: row.id, state: row.state, title: row.title })) }
       if (name === 'ticket_status') { const row = ticketFor(args.ticketId); return { ok: true, code: 'SA_OK', ticket: { id: row.id, title: row.title, state: row.state } } }
       if (name === 'ticket_cancel') return { ok: await stopTicket(args.ticketId, args.reason), code: 'SA_STOPPED' }
@@ -655,28 +618,6 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (input.action === 'close') return sessionActions.close(input.input)
         return sessionActions.status({ epoch: input.epoch, actionId: input.actionId })
       },
-      async tencentSource(input: any) {
-        input = structuredClone(input)
-        await ready
-        if (disposed || !tencentSources || !configMutations || !workspace) throw new WorkspaceError('tencent_sheet_unavailable', 503)
-        workspace.requireEpoch(input?.epoch)
-        const { action, requestId, ...payload } = input
-        if (action === 'list') return tencentSources.list(payload)
-        if (action === 'detail') return tencentSources.detail(payload)
-        if (!['configure', 'remove', 'scan'].includes(action)) throw new WorkspaceError('invalid_input', 400)
-        const { epoch, ...body } = payload
-        return configMutations.run({ epoch, requestId, kind: `tencent-${action}` as ConfigMutationKind, payload: body }, async commit => {
-          try {
-            if (action === 'configure') return safeConfigJSON(tencentSources!.configure(payload, value => commit(safeConfigJSON(value))))
-            if (action === 'remove') return safeConfigJSON(tencentSources!.remove(payload, value => commit(safeConfigJSON(value))))
-            return safeConfigJSON(await tencentSources!.scan(payload, value => commit(safeConfigJSON(value))))
-          } catch (error) {
-            const code = (error as any)?.code
-            if (typeof code === 'string' && /^tencent_sheet_[a-z_]+$/.test(code)) throw new WorkspaceError(code, (error as any).status ?? 409)
-            throw error
-          }
-        })
-      },
       async configMutation(input: any) {
         await ready
         if (disposed || !configMutations || !workspace) throw new WorkspaceError('config_mutation_unavailable', 503)
@@ -697,37 +638,6 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (action === 'status') return sessionDecisions.status(payload)
         if (action === 'close') return sessionDecisions.close(payload)
         throw new WorkspaceError('invalid_input', 400)
-      },
-      async localSources(input: any) {
-        input = structuredClone(input)
-        await ready
-        if (disposed || !localSources || !workspace) throw new WorkspaceError('local_source_unavailable', 503)
-        workspace.requireEpoch(input?.epoch)
-        const { action, requestId, ...payload } = input
-        try {
-          if (['configure', 'remove', 'scan'].includes(action)) {
-            if (!configMutations) throw new WorkspaceError('config_mutation_unavailable', 503)
-            const { epoch, ...body } = payload
-            return configMutations.run({ epoch, requestId, kind: `local-${action}` as ConfigMutationKind, payload: body }, commit => {
-              try {
-                if (action === 'configure') return safeConfigJSON(localSources!.configure(payload, value => commit(safeConfigJSON(value))))
-                if (action === 'remove') return safeConfigJSON(localSources!.remove(payload, value => commit(safeConfigJSON(value))))
-                return safeConfigJSON(localSources!.scan(payload, value => commit(safeConfigJSON(value))))
-              } catch (error) {
-                if (error instanceof Error && /^local_source_[a-z_]+$/.test(error.message)) throw new WorkspaceError(error.message, (error as any).status ?? 409)
-                throw error
-              }
-            })
-          }
-          if (action === 'list') return localSources.list(payload)
-          if (action === 'detail') return localSources.detail(payload)
-          if (action === 'claim') return localSources.claim({ ...payload, requestId })
-          if (action === 'plan-origin') return localSources.planOrigin({ ...payload, requestId })
-          throw new WorkspaceError('invalid_input', 400)
-        } catch (error) {
-          if (error instanceof Error && /^local_source_[a-z_]+$/.test(error.message)) throw new WorkspaceError(error.message, [400, 403, 404, 409, 413, 415, 429, 503].includes((error as any).status) ? (error as any).status : 409)
-          throw error
-        }
       },
       async stageModels(input: any) {
         input = structuredClone(input)
@@ -795,22 +705,6 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (action === 'bind') return images.bind(payload)
         if (action === 'release') return images.release(payload)
         throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
-      },
-      async documentSource(input: any) {
-        await ready
-        if (!workspace || !documents || disposed) throw Object.assign(new Error('document_source_unavailable'), { code: 'document_source_unavailable', status: 503 })
-        workspace.requireEpoch(input.epoch)
-        if (input.action === 'list') return documents.list(input.cursor)
-        if (input.action === 'scan') return documents.scan(input.sourceId)
-        if (input.action === 'detail') return documents.detail(input.itemKey, input.revision)
-        if (input.action === 'review' && input.decision === 'reviewed-not-struck') return documents.review(input.itemKey, input.revision, input.evidenceDigest, input.epoch)
-        throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
-      },
-      async documentImage(input: any) {
-        await ready
-        if (!workspace || !documents || disposed) throw Object.assign(new Error('document_source_unavailable'), { code: 'document_source_unavailable', status: 503 })
-        workspace.requireEpoch(input.epoch)
-        return documents.image(input.itemKey, input.revision, input.digest)
       },
       async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'durable-chat-notice', modelWakeup: false, visualVerification: 'pending-human' }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
       async sources() { return Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, paused: config.paused || engine.paused(), ...await source.health() }))) },

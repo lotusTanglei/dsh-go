@@ -57,8 +57,6 @@ export interface PanelPorts {
   readonly ownsTicketTransitions?: boolean
   readonly health?: () => unknown | Promise<unknown>
   readonly sources?: () => unknown | Promise<unknown>
-  /** Runtime verifies the current epoch; list/detail are local observations, scan is explicit only. */
-  readonly documentSource?: (input: any) => Promise<unknown>
   /** Passive current-Host observations and persistent membership only; runtime checks epoch/revision. */
   readonly sessionWork?: (input: any) => Promise<unknown>
   /** Side-effect-free target proposal only; never dispatches to the returned Session. */
@@ -67,13 +65,9 @@ export interface PanelPorts {
   readonly sessionAction?: (input: any) => Promise<unknown>
   /** Bounded original-byte upload/preview and target binding; no model or delivery call. */
   readonly images?: (input: any) => Promise<unknown>
-  readonly localSources?: (input: any) => Promise<unknown>
   readonly stageModels?: (input: any) => Promise<unknown>
   readonly sessionDecision?: (input: any) => Promise<unknown>
   readonly configMutation?: (input: any) => Promise<unknown>
-  readonly tencentSource?: (input: any) => Promise<unknown>
-  /** Exact local evidence only; never resolves a caller-provided path, URL, or tool. */
-  readonly documentImage?: (input: any) => Promise<{ bytes: Buffer; mimeType: string }>
   readonly settings?: () => readonly EffectiveSetting[] | Promise<readonly EffectiveSetting[]>
   readonly stopTicket?: (ticketId: string, reason: string) => boolean | void | Promise<boolean | void>
   readonly resumeTicket?: (ticketId: string) => boolean | void | Promise<boolean | void>
@@ -89,7 +83,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/document-source', '/document-image', '/session-work', '/session-locate', '/session-action', '/images', '/local-sources', '/stage-models', '/session-decision', '/config-mutation', '/tencent-source'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/session-work', '/session-locate', '/session-action', '/images', '/stage-models', '/session-decision', '/config-mutation'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -133,15 +127,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function validId(value: unknown): value is string { return typeof value === 'string' && SAFE_ID.test(value) }
 function validHash(value: unknown): value is string { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) }
 /** Preserve only validated provenance hashes in this exact DTO; global sanitizer stays unchanged. */
-function documentData(value: unknown, depth = 0): unknown {
-  if (depth > 12) return '[REDACTED]'
-  if (Array.isArray(value)) return value.slice(0, 100).map(item => documentData(item, depth + 1))
-  if (isObject(value)) return Object.fromEntries(Object.entries(value).slice(0, 100).flatMap(([key, item]) => {
-    if (key === 'documentLink') return typeof item === 'string' && /^https:\/\/doc\.weixin\.qq\.com\/sheet\/[A-Za-z0-9_-]+\?tab=[A-Za-z0-9_-]+$/.test(item) ? [[key, item]] : []
-    return /token|secret|password|credential|authorization|cookie|raw|payload|workdir|path|url/i.test(key) ? [] : [[key, ['itemKey', 'revision', 'evidenceDigest', 'configVersion', 'digest', 'cursor'].includes(key) && validHash(item) ? item : documentData(item, depth + 1)]]
-  }))
-  return sanitize(value, depth)
-}
 function validWorkId(value: unknown): value is string { return validId(value) && !value.includes('://') }
 function validWorkCursor(value: unknown): value is string { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,1024}$/.test(value) }
 /** Exact observation DTO only: keep opaque identities/cursors, never arbitrary projections or headers. */
@@ -566,26 +551,10 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       ...(Number.isSafeInteger(data?.searched) ? { searched: data.searched } : {}), ...(Number.isSafeInteger(data?.candidateTotal) ? { candidateTotal: data.candidateTotal } : {}),
       candidates, ...(data?.status === 'located' && candidate(data.target) ? { target: candidate(data.target) } : {}) } })
   })
-  route('/tencent-source', async request => {
-    const parsed = await body(request, ['action', 'epoch', 'requestId', 'id', 'fileId', 'sheetId', 'range', 'idColumn', 'titleColumn', 'textColumns', 'expectedRevision', 'expectedSnapshot', 'snapshotId']); if (parsed.error) return parsed.error
-    const input = parsed.value!, action = input.action
-    const shapes: Record<string, string[]> = { list: ['action', 'epoch'], configure: ['action', 'epoch', 'requestId', 'id', 'fileId', 'sheetId', 'range', 'idColumn', 'titleColumn', 'textColumns', 'expectedRevision'], remove: ['action', 'epoch', 'requestId', 'id', 'expectedRevision'], scan: ['action', 'epoch', 'requestId', 'id', 'expectedRevision', 'expectedSnapshot'], detail: ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId'] }
-    if (typeof action !== 'string' || !shapes[action] || !only(input, shapes[action]!) || !validWorkId(input.epoch) || ['configure', 'remove', 'scan'].includes(action) && !validWorkId(input.requestId)) return fail('invalid_input', 'Tencent source fields are invalid', 400)
-    if (!ports.tencentSource) return fail('tencent_sheet_unavailable', 'Tencent source service is unavailable', 503)
-    const result = await ports.tencentSource(input)
-    const keys = new Set(['mutation', 'value', 'version', 'epoch', 'requestId', 'kind', 'digest', 'state', 'at', 'updatedAt', 'code', 'id', 'fileId', 'sheetId', 'range', 'idColumn', 'titleColumn', 'textColumns', 'revision', 'expectedRevision', 'sourceId', 'configRevision', 'snapshotId', 'sources', 'connection', 'support', 'reason', 'freshness', 'remoteRevision', 'images', 'imageSeen', 'trust', 'authorization', 'config', 'items', 'itemId', 'rowId', 'row', 'title', 'text', 'strike', 'eligible', 'capturedAt', 'current', 'changes', 'added', 'changed', 'removed'])
-    const metadata = (value: any, depth = 0): any => {
-      if (depth > 10) return null
-      if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') return value
-      if (Array.isArray(value)) return value.slice(0, 1000).map(item => metadata(item, depth + 1))
-      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => keys.has(key)).map(([key, item]) => [key, metadata(item, depth + 1)])) : null
-    }
-    return json({ ok: true, data: metadata(result) })
-  })
   route('/config-mutation', async request => {
     const parsed = await body(request, ['action', 'epoch', 'requestId', 'kind', 'payload']); if (parsed.error) return parsed.error
     const { action, ...input } = parsed.value!
-    const shape = action === 'status' ? only(input, ['epoch', 'requestId']) : action === 'close' && only(input, ['epoch', 'requestId', 'kind', 'payload']) && ['local-configure', 'local-remove', 'local-scan', 'stage-save', 'tencent-configure', 'tencent-remove', 'tencent-scan'].includes(String(input.kind)) && isObject(input.payload)
+    const shape = action === 'status' ? only(input, ['epoch', 'requestId']) : action === 'close' && only(input, ['epoch', 'requestId', 'kind', 'payload']) && String(input.kind) === 'stage-save' && isObject(input.payload)
     if (!shape || !validWorkId(input.epoch) || !validWorkId(input.requestId)) return fail('invalid_input', 'Configuration receipt fields are invalid', 400)
     if (!ports.configMutation) return fail('config_mutation_unavailable', 'Configuration receipt service is unavailable', 503)
     const result = await ports.configMutation({ action, ...input }) as any
@@ -641,27 +610,6 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     }
     return json({ ok: true, data: metadata(result) })
   })
-  route('/local-sources', async request => {
-    const parsed = await body(request, ['action', 'epoch', 'id', 'rootId', 'relativePath', 'kind', 'csv', 'expectedRevision', 'expectedSnapshot', 'snapshotId', 'imageDigest', 'itemId', 'requestId', 'humanReview']); if (parsed.error) return parsed.error
-    const input = parsed.value!, action = input.action
-    const shapes: Record<string, string[]> = { list: ['action', 'epoch'], configure: ['action', 'epoch', 'requestId', 'id', 'rootId', 'relativePath', 'kind', 'csv', 'expectedRevision'], remove: ['action', 'epoch', 'requestId', 'id', 'expectedRevision'], scan: ['action', 'epoch', 'requestId', 'id', 'expectedRevision', 'expectedSnapshot'], detail: ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId', 'imageDigest'], claim: ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId', 'itemId', 'requestId', 'humanReview'], 'plan-origin': ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId', 'itemId', 'requestId'] }
-    if (typeof action !== 'string' || !shapes[action] || !only(input, shapes[action]!) || !validWorkId(input.epoch)) return fail('invalid_input', 'Local source fields are invalid', 400)
-    if (!ports.localSources) return fail('local_source_unavailable', 'Local source service is unavailable', 503)
-    const result = await ports.localSources(input) as any
-    if (result?.kind === 'image') {
-      if (action !== 'detail' || !Buffer.isBuffer(result.bytes) || result.bytes.length > 5 * 1024 * 1024 || !validRaster(result.bytes, result.mediaType) || createHash('sha256').update(result.bytes).digest('hex') !== input.imageDigest) return fail('local_source_image_invalid', 'Local source image is unavailable', 503)
-      return json({ ok: true, data: { kind: 'image', encoded: result.bytes.toString('base64'), mediaType: result.mediaType, digest: input.imageDigest, imageSeen: false } })
-    }
-    const keys = new Set(['mutation', 'value', 'version', 'digest', 'at', 'updatedAt', 'code', 'roots', 'id', 'name', 'sources', 'rootId', 'relativePath', 'kind', 'csv', 'idColumn', 'revision', 'state', 'snapshotId', 'reason', 'freshness', 'support', 'blocked', 'requires', 'limits', 'fileBytes', 'imageBytes', 'totalImageBytes', 'images', 'csvRows', 'csvColumns', 'sourceId', 'configRevision', 'epoch', 'changes', 'added', 'changed', 'removed', 'imagesChanged', 'items', 'itemId', 'location', 'row', 'rowId', 'reference', 'digest', 'mediaType', 'size', 'imageSeen', 'config', 'capturedAt', 'text', 'trust', 'authorization', 'current', 'draftId', 'requestId', 'origin', 'humanReview', 'documentOrigin', 'itemKey', 'evidenceDigest', 'configVersion', 'planningOnly'])
-    const snapshot = (value: any, depth = 0): any => {
-      if (depth > 10) return null
-      if (value === null || typeof value === 'boolean' || typeof value === 'number') return value
-      if (typeof value === 'string') return value
-      if (Array.isArray(value)) return value.slice(0, 501).map(item => snapshot(item, depth + 1))
-      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => keys.has(key)).map(([key, item]) => [key, snapshot(item, depth + 1)])) : null
-    }
-    return json({ ok: true, data: snapshot(result) })
-  })
   route('/images', async request => {
     const parsed = await body(request, ['action', 'epoch', 'draftId', 'uploadId', 'digest', 'mediaType', 'encoded', 'reference', 'target'], 12 * 1024 * 1024); if (parsed.error) return parsed.error
     const input = parsed.value!, ref = input.reference
@@ -714,25 +662,6 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     }
     if (data?.state !== 'closed' && isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
     return json({ ok: true, data: output })
-  })
-  route('/document-source', async request => {
-    const parsed = await body(request, ['action', 'epoch', 'sourceId', 'itemKey', 'revision', 'cursor', 'evidenceDigest', 'decision']); if (parsed.error) return parsed.error
-    const input = parsed.value!
-    const shape = input.action === 'list' ? only(input, ['action', 'epoch', 'cursor']) && (input.cursor === undefined || validHash(input.cursor)) : input.action === 'scan' ? only(input, ['action', 'epoch', 'sourceId']) && validId(input.sourceId) : input.action === 'detail' ? only(input, ['action', 'epoch', 'itemKey', 'revision']) && validHash(input.itemKey) && validHash(input.revision) : input.action === 'review' ? only(input, ['action', 'epoch', 'itemKey', 'revision', 'evidenceDigest', 'decision']) && ['itemKey', 'revision', 'evidenceDigest'].every(key => validHash(input[key])) && input.decision === 'reviewed-not-struck' : false
-    if (!shape || !validId(input.epoch)) return fail('invalid_input', 'Document request fields are invalid', 400)
-    if (!ports.documentSource) return fail('document_unavailable', 'Document source is unavailable', 503)
-    // Runtime port checks epoch and current revision; no implicit scan or remote read here.
-    return json({ ok: true, data: documentData(await ports.documentSource(input)) })
-  })
-  route('/document-image', async request => {
-    const parsed = await body(request, ['epoch', 'itemKey', 'revision', 'digest']); if (parsed.error) return parsed.error
-    const input = parsed.value!
-    if (!validId(input.epoch) || !['itemKey', 'revision', 'digest'].every(key => validHash(input[key]))) return fail('invalid_input', 'Document image identity is invalid', 400)
-    if (!ports.documentImage) return fail('document_unavailable', 'Document image is unavailable', 503)
-    const result = await ports.documentImage(input)
-    if (!result || !Buffer.isBuffer(result.bytes) || result.bytes.length === 0 || result.bytes.length > 8 * 1024 * 1024 || !validRaster(result.bytes, result.mimeType) || createHash('sha256').update(result.bytes).digest('hex') !== input.digest) return fail('document_image_invalid', 'Document image is unavailable', 400)
-    // This exact bounded raster evidence response is not arbitrary text: redaction would corrupt base64.
-    return json({ ok: true, data: { mediaType: result.mimeType, encoded: result.bytes.toString('base64') } })
   })
   route('/health', async request => { const parsed = await body(request, []); if (parsed.error) return parsed.error; return ok(await healthData()) })
   route('/settings', async request => {

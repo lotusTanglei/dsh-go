@@ -17,7 +17,7 @@ function nodes(v: any): any[] { return Array.isArray(v) ? v.flatMap(nodes) : v &
 function text(v: any): string { return Array.isArray(v) ? v.map(text).join('') : v && typeof v === 'object' ? text(v.children || []) : v == null || v === false ? '' : String(v) }
 function deferred() { let resolve!: (v: any) => void, reject!: (v: any) => void; const promise = new Promise<any>((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 function harness(options: { props?: any; reply?: (path: string, input: any) => Promise<any>; t?: (key: string) => string } = {}) {
-  const slots: any[] = [], calls: any[] = [], effects: any[] = [], navigations: any[] = [], inspections: any[] = [], sourceVisits: any[] = []
+  const slots: any[] = [], calls: any[] = [], effects: any[] = [], navigations: any[] = [], inspections: any[] = []
   let cursor = 0, view: any, dirty = false, props: any
   const React = {
     createElement: (tag: any, props: any, ...children: any[]) => ({ tag, props: props || {}, children }),
@@ -29,7 +29,7 @@ function harness(options: { props?: any; reply?: (path: string, input: any) => P
   const context = createContext({ AbortController })
   new Script(serialized).runInContext(context)
   const factory = context.factory(React, async (path: string, input: any, signal: any) => { calls.push({ path, input: JSON.parse(JSON.stringify(input)), signal }); return reply(path, input) }, options.t || ((key: string) => key))
-  props = { epoch: 'epoch-one', active: true, onNavigate: (route: any) => { navigations.push(route); props = { ...props, projectKey: undefined, sessionId: undefined, tab: undefined, ...route }; dirty = true }, onInspectTarget: (row: any, revision: string) => inspections.push({ row, revision }), onSources: () => sourceVisits.push(true), ...options.props }
+  props = { epoch: 'epoch-one', active: true, onNavigate: (route: any) => { navigations.push(route); props = { ...props, projectKey: undefined, sessionId: undefined, tab: undefined, ...route }; dirty = true }, onInspectTarget: (row: any, revision: string) => inspections.push({ row, revision }), ...options.props }
   const render = (next?: any) => { if (next) props = { ...props, ...next }; cursor = 0; dirty = false; view = factory.Projects(props); while (effects.length) effects.shift()(); return view }
   const flush = async () => { for (let i = 0; i < 18; i++) { await Promise.resolve(); if (dirty) render() }; return view }
   const find = (label: string) => nodes(view).find(v => v.tag === 'button' && (text(v) === label || v.props['aria-label'] === label))
@@ -38,7 +38,7 @@ function harness(options: { props?: any; reply?: (path: string, input: any) => P
   const unmount = () => { for (const slot of slots) slot?.cleanup?.() }
   const replayEffects = () => { for (const slot of slots) slot?.cleanup?.(); for (const slot of slots) if (slot?.action) slot.cleanup = slot.action() }
   render()
-  return { render, flush, calls, press, click, find, navigations, inspections, sourceVisits, unmount, replayEffects, nodes: () => nodes(view), text: () => text(view), setReply: (fn: typeof reply) => { reply = fn }, state: () => slots.find(v => v?.current?.state)?.current.state }
+  return { render, flush, calls, press, click, find, navigations, inspections, unmount, replayEffects, nodes: () => nodes(view), text: () => text(view), setReply: (fn: typeof reply) => { reply = fn }, state: () => slots.find(v => v?.current?.state)?.current.state }
 }
 const moreProjects = '加载更多项目', moreSessions = '加载更多会话', refresh = '刷新项目与范围'
 const openProject = (key: string) => `进入项目 同名项目 #${key}`
@@ -117,16 +117,6 @@ describe('serialized GO projects runtime', () => {
     const h = harness({ props: { projectKey: 'project:one', sessionId: 'session-one', tab: 'results' }, reply: async (_path, input) => input.action === 'projects' ? projects() : page([item('session-one', { result: { state: 'goal-complete', summary: 'FORGED', acceptanceVerified: true } })]) }); await h.flush()
     expect(h.text()).not.toContain('FORGED'); expect(h.text()).toContain('未发布正文'); expect(h.state().page).toBeNull()
   })
-  it('does not associate all sources to a project or read source contents on the sources tab', async () => {
-    const h = harness({ props: { projectKey: 'project:one', tab: 'sources' } }); await h.flush()
-    expect(h.calls.map(v => v.input.action)).toEqual(['projects']); expect(h.text()).toContain('没有可信的项目—任务来源关联')
-    await h.press('前往任务来源配置'); expect(h.sourceVisits).toEqual([true]); expect(h.calls).toHaveLength(1)
-  })
-  it.each(['unknown', 'project:excluded'])('never requests work for unknown or excluded project %s', async projectKey => {
-    const h = harness({ props: { projectKey }, reply: async () => projects([project('excluded', { excluded: true }), { key: 'unknown', kind: 'unknown', excluded: false, sessionTotal: 2, includedTotal: 0 }]) }); await h.flush()
-    expect(h.calls.map(v => v.input.action)).toEqual(['projects']); expect(h.text()).toContain(projectKey === 'unknown' ? '禁止读取工作正文' : '恢复请到设置')
-    await h.press(refresh); expect(h.calls.every(v => v.input.action === 'projects')).toBe(true)
-  })
   it('rejects excluded, unknown-membership and cross-project session bodies before publishing', async () => {
     for (const invalid of [item('session-one', { excluded: true }), item('session-one', { exclusionReason: 'membership-unknown' }), item('session-one', { project: { kind: 'unknown', key: 'unknown' } }), item('session-one', { project: { kind: 'project', key: 'two', name: '同名项目' } })]) {
       const h = harness({ props: { projectKey: 'project:one' }, reply: async (_path, input) => input.action === 'projects' ? projects() : page([invalid]) }); await h.flush()
@@ -185,12 +175,6 @@ describe('serialized GO projects runtime', () => {
     d.resolve(page([item('late', { objective: 'PROJECT ONE LATE' })], { total: 2 })); await pending; await h.flush()
     expect(h.text()).toContain('PROJECT TWO'); expect(h.text()).not.toContain('PROJECT ONE LATE'); expect(h.state().page.projectKey).toBe('project:two')
     expect(h.calls.filter(v => v.input.projectKey === 'project:two').every(v => v.input.cursor === undefined)).toBe(true)
-  })
-  it('aborts an old fact read when navigating to sources and ignores the uncancelable late reply', async () => {
-    const d = deferred(), h = harness({ props: { projectKey: 'project:one' }, reply: async (_path, input) => input.action === 'projects' ? projects() : d.promise }); await h.flush()
-    const list = h.calls.at(-1); await h.press('任务来源'); expect(list?.signal.aborted).toBe(true)
-    d.resolve(page([item('late', { objective: 'LATE SOURCE LEAK' })])); await h.flush()
-    expect(h.state().page).toBeNull(); expect(h.text()).not.toContain('LATE SOURCE LEAK'); expect(h.text()).toContain('没有可信的项目—任务来源关联')
   })
   it('requires same-revision catalog and facts, clears stale content and offers explicit refresh instead of auto retry', async () => {
     const h = harness({ props: { projectKey: 'project:one' }, reply: async (_path, input) => input.action === 'projects' ? projects() : page([item()], { revision: nextRevision }) }); await h.flush()

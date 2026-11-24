@@ -14,7 +14,7 @@ export interface PluginContext {
   provide?(name: string, value: unknown): unknown
   get?: RuntimeContext['get']
   logger?: { info(message: string): void }
-  tools?: { guard?(callback: (execution: import('./tools/runtime.js').ToolExecutionContext) => unknown): unknown; execute?: import('./sources/wecom-connector.js').WecomToolsPort['execute'] }
+  tools?: { guard?(callback: (execution: import('./tools/runtime.js').ToolExecutionContext) => unknown): unknown }
   agentPresets?: { composedPreset(ctx: unknown): string | undefined }
   connection?: PanelConnection
   agents?: RuntimeContext['agents']

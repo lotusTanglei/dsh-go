@@ -9,12 +9,10 @@ import { createWorkspaceIngress } from './ingress.js'
 import { conversationPage } from './conversation.js'
 import { createAdmissionService } from './admission.js'
 import { readWorkspaceBriefing } from './briefing.js'
-import type { DocumentOriginAuthority } from './document-origin.js'
 
 /** Host-only facade. Browser clients never select an Agent, role, actor or Session. */
 export function createWorkspaceRuntime(store: Store, config: Config, policy: Policy, ports: {
   ctx: any; mainId: string; source: SessionSource; engine: any
-  documentOrigins?: DocumentOriginAuthority
   sessionWork?: () => Promise<import('../sources/session-work.js').SessionWorkList>
   deliverTicket(id: string): Promise<void>; approvalsReady(id: string): boolean; mandateValid(row: any): boolean
 }) {
@@ -53,7 +51,7 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
     }
   }
   const ingress = createWorkspaceIngress(store, {
-    binding: () => current, agent: active, readSession: () => ctx.sessionQuery.readSession(mainId), documentOrigins: ports.documentOrigins,
+    binding: () => current, agent: active, readSession: () => ctx.sessionQuery.readSession(mainId),
     flush: async session => ctx.sessions ? ctx.sessions.flush(session) : false,
     modelAvailable, paused: () => config.paused || engine.paused(), queueLimit: config.queueLimit,
     target(id) {
@@ -67,7 +65,7 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
       return { threadKey: String(ticket.thread_key) }
     }, ingest,
   })
-  const admission = createAdmissionService(store, { policy, workRoot: config.workRoot, timeoutMs: config.approvalTimeoutMs, paused: () => config.paused || engine.paused(), documentOrigins: ports.documentOrigins })
+  const admission = createAdmissionService(store, { policy, workRoot: config.workRoot, timeoutMs: config.approvalTimeoutMs, paused: () => config.paused || engine.paused() })
   const requireEpoch = (epoch: unknown) => { if (epoch !== current.epoch) return commandError('epoch_mismatch') }
   async function currentCommand() {
     // Use committed turn boundaries, not a global last request or model-authored requestId.
@@ -98,7 +96,6 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
       return { epoch: current.epoch, archiveEpochs: bindings.archives.map(row => ({ epoch: row.epoch, createdAt: row.createdAt })),
         state: active() ? 'ready' : 'unavailable', model: { available, ...(available ? {} : { code: 'model_unavailable' }) }, serverTime: Date.now(),
         capabilities: { conversation: true, send: available && !config.paused && !engine.paused(), workerExecution: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' },
-        documentSources: config.sources.filter(row => row.kind === 'wecom-document').map(row => ({ id: row.id, sheet: (row as import('../config.js').WecomDocumentConfig).sheet, range: (row as import('../config.js').WecomDocumentConfig).range })),
         briefing: readWorkspaceBriefing(store),
         ...(ports.sessionWork ? { sessionWork: await ports.sessionWork().catch((): import('../sources/session-work.js').SessionWorkList => ({ state: 'unavailable' as const, sampledAt: Date.now(), scope: 'current-host' as const, defaultIncluded: true as const, total: null, excludedTotal: null, internalTotal: null, items: [], hasMore: false, error: 'session_work_unavailable' as const })) } : {}),
         admissions: page, admissionsTotal: plans.length, pendingPlans: plans.filter(row => row.state === 'pending').length, ...(offset + page.length < plans.length ? { admissionsNext: page.at(-1)!.planId } : {}), pendingApprovals: Number(store.db.prepare("SELECT COUNT(*) n FROM approval WHERE state='pending'").get()?.n ?? 0) }
@@ -146,18 +143,6 @@ export function createWorkspaceRuntime(store: Store, config: Config, policy: Pol
       const allowed = ['goal', 'firstAction', 'allowWrite', 'denyWrite', 'acceptance', 'blockers', 'outOfScope']
       if (!input.patch || typeof input.patch !== 'object' || Array.isArray(input.patch) || !Object.keys(input.patch).length || Object.keys(input.patch).some(key => !allowed.includes(key))) return commandError('invalid_input', 400)
       return admission.propose(record, { ...plan.brief, ...input.patch })
-    },
-    async isDocumentPlanningTurn() {
-      const snapshot = await ctx.sessionQuery.readSession(mainId)
-      const events = snapshot.events as any[]
-      const start = events.findLastIndex(event => event.type === 'turn/start')
-      if (start < 0 || events.slice(start + 1).some(event => event.type === 'turn/end')) return false
-      return events.slice(start + 1).filter(event => event.type === 'user/message' && event.data?.source?.kind === 'user').some(event => !!ingress.journal.byMessage(event.data.id)?.documentOrigin)
-    },
-    async sourceContext() {
-      const record = await currentCommand()
-      if (!record.documentOrigin || !ports.documentOrigins) return commandError('document_origin_missing')
-      return ports.documentOrigins.context(record.documentOrigin, record.requestId)
     },
     async propose(brief: any) {
       const record = await currentCommand()

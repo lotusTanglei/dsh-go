@@ -3,7 +3,7 @@ import { encodeJson, type Store } from '../store/index.js'
 import { WorkspaceError } from './commands.js'
 
 export type ConfigMutationJSON = null | boolean | number | string | ConfigMutationJSON[] | { [key: string]: ConfigMutationJSON }
-export type ConfigMutationKind = 'local-configure' | 'local-remove' | 'local-scan' | 'stage-save' | 'tencent-configure' | 'tencent-remove' | 'tencent-scan'
+export type ConfigMutationKind = 'stage-save'
 export interface ConfigMutationInput { epoch: string; requestId: string; kind: ConfigMutationKind; payload: ConfigMutationJSON }
 export interface ConfigMutationMetadata {
   version: 1; epoch: string; requestId: string; kind: ConfigMutationKind; digest: string
@@ -14,7 +14,7 @@ export type ConfigMutationHandler = (commit: (value: ConfigMutationJSON) => void
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/, HASH = /^[a-f0-9]{64}$/, CODE = /^[A-Za-z][A-Za-z0-9_]{0,95}$/
-const KINDS = ['local-configure', 'local-remove', 'local-scan', 'stage-save', 'tencent-configure', 'tencent-remove', 'tencent-scan']
+const KINDS = ['stage-save']
 const LIMIT = 2 * 1024 * 1024
 const fail = (code: string, status = 409): never => { throw new WorkspaceError(code, status) }
 const plain = (value: unknown): value is Record<string, any> => Boolean(value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)))
