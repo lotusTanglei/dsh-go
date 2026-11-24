@@ -4,7 +4,7 @@
 
 Go 是跑在 DeepSeek Harness 上的任务编排 bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
-**当前状态：看板工作区开发中，部分完成／不可交付，非生产就绪。** 本轮真实安装版探针证明 L1 spawn 继承父根、L2 同票未授权/deny 路径仍可被 native/shell 写入；生产 Worker 启动与恢复执行现已 fail-closed。历史 A/B/C 证据保留，不代表当前安全门禁已通过。
+**当前状态：看板工作区开发中，部分完成／不可交付，非生产就绪。** 本轮真实安装版探针证明 L1 spawn 继承父根、L2 同票未授权/deny 路径仍可被 native/shell 写入；生产 Worker 默认仍 fail-closed，L1/L2 实现与真实探针证据见 [Worker 隔离](<docs/WORKER-ISOLATION.md>)（仅显式 `executionBoundary: verified-dir` 且本机收据通过时放行）。历史 A/B/C 证据保留，不代表当前安全门禁已通过。
 
 已实现后端：持久命令与幂等回执、显式任务定向、当前可信输入建单确认、分页对话/看板/任务时间线、结构化结果确定性 Outbox 摘要。最新完整门禁 **1658 tests／typecheck／build** 通过（2026-11-24）；真实 Host 本地确定性适配器验证发送、精确计划批准、建票、唯一通知及 Worker 阻断，**外部 provider 请求 0，不是真实 Worker 完成证明**。2026-11-21用户实图确认跨会话新版已加载，但整页仍被明确否定。本轮按[任务优先版式](<docs/KANBAN-TASK-FIRST.md>)重排：左任务主区、右沟通辅区，决策前置、跨会话短卡，可信零记录只留单空态；四列不再通高硬横滚，窄容器完整切换/两列或单列。技术流水退至详情，原草稿/审阅/历史与统计真实性保留。此项只有源码审查与自动合同证明，没有新实机截图/点击通过证明，不能再用测试数或“未刷新”代替设计验收。完整逐项结论见[本轮验收](<docs/KANBAN-ACCEPTANCE.md>)，人工步骤见[工作区人工清单](<docs/KANBAN-MANUAL.md>)。
 

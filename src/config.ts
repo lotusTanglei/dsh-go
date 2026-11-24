@@ -63,6 +63,10 @@ export interface Config {
     readonly worker: readonly string[]
     readonly watchdog: readonly string[]
   }
+  /** Worker execution boundary: `unverified` keeps every production Worker fail-closed. */
+  readonly executionBoundary: 'unverified' | 'verified-dir'
+  /** Absolute receipt override; empty means the package-bundled `probes/worker-isolation/result.json`. */
+  readonly executionProbePath: string
 }
 
 /** Defaults are centralized configuration, never deployment constants in consumers. */
@@ -77,9 +81,13 @@ export const defaults = Object.freeze({
   triggerRetentionMs: 7_776_000_000, outboundRetentionMs: 2_592_000_000, sqliteBusyTimeoutMs: 5_000, staleLockMs: 3_600_000,
   roleTools: Object.freeze({
     router: ['read', 'glob', 'grep', 'ticket_create', 'ticket_list', 'ticket_status', 'ticket_cancel', 'ticket_resume', 'assignment_start', 'assignment_stop', 'human_ask', 'channel_reply', 'task_source_context'],
-    worker: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'job_list', 'job_output', 'job_kill', 'report_progress', 'report_result', 'request_approval', 'ask_router', 'structured_output'],
+    // `go_bash` is the Go-owned, secret-free, sandboxed shell. Host `bash`/`job_*` are
+    // deliberately absent so a Worker cannot reach the parent sandbox root through them.
+    worker: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'go_bash', 'report_progress', 'report_result', 'request_approval', 'ask_router'],
     watchdog: ['read', 'watchdog_nudge', 'watchdog_steer', 'watchdog_cancel', 'watchdog_escalate', 'structured_output'],
   }),
+  executionBoundary: 'unverified',
+  executionProbePath: '',
 })
 
 /** Exported by host.cjs as the actual callable Schemastery Config, not a JSON object. */
@@ -114,6 +122,8 @@ export function createConfigSchema(z: SchemaFactory): SchemaNode<Config> {
       worker: z.array(z.string()).default(defaults.roleTools.worker),
       watchdog: z.array(z.string()).default(defaults.roleTools.watchdog),
     }).default({}),
+    executionBoundary: z.union(['unverified', 'verified-dir']).default(defaults.executionBoundary),
+    executionProbePath: z.string().default(defaults.executionProbePath),
   }) as SchemaNode<Config>
 }
 
@@ -131,6 +141,13 @@ export function resolveConfig(config: Config): Config {
   if (config.roleTools.router.some(name => routerDenied.includes(name))) throw new Error('Router execution tools are forbidden')
   if (config.roleTools.worker.some(name => ['channel_reply', 'human_ask', 'ticket_create', 'ticket_list', 'ticket_status', 'ticket_cancel', 'ticket_resume', 'assignment_start', 'assignment_stop'].includes(name))) throw new Error('Worker channel tools are forbidden')
   if (config.roleTools.watchdog.some(name => !name.startsWith('watchdog_') && !['read', 'structured_output'].includes(name))) throw new Error('Watchdog execution tools are forbidden')
+  // Host execution tools have no Go-owned process-tree confinement; a Worker allowlist
+  // that names them would re-open the parent sandbox root the L1/L2 boundary exists to close.
+  const hostExecution = ['bash', 'pwsh', 'job_list', 'job_output', 'job_kill', 'apply_patch']
+  if (config.roleTools.worker.some(name => hostExecution.includes(name))) throw new Error('Worker host execution tools are forbidden; use go_bash')
+  if (config.roleTools.worker.includes('go_bash') === false) throw new Error('Worker execution requires the go_bash tool')
+  if (config.executionBoundary !== 'unverified' && config.executionBoundary !== 'verified-dir') throw new Error('executionBoundary must be unverified or verified-dir')
+  if (config.executionProbePath && !isAbsolute(config.executionProbePath)) throw new Error('executionProbePath must be absolute')
   for (const source of config.sources) {
     if (!['session', 'inbox'].includes(source.kind)) throw new Error('unsupported source kind')
     if (Object.entries(source).some(([key, value]) => !['id', 'kind', 'attended'].includes(key) && value !== undefined)) throw new Error('unsupported source field')

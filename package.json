@@ -58,6 +58,7 @@
     "locale",
     "icon.svg",
     "README.md",
+    "probes/worker-isolation",
     "docs/KANBAN-SESSION-COVERAGE.md",
     "docs/KANBAN-TASK-FIRST.md",
     "docs/GO-IMPLEMENTATION-20261121.md",

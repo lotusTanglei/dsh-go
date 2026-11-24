@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import type { Config } from './config.js'
 import type { Store, Row } from './store/index.js'
 import { encodeJson, redact } from './store/codec.js'
@@ -14,6 +14,11 @@ import { SourceRegistry } from './sources/registry.js'
 import { createEngine } from './engine/index.js'
 import { startEval, settleEval } from './engine/eval.js'
 import { startWorker, spawnerFromContext, type WorkerHandle } from './sessions/worker.js'
+import { resumeAgentWorker, startAgentWorker, type AgentWorkerHandle, type WorkerAgentHost } from './sessions/agent-worker.js'
+import { resolveExecutionBoundary, type BoundaryDecision } from './isolation/boundary.js'
+import { IsolatedShell } from './isolation/shell.js'
+import { COPY_RECEIPT_SCHEMA, prepareTicketCopy, sourceDigest, ticketCopyRetention, toTicketCopyRecord, type TicketCopyRecord } from './isolation/workcopy.js'
+import { executeGoBash, validateGoBashParams } from './tools/go-bash.js'
 import { inspectReport, shouldRetryReport } from './engine/report.js'
 import type { WorkerGuardSnapshot, RoleGuardRuntime } from './tools/runtime.js'
 import { createWatchdog, type WatchdogAssignment } from './engine/watchdog.js'
@@ -91,7 +96,19 @@ export function readWorkerSnapshot(store: Store, sessionId: string): WorkerGuard
   if (!row) return undefined
   const ticket = store.repos.ticket.get(row.ticket_id)
   if (!ticket) return undefined
-  return { sessionId, binding: { assignmentId: row.id as any, ticketId: row.ticket_id as any }, ticket: { id: ticket.id as any, state: ticket.state as any, currentAssignment: ticket.current_assignment as any }, assignment: { id: row.id as any, ticketId: row.ticket_id as any, sessionId, state: row.state as any } }
+  return { sessionId, workdir: String(ticket.workdir), binding: { assignmentId: row.id as any, ticketId: row.ticket_id as any }, ticket: { id: ticket.id as any, state: ticket.state as any, currentAssignment: ticket.current_assignment as any }, assignment: { id: row.id as any, ticketId: row.ticket_id as any, sessionId, state: row.state as any } }
+}
+
+const WORKER_COPY_KV = (ticket: string) => `worker-copy:v1:${ticket}`
+
+/** Compare two directories by canonical identity when both exist. */
+function samePath(left: string, right: string): boolean {
+  try { return realpathSync(left) === realpathSync(right) } catch { return resolve(left) === resolve(right) }
+}
+
+function errorCodeOf(error: unknown, fallback = 'SA_EXECUTION_FAILED'): string {
+  const code = (error as { code?: unknown } | undefined)?.code
+  return typeof code === 'string' && /^SA_/.test(code) ? code : fallback
 }
 
 /** Synthetic tests may inject a fake Spawner; production never obtains an execution bypass from Config or HTTP. */
@@ -134,6 +151,48 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     sender: { async send(row) { const thread = store.repos.thread.get(row.threadKey); const source = thread ? sources.get(thread.source as any) : undefined; if (!source) throw new Error('source unavailable'); await source.reply(row.channel, row.threadKey, row.body, row.idempotencyKey) } },
   })
   const spawner = testAdapter?.spawner ?? spawnerFromContext({ subagents: ctx.subagents, agents: ctx.agents, superagentRoleGuard: roleGuard })
+  // One production execution-boundary decision, consulted by start, recovery and the tool guard.
+  const boundary: BoundaryDecision = resolveExecutionBoundary(config)
+  const isolated = new IsolatedShell()
+  /** Final-report waiters for the L1 self-composed Agent path (the spawn path uses activation.result). */
+  const workerCompletions = new Map<string, (report: unknown) => void>()
+  const hostDefaultModel = ctx.agentDefaultModel ?? (ctx.get ? ctx.get('agentDefaultModel') : undefined)
+  const agentHost: WorkerAgentHost = {
+    agents: ctx.agents, agentPresets: ctx.agentPresets,
+    ...(hostDefaultModel && typeof hostDefaultModel.currentSelection === 'function' ? { agentDefaultModel: hostDefaultModel } : {}),
+  }
+  /** Read the durable provenance of this Ticket's working copy. */
+  const readCopyReceipt = (ticket: string): TicketCopyRecord | undefined => {
+    const value = store.repos.kv.get(WORKER_COPY_KV(ticket))?.v
+    return value && typeof value === 'object' ? value as TicketCopyRecord : undefined
+  }
+  const writeCopyReceipt = (ticket: string, record: TicketCopyRecord): void => {
+    const key = WORKER_COPY_KV(ticket)
+    store.repos.kv.insertOrIgnore({ k: key, v: record })
+    store.db.prepare('UPDATE kv SET v = ? WHERE k = ?').run(encodeJson(record, false), key)
+  }
+  /**
+   * L2: build or reuse the per-Ticket copy before the Assignment becomes visible.
+   * Reuse requires an explicit managed-copy receipt: a bare non-empty directory is
+   * never trusted as a Worker boundary.
+   */
+  async function ensureTicketWorkCopy(ticket: Row): Promise<{ ticketDir: string; record: TicketCopyRecord }> {
+    const brief = ticket.brief_json as TicketBrief
+    const existing = readCopyReceipt(String(ticket.id))
+    const result = await prepareTicketCopy({
+      sourceDir: brief.scope.repo, workRoot: config.workRoot, ticketDir: String(ticket.workdir),
+      ticketId: String(ticket.id), requestedBase: brief.base.ref,
+      ...(existing === undefined ? {} : { existingReceipt: existing }),
+    })
+    const ticketDir = realpathSync(String(ticket.workdir))
+    const record = toTicketCopyRecord(result.receipt)
+    if (result.reused) audit('worker_copy_reused', { ticketId: record.ticketId, baselineDigest: record.baselineDigest }, String(ticket.id))
+    else {
+      writeCopyReceipt(String(ticket.id), record)
+      audit('worker_copy_prepared', { ticketId: record.ticketId, headLength: result.receipt.head.length, baselineDigest: record.baselineDigest, excludedPaths: record.excludedPaths, droppedSymlinks: record.droppedSymlinks }, String(ticket.id))
+    }
+    return { ticketDir, record }
+  }
   const assignmentFor = (sessionId: string) => store.repos.assignment.all().find(row => row.session_id === sessionId)
   const ticketFor = (id: string) => { const row = store.repos.ticket.get(id); if (!row) throw new Error('ticket not found'); return row }
   const mandateValid = (ticket: Row) => {
@@ -184,14 +243,67 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       if (assignment) await ctx.subagents.interrupt?.(String(assignment.session_id), { kind: 'user' })
       await workers.get(String(ticket.current_assignment))?.dispose()
       workers.delete(String(ticket.current_assignment))
+      workerCompletions.delete(String(ticket.current_assignment))
+      // Kill any confined process group the stopped Worker left running, and keep the
+      // working copy (products stay inspectable; the user's source tree is untouched).
+      isolated.killTicket(id)
+      if (readCopyReceipt(id)) audit('worker_copy_retained', { ticketId: id, ...ticketCopyRetention() }, id)
     }
     return true
   }
+  /** Await one Worker handle's structured report and settle Ticket/Assignment state. */
+  async function awaitWorkerResult(id: string, assignment: { readonly id: string; readonly ticketId: string; readonly sessionId: string }, worker: WorkerHandle, attempts: number): Promise<void> {
+    try {
+      const result = await worker.result
+      const current = ticketFor(id)
+      const ticket = current
+      if (current.current_assignment !== assignment.id || current.state === 'ended' || store.repos.assignment.get(assignment.id)?.state !== 'running') return
+      if (disposed) return
+      const checked = inspectReport(result.structured, ticket.brief_json as TicketBrief)
+      const correctionCount = store.repos.audit.all().filter(row => row.ticket_id === id && row.action === 'report_correction_requested').length
+      if (current.state === 'running' && attempts < config.maxRetries && shouldRetryReport(result.structured, ticket.brief_json as TicketBrief, correctionCount)) {
+        store.transaction(() => {
+          store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'report-correction', report_json: result.structured ?? null })
+          store.repos.ticket.updateByState(id, 'running', 'open', { current_assignment: null, updated_at: Date.now() })
+          audit('report_correction_requested', { assignmentId: assignment.id, errors: checked.valid ? ['ready report contains failed acceptance criteria'] : checked.errors }, id)
+        })
+        return
+      }
+      if (!checked.valid || (result.structured as any)?.state === 'progress') {
+        store.transaction(() => {
+          audit('report_rejected', { assignmentId: assignment.id, errors: checked.errors }, id)
+          store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'invalid-report' })
+          store.repos.ticket.updateByState(id, String(current.state), current.state === 'waiting_human' ? 'waiting_human' : 'ended', { ...(current.state === 'waiting_human' ? {} : { ended_at: Date.now(), ended_by: 'executor', outcome: 'failed' }), current_assignment: null, updated_at: Date.now() })
+        })
+        return
+      }
+      const report = result.structured as any
+      store.transaction(() => {
+        store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: report.state, report_json: report })
+        const waiting = current.state === 'waiting_human' || report.needHuman.length > 0 || report.state === 'blocked'
+        store.repos.ticket.updateByState(id, String(current.state), waiting ? 'waiting_human' : 'ended', { current_assignment: null, updated_at: Date.now(), ...(waiting ? { attention_json: { question: report.needHuman.join('\n'), at: Date.now() } } : { ended_at: Date.now(), ended_by: 'executor', outcome: report.state === 'ready' && report.acceptance.every((row: any) => row.result === 'passed') ? 'completed' : 'failed' }) })
+      })
+      await deliverReport(id, assignment.id, report)
+    } catch {
+      store.transaction(() => {
+        const current = ticketFor(id)
+        store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'result-failed' })
+        if (current.current_assignment === assignment.id) store.repos.ticket.updateByState(id, String(current.state), 'ended', { ended_at: Date.now(), ended_by: 'executor', outcome: 'failed', current_assignment: null, updated_at: Date.now() })
+        audit('worker_result_failed', { assignmentId: assignment.id }, id)
+      })
+    } finally {
+      await worker.dispose()
+      workers.delete(assignment.id)
+      workerCompletions.delete(assignment.id)
+    }
+  }
+
   async function startAssignment(id: string) {
     if (disposed || config.paused || engine.paused()) return { ok: false, code: 'SA_PAUSED' }
-    // Installed spawn inherits the parent sandbox root and has no L2 glob policy.
-    // Until both layers have execution evidence, do not open a real Worker at all.
-    if (!testAdapter) return { ok: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }
+    const production = !testAdapter
+    // The one production boundary decision: without probe evidence no Worker is
+    // launched, and no Ticket/Assignment row is touched.
+    if (production && !boundary.allowed) return { ok: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED', reason: boundary.reason }
     const ticket = ticketFor(id)
     if (ticket.state !== 'open') return { ok: false, code: 'SA_TICKET_NOT_OPEN' }
     if (!mandateValid(ticket) || !hasSubscription(ticket) || !approvalsReady(id)) return { ok: false, code: 'SA_TICKET_NOT_ELIGIBLE' }
@@ -205,67 +317,64 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       audit('retry_budget_exhausted', { attempts }, id)
       return { ok: false, code: 'SA_RETRY_BUDGET_EXHAUSTED' }
     }
+    // L2: the per-Ticket working copy exists before the Assignment is visible. Any
+    // preparation failure leaves the Ticket open (nothing was started).
+    let ticketDir = String(ticket.workdir)
+    if (production) {
+      try { ticketDir = (await ensureTicketWorkCopy(ticket)).ticketDir }
+      catch (error) {
+        const reason = errorCodeOf(error, 'SA_WORKDIR_PREPARE_FAILED')
+        audit('worker_copy_failed', { code: reason }, id)
+        return { ok: false, code: 'SA_WORKDIR_PREPARE_FAILED', reason }
+      }
+    }
     const assignment = { id: assignmentId(randomUUID()), ticketId: ticketId(id), sessionId: randomUUID() }
     store.transaction(() => {
       store.repos.assignment.insert({ id: assignment.id, ticket_id: id, session_id: assignment.sessionId, state: 'running', created_at: Date.now(), started_at: Date.now(), last_progress_at: Date.now(), steps: 0, tokens: 0, retries: attempts, repeated_calls: 0 })
       if (!store.repos.ticket.updateByState(id, 'open', 'running', { current_assignment: assignment.id, updated_at: Date.now() })) throw new Error('ticket start conflict')
     })
+    let createdWorker: WorkerHandle | undefined
     try {
-      mkdirSync(String(ticket.workdir), { recursive: true })
       const correction = store.repos.audit.all().filter(row => row.ticket_id === id && row.action === 'report_correction_requested').at(-1)?.detail as { errors?: string[] } | undefined
       // A cold Router may have a pending selection but no request/header yet.
-      // Spawn's historical-header fallback cannot inherit that selection by itself.
       const parent = ctx.agents.get(mainId!)
       const selection = parent?.model?.current?.()
-      const worker = await startWorker({ ...(selection ? { agentOptions: { ...selection, reasoningEffort: selection.reasoningEffort } } : {}), ticket: { id: ticketId(id), title: String(ticket.title), brief: ticket.brief_json as TicketBrief, workdir: String(ticket.workdir) }, assignment, brief: ticket.brief_json as TicketBrief, workdir: String(ticket.workdir), preset: 'dsh-superagent-worker', parent: ctx.agents.get(mainId!), signal: controller.signal, ...(correction ? { correction: `One correction attempt: submit a complete structured_output report for every acceptance criterion. Fix: ${(correction.errors ?? []).join('; ')}` } : {}) }, spawner)
+      const workerInput = {
+        ...(selection ? { agentOptions: { ...selection, reasoningEffort: selection.reasoningEffort } } : {}),
+        ticket: { id: ticketId(id), title: String(ticket.title), brief: ticket.brief_json as TicketBrief, workdir: ticketDir },
+        assignment, brief: ticket.brief_json as TicketBrief, workdir: ticketDir, preset: 'dsh-superagent-worker',
+        ...(production ? {} : { parent }),
+        signal: controller.signal,
+        ...(correction ? { correction: `One correction attempt: submit a complete structured report for every acceptance criterion. Fix: ${(correction.errors ?? []).join('; ')}` } : {}),
+      }
+      const worker: WorkerHandle = production
+        ? await startAgentWorker({ ...workerInput, boundaryAllowed: boundary.allowed }, agentHost)
+        : await startWorker(workerInput, spawner)
+      createdWorker = worker
       workers.set(assignment.id, worker)
+      if (production) {
+        const agentWorker = worker as AgentWorkerHandle
+        workerCompletions.set(assignment.id, report => agentWorker.settle({ structured: report }))
+        audit('worker_started', { assignmentId: assignment.id, mode: 'l1-agent', preset: 'dsh-superagent-worker', boundary: 'verified-dir' }, id)
+      }
       await deliverPending(id)
-      track((async () => {
-        try {
-          const result = await worker.result
-          const current = ticketFor(id)
-          if (current.current_assignment !== assignment.id || current.state === 'ended' || store.repos.assignment.get(assignment.id)?.state !== 'running') return
-          if (disposed) return
-          const checked = inspectReport(result.structured, ticket.brief_json as TicketBrief)
-          const correctionCount = store.repos.audit.all().filter(row => row.ticket_id === id && row.action === 'report_correction_requested').length
-          if (current.state === 'running' && attempts < config.maxRetries && shouldRetryReport(result.structured, ticket.brief_json as TicketBrief, correctionCount)) {
-            store.transaction(() => {
-              store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'report-correction', report_json: result.structured ?? null })
-              store.repos.ticket.updateByState(id, 'running', 'open', { current_assignment: null, updated_at: Date.now() })
-              audit('report_correction_requested', { assignmentId: assignment.id, errors: checked.valid ? ['ready report contains failed acceptance criteria'] : checked.errors }, id)
-            })
-            return
-          }
-          if (!checked.valid || (result.structured as any)?.state === 'progress') {
-            store.transaction(() => {
-              audit('report_rejected', { assignmentId: assignment.id, errors: checked.errors }, id)
-              store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'invalid-report' })
-              store.repos.ticket.updateByState(id, String(current.state), current.state === 'waiting_human' ? 'waiting_human' : 'ended', { ...(current.state === 'waiting_human' ? {} : { ended_at: Date.now(), ended_by: 'executor', outcome: 'failed' }), current_assignment: null, updated_at: Date.now() })
-            })
-            return
-          }
-          const report = result.structured as any
-          store.transaction(() => {
-            store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: report.state, report_json: report })
-            const waiting = current.state === 'waiting_human' || report.needHuman.length > 0 || report.state === 'blocked'
-            store.repos.ticket.updateByState(id, String(current.state), waiting ? 'waiting_human' : 'ended', { current_assignment: null, updated_at: Date.now(), ...(waiting ? { attention_json: { question: report.needHuman.join('\n'), at: Date.now() } } : { ended_at: Date.now(), ended_by: 'executor', outcome: report.state === 'ready' && report.acceptance.every((row: any) => row.result === 'passed') ? 'completed' : 'failed' }) })
-          })
-          await deliverReport(id, assignment.id, report)
-        } catch {
-          store.transaction(() => {
-            const current = ticketFor(id)
-            store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'result-failed' })
-            if (current.current_assignment === assignment.id) store.repos.ticket.updateByState(id, String(current.state), 'ended', { ended_at: Date.now(), ended_by: 'executor', outcome: 'failed', current_assignment: null, updated_at: Date.now() })
-            audit('worker_result_failed', { assignmentId: assignment.id }, id)
-          })
-        } finally { await worker.dispose(); workers.delete(assignment.id) }
-      })())
+      track(awaitWorkerResult(id, assignment, worker, attempts))
       return { ok: true, code: 'SA_STARTED', assignmentId: assignment.id }
     } catch (error) {
+      workers.delete(assignment.id)
+      workerCompletions.delete(assignment.id)
+      // A Worker created before a later start-step failure must not stay live untracked.
+      try { await createdWorker?.dispose() } catch { /* rollback failure keeps the primary reason */ }
       store.transaction(() => {
-        store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: 'spawn-failed' })
-        store.repos.ticket.updateByState(id, 'running', 'ended', { ended_at: Date.now(), ended_by: 'executor', outcome: 'failed', current_assignment: null, updated_at: Date.now() })
+        store.repos.assignment.updateByState(assignment.id, 'running', 'ended', { ended_at: Date.now(), ended_reason: production ? 'start-failed' : 'spawn-failed' })
+        if (production) {
+          // A failed L1 start must not consume the Ticket: restore open for a safe retry.
+          store.repos.ticket.updateByState(id, 'running', 'open', { current_assignment: null, updated_at: Date.now() })
+        } else {
+          store.repos.ticket.updateByState(id, 'running', 'ended', { ended_at: Date.now(), ended_by: 'executor', outcome: 'failed', current_assignment: null, updated_at: Date.now() })
+        }
       })
+      if (production) audit('worker_start_failed', { code: errorCodeOf(error) }, id)
       throw error
     }
   }
@@ -278,7 +387,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   }
   async function deliverOrdered(id: string) {
     const ticket = ticketFor(id)
-    if (!testAdapter || !ticket.current_assignment || ticket.state === 'waiting_human') return
+    if (!ticket.current_assignment || ticket.state === 'waiting_human') return
     const assignment = store.repos.assignment.get(ticket.current_assignment)
     const agent = assignment?.state === 'running' ? ctx.agents.get(String(assignment.session_id)) : undefined
     if (!agent) return
@@ -299,7 +408,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     }
   }
   async function releaseApproval(id: string, approvalId: string, approved: boolean) {
-    if (disposed || !approved || !testAdapter) return
+    if (disposed || !approved) return
     const ticket = ticketFor(id)
     if (!mandateValid(ticket) || !hasSubscription(ticket) || !approvalsReady(id) || ticket.state === 'ended') return
     const approvals = store.repos.approval.all().filter(row => row.ticket_id === id)
@@ -365,6 +474,38 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     },
     audit(record) { audit('watchdog', record, record.ticketId); heartbeat = record.metrics.at },
   }, { stallMs: config.stallMs, repeatCallThreshold: config.repeatCallThreshold, waitingHumanMs: config.waitingHumanMs, maxSteps: config.maxStepsPerTicket, maxTokens: config.maxTokensPerTicket, maxDurationMs: config.maxDurationMsPerTicket, deviationIntervalMs: config.watchdogIntervalMs * 10 })
+
+  /**
+   * Recovery: resume a persisted Worker Session ONLY when its managed-copy
+   * provenance and persisted cwd prove the L1 boundary. Any mismatch leaves the
+   * Ticket stopped rather than silently continuing an unverified process tree.
+   */
+  async function recoverWorker(assignment: Row, ticket: Row): Promise<void> {
+    const id = String(ticket.id), sessionId = String(assignment.session_id)
+    if (ctx.agents.get(sessionId)) throw Object.assign(new Error('live Worker Session is not owned by this runtime'), { code: 'SA_WORKER_SESSION_LIVE_UNOWNED' })
+    const receipt = readCopyReceipt(id)
+    if (!receipt || receipt.schemaVersion !== COPY_RECEIPT_SCHEMA || receipt.ticketId !== id) throw Object.assign(new Error('Ticket working copy has no managed receipt'), { code: 'SA_WORKDIR_UNMANAGED' })
+    if (receipt.sourceDigest !== sourceDigest((ticket.brief_json as TicketBrief).scope.repo)) throw Object.assign(new Error('Ticket working copy provenance is not the authorized source'), { code: 'SA_WORKDIR_UNMANAGED' })
+    const persisted = await ctx.sessionQuery.readSession(sessionId)
+    const header = persisted?.session
+    if (!header || header.id !== sessionId || typeof header.cwd !== 'string') throw Object.assign(new Error('persisted Worker Session is not readable'), { code: 'SA_WORKER_SESSION_UNREADABLE' })
+    if (!samePath(header.cwd, String(ticket.workdir))) throw Object.assign(new Error('persisted Worker cwd is not the Ticket copy'), { code: 'SA_WORKER_WORKDIR_UNBOUND' })
+    if (header.agentPreset !== 'dsh-superagent-worker') throw Object.assign(new Error('persisted Worker preset is not the Worker preset'), { code: 'SA_WORKER_PRESET_MISMATCH' })
+    const configured = String(ticket.workdir)
+    if (!existsSync(configured) || !lstatSync(configured).isDirectory() || lstatSync(configured).isSymbolicLink()) throw Object.assign(new Error('Ticket working copy is missing or not a real directory'), { code: 'SA_WORKDIR_UNMANAGED' })
+    const ticketDir = realpathSync(configured)
+    const brief = ticket.brief_json as TicketBrief
+    const worker = await resumeAgentWorker({
+      ticket: { id: ticketId(id), title: String(ticket.title), brief, workdir: ticketDir },
+      assignment: { id: assignmentId(String(assignment.id)), ticketId: ticketId(id), sessionId },
+      brief, workdir: ticketDir, preset: 'dsh-superagent-worker', signal: controller.signal, boundaryAllowed: true,
+    }, agentHost)
+    workers.set(String(assignment.id), worker)
+    workerCompletions.set(String(assignment.id), report => (worker as AgentWorkerHandle).settle({ structured: report }))
+    await deliverPending(id)
+    track(awaitWorkerResult(id, { id: String(assignment.id), ticketId: id, sessionId }, worker, Number(assignment.retries ?? 0)))
+    audit('worker_recovered', { assignmentId: String(assignment.id), mode: 'resume' }, id)
+  }
 
   const ready = Promise.resolve().then(async () => {
     mkdirSync(config.workRoot, { recursive: true })
@@ -886,13 +1027,29 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       },
     })
     if (!testAdapter) {
-      // Upgrades/reloads cannot keep an old, unverified Worker executable.
+      // Recovery consults the same one boundary decision as start and the guard.
       for (const assignment of store.repos.assignment.all().filter(row => row.state === 'running')) {
-        await stopTicket(String(assignment.ticket_id), 'execution-boundary-unverified', 'watchdog')
-        store.repos.assignment.updateByState(String(assignment.id), 'running', 'ended', { ended_at: Date.now(), ended_reason: 'execution-boundary-unverified' })
-        await ctx.subagents.interrupt?.(String(assignment.session_id), { kind: 'user' })
-        const child = ctx.agents.get(String(assignment.session_id))
-        child?.cancel?.({ kind: 'user' })
+        const ticket = store.repos.ticket.get(String(assignment.ticket_id))
+        const sessionId = String(assignment.session_id)
+        if (!boundary.allowed) {
+          // Upgrades/reloads cannot keep an old, unverified Worker executable.
+          await stopTicket(String(assignment.ticket_id), 'execution-boundary-unverified', 'watchdog')
+          store.repos.assignment.updateByState(String(assignment.id), 'running', 'ended', { ended_at: Date.now(), ended_reason: 'execution-boundary-unverified' })
+          await ctx.subagents.interrupt?.(sessionId, { kind: 'user' })
+          ctx.agents.get(sessionId)?.cancel?.({ kind: 'user' })
+          continue
+        }
+        try {
+          if (!ticket) throw Object.assign(new Error('Assignment Ticket is missing'), { code: 'SA_WORKER_TICKET_MISSING' })
+          await recoverWorker(assignment, ticket)
+        } catch (error) {
+          // Never resume around the boundary: mismatch/live-unowned/unreadable stops the Ticket.
+          audit('worker_recovery_failed', { assignmentId: String(assignment.id), code: errorCodeOf(error) }, String(assignment.ticket_id))
+          await stopTicket(String(assignment.ticket_id), 'execution-recovery-failed', 'watchdog')
+          store.repos.assignment.updateByState(String(assignment.id), 'running', 'ended', { ended_at: Date.now(), ended_reason: 'execution-recovery-failed' })
+          await ctx.subagents.interrupt?.(sessionId, { kind: 'user' })
+          ctx.agents.get(sessionId)?.cancel?.({ kind: 'user' })
+        }
       }
     }
     await source.start()
@@ -966,8 +1123,22 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       }
       if (!worker) return { ok: false, code: 'SA_ASSIGNMENT_UNBOUND' }
       const ticket = ticketFor(String(worker.ticket_id))
-      if (ticket.current_assignment !== worker.id || worker.state !== 'running' || ticket.state === 'ended') return { ok: false, code: 'SA_ASSIGNMENT_STALE' }
+      if (ticket.state === 'ended' || worker.state === 'ended') return { ok: false, code: 'SA_ASSIGNMENT_ENDED' }
+      if (ticket.current_assignment !== worker.id || worker.state !== 'running') return { ok: false, code: 'SA_ASSIGNMENT_STALE' }
       if (ticket.state === 'waiting_human' && !['report_progress', 'report_result', 'ask_router'].includes(name)) return { ok: false, code: 'SA_ASSIGNMENT_WAITING' }
+      if (name === 'go_bash') {
+        // Same boundary decision as start/recovery; a recovered pre-boundary Session
+        // fails the cwd binding here even if its tools stayed visible.
+        if (!boundary.allowed) return { ok: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }
+        const validated = validateGoBashParams(args)
+        if (!validated.ok) return { ok: false, code: 'SA_GO_BASH_INVALID', issues: validated.issues }
+        const liveCwd = exec?.agent?.session?.header?.cwd
+        if (typeof liveCwd !== 'string' || !samePath(liveCwd, String(ticket.workdir))) return { ok: false, code: 'SA_WORKER_WORKDIR_UNBOUND' }
+        if (!readCopyReceipt(String(ticket.id))) return { ok: false, code: 'SA_WORKDIR_UNMANAGED' }
+        const result = await executeGoBash({ command: validated.value.command, ticketDir: String(ticket.workdir), ticketKey: String(worker.ticket_id), shell: isolated, signal: controller.signal })
+        audit('go_bash', { assignmentId: String(worker.id), code: result.code, exitCode: result.exitCode, denied: result.denied, durationMs: result.durationMs }, String(ticket.id))
+        return result
+      }
       if (name === 'report_progress') {
         const previous = worker.report_json as any
         const progressed = Array.isArray(args.done) && args.done.some((entry: string) => typeof entry === 'string' && entry.trim() && !(previous?.done ?? []).includes(entry))
@@ -979,6 +1150,12 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (!checked.valid) return { ok: false, code: 'SA_REPORT_INVALID', errors: checked.errors }
         if ((worker.report_json as any)?.state === 'ready') return { ok: false, code: 'SA_REPORT_DUPLICATE' }
         store.repos.assignment.updateByState(worker.id, 'running', 'running', { report_json: args, last_progress_at: Date.now() })
+        // The L1 Agent owns no Host activation result: its final structured report is
+        // the completion signal for the same Ticket/Assignment state machine.
+        if (args.state !== 'progress') {
+          const settle = workerCompletions.get(String(worker.id))
+          if (settle) { workerCompletions.delete(String(worker.id)); settle(args) }
+        }
         return { ok: true, code: 'SA_REPORT_RECORDED' }
       }
       if (name === 'request_approval') {
@@ -1140,7 +1317,10 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (action === 'release') return images.release(payload)
         throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
       },
-      async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) }, db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'durable-chat-notice', modelWakeup: false, visualVerification: 'pending-human' }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
+      async health() { return { ok: initialization === 'ready' && !disposed, runtime: { state: disposed ? 'stopped' : initialization, ...(initialization === 'failed' ? { code: 'SA_RUNTIME_INITIALIZATION_FAILED' } : {}) },
+        executionBoundary: { requested: boundary.requested, state: boundary.allowed ? 'verified-dir' : 'unverified', reason: boundary.reason, ...(boundary.receiptDigest === undefined ? {} : { receiptDigest: boundary.receiptDigest }) },
+        isolation: { shell: 'seatbelt', platformSupported: isolated.availability().ok, activeProcessGroups: isolated.activeGroups(), networkPolicy: 'unrestricted' },
+        db: { version: store.version }, watchdog: { lastAt: heartbeat }, sessionChannel: { delivery: 'durable-chat-notice', modelWakeup: false, visualVerification: 'pending-human' }, outbox: { pending: store.repos.outbound.all().filter(row => row.state === 'pending').length }, sources: await Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, ...await source.health() }))) } },
       async sources() { return Promise.all(sources.all().map(async source => ({ id: source.id, kind: source.kind, attended: source.attended, paused: config.paused || engine.paused(), ...await source.health() }))) },
       ownsTicketTransitions: true,
       // Persist stop BEFORE interruption/disposal; late reports cannot win this window.
@@ -1151,6 +1331,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     },
     async dispose() {
       disposed = true; clearInterval(timer); controller.abort()
+      isolated.killAll()
       await ready.catch(() => {})
       await sources.stopAll()
       await Promise.allSettled([...workers.values()].map(worker => worker.dispose()))

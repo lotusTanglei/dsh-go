@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
-import { guardToolCall, type RoleToolAllowlist, type ToolGuardInput, type WorkerBinding } from './guard.js'
+import { realpathSync } from 'node:fs'
+import { guardToolCall, writeTargetOf, type RoleToolAllowlist, type ToolGuardInput, type WorkerBinding } from './guard.js'
 import type { Assignment } from '../domain/assignment.js'
 import type { Ticket } from '../domain/ticket.js'
 
@@ -12,6 +13,8 @@ export interface RuntimeRoleConfig {
   readonly resolveWorker?: (agent: object) => WorkerGuardSnapshot | undefined
   /** Release gate applies to recovery as well as fresh assignment starts. */
   readonly executionBlocked?: boolean
+  /** Live boundary decision shared by start, recovery and this guard; false-denies Worker tools. */
+  readonly executionGate?: () => boolean
 }
 
 export interface ToolExecutionContext {
@@ -28,6 +31,8 @@ export interface ToolGuardContext {
 
 export interface WorkerGuardSnapshot {
   readonly sessionId: string
+  /** DB-bound Ticket working copy; the guard requires the live Session cwd to equal it. */
+  readonly workdir?: string
   readonly binding: WorkerBinding
   readonly ticket: Pick<Ticket, 'id' | 'state' | 'currentAssignment'>
   readonly assignment: Pick<Assignment, 'id' | 'ticketId' | 'sessionId' | 'state'>
@@ -45,13 +50,20 @@ export function installRoleGuard(context: ToolGuardContext, config: RuntimeRoleC
   const bindings = new WeakMap<object, WorkerGuardSnapshot>()
   const guardDisposer = context.tools.guard(execution => {
     const composedPreset = execution.agent?.ctx ? context.agentPresets!.composedPreset(execution.agent.ctx) : undefined
-    if (config.executionBlocked && composedPreset === (config.workerPreset ?? 'dsh-superagent-worker')) return { reason: 'Worker execution is blocked until L1 and L2 boundaries are verified.', info: { name: 'SuperagentToolGuardError', code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' } }
+    if ((config.executionBlocked || config.executionGate?.() === false) && composedPreset === (config.workerPreset ?? 'dsh-superagent-worker')) return { reason: 'Worker execution is blocked until L1 and L2 boundaries are verified.', info: { name: 'SuperagentToolGuardError', code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' } }
     const snapshot = execution.agent ? (config.resolveWorker ? config.resolveWorker(execution.agent) : bindings.get(execution.agent)) : undefined
+    const rawCwd = (execution.agent as { session?: { header?: { cwd?: unknown } } } | undefined)?.session?.header?.cwd
+    const canonical = (value: string): string => { try { return realpathSync(value) } catch { return value } }
+    const sessionCwd = typeof rawCwd === 'string' && rawCwd ? canonical(rawCwd) : undefined
+    const writeTarget = writeTargetOf(execution.name, (execution as { arguments?: unknown }).arguments)
     const input: ToolGuardInput = {
       composedPreset,
       toolName: execution.name,
       roleTools: config.roleTools,
+      ...(sessionCwd === undefined ? {} : { sessionCwd }),
+      ...(writeTarget === undefined ? {} : { writeTarget }),
       ...(snapshot ?? {}),
+      ...(snapshot?.workdir === undefined ? {} : { workdir: canonical(snapshot.workdir) }),
     }
     return guardToolCall(input)
   })

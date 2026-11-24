@@ -28,10 +28,8 @@
           - id: worker-search
             name: '@deepseek-ai/dsh-tool-fs-search'
             config: { sampleOverCapGlobResults: false }
-          - id: worker-bash
-            name: '@deepseek-ai/dsh-tool-bash'
-          - id: worker-jobs
-            name: '@deepseek-ai/dsh-tool-jobs'
+          # Host bash/jobs are intentionally absent: the Worker shell is the Go-owned
+          # `go_bash` tool registered by dsh-go/worker under the L2 process-tree boundary.
           - id: worker-business
             name: dsh-go/worker
     - id: superagent-preset-watchdog
@@ -56,3 +54,7 @@
         dbPath: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/superagent.sqlite
         lockPath: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/superagent.sqlite.lock
         workRoot: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/work
+        # Explicit opt-in to the L2 boundary. It only opens when the local probe
+        # receipt exists, passes every required check, and matches this exact
+        # profile template plus the installed sandbox-exec bytes.
+        executionBoundary: verified-dir

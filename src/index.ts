@@ -5,6 +5,7 @@ import { openStore } from './store/index.js'
 import { installRoleGuard } from './tools/runtime.js'
 import { createRuntime, readWorkerSnapshot, type RuntimeContext } from './runtime.js'
 import { installPanelRoutes, type PanelConnection } from './panel/routes.js'
+import { resolveExecutionBoundary } from './isolation/boundary.js'
 
 /** Host owns ordered resource cleanup; runtime keeps DSH calls behind structural adapters. */
 export interface PluginContext {
@@ -56,9 +57,13 @@ export function apply(ctx: PluginContext, input: Config): void {
         finally { try { await runtime?.dispose() } finally { roleGuard?.dispose(); store.close() } }
       })()
     })
+    // One production boundary decision: an unverified-dir deployment denies Worker
+    // tools here even if some other launch path forgot its own gate.
+    const boundary = resolveExecutionBoundary(config)
     roleGuard = ctx.tools && ctx.agentPresets ? installRoleGuard({ tools: ctx.tools, agentPresets: ctx.agentPresets }, {
       roleTools: config.roleTools,
-      executionBlocked: true,
+      executionBlocked: !boundary.allowed,
+      executionGate: () => boundary.allowed,
       routerPreset: 'dsh-superagent-router',
       workerPreset: 'dsh-superagent-worker',
       watchdogPreset: 'dsh-superagent-watchdog',

@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "probeVersion": 1,
+  "createdAt": "2026-11-24T18:02:43.101Z",
+  "ok": true,
+  "platform": "darwin",
+  "host": {
+    "macOS": "27.0.1",
+    "node": "v22.23.1",
+    "sandboxExec": {
+      "path": "/usr/bin/sandbox-exec",
+      "sha256": "58839ef01b4eef8aac0d2aa8f9d1c074ae45aafe3533965b030672450064acc8"
+    }
+  },
+  "profile": {
+    "templateDigest": "e96c9ee5c996cd3c936a5ba45630a4602ccb1b34387169033e931f8d12c8ef03",
+    "networkPolicy": "unrestricted"
+  },
+  "checks": [
+    {
+      "id": "normal-write",
+      "kind": "allowed",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "ticket write",
+      "succeeded": true
+    },
+    {
+      "id": "normal-read",
+      "kind": "allowed",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "ticket read",
+      "succeeded": true
+    },
+    {
+      "id": "normal-heredoc-inside",
+      "kind": "allowed",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "heredoc inside ticket",
+      "succeeded": true
+    },
+    {
+      "id": "normal-python-inside",
+      "kind": "allowed",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "python write inside ticket",
+      "succeeded": true
+    },
+    {
+      "id": "normal-compile",
+      "kind": "allowed",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "TypeScript compile inside ticket",
+      "succeeded": true
+    },
+    {
+      "id": "normal-test",
+      "kind": "allowed",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "node:test run inside ticket",
+      "succeeded": true
+    },
+    {
+      "id": "deny-parent-write",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "parent directory write",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-cross-ticket-write",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "sibling Ticket write",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-home-write",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "user home write",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-temp-write",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "platform temp write",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-heredoc-outside",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "heredoc outside ticket",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-python-outside",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "python write outside ticket",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-background-outside",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "delayed background write outside ticket",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-symlink-dir-escape",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "symlink directory escape",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-symlink-file-escape",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 1,
+      "detail": "symlink file escape",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-hardlink-escape",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 0,
+      "detail": "hardlink escape write",
+      "outsideCreated": false
+    },
+    {
+      "id": "deny-nested-sandbox",
+      "kind": "denied",
+      "passed": true,
+      "exitCode": 71,
+      "detail": "nested sandbox widening",
+      "outsideCreated": false
+    },
+    {
+      "id": "kill-process-group",
+      "kind": "cleanup",
+      "passed": true,
+      "exitCode": 0,
+      "cleanupOk": true,
+      "detail": "background group killed"
+    }
+  ],
+  "disclosure": [
+    "Reads are not confined: the boundary promise is write confinement of the process tree.",
+    "Network is NOT restricted by this profile; the receipt records networkPolicy=unrestricted.",
+    "A process that calls setsid() can leave the killed process group; its writes are still denied by the inherited sandbox.",
+    "The promise is confined writes for THIS process tree only. Actions delegated to launchd/system services outside the tree, process signals/IPC to other processes, and network egress are outside the write boundary.",
+    "The receipt is local operational evidence bound to the profile template digest and sandbox-exec bytes; it is not a cryptographic attestation."
+  ]
+}
