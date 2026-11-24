@@ -63,6 +63,8 @@ export interface PanelPorts {
   readonly sessionLocate?: (input: any) => Promise<unknown>
   /** Exact prepared control metadata only; production is blocked before any Agent activation. */
   readonly sessionAction?: (input: any) => Promise<unknown>
+  /** Pre-delivery human confirmation summary only; never dispatches or activates an Agent. */
+  readonly delivery?: (input: any) => Promise<unknown>
   /** Bounded original-byte upload/preview and target binding; no model or delivery call. */
   readonly images?: (input: any) => Promise<unknown>
   readonly stageModels?: (input: any) => Promise<unknown>
@@ -83,7 +85,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/session-work', '/session-locate', '/session-action', '/images', '/stage-models', '/session-decision', '/config-mutation'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/session-work', '/session-locate', '/session-action', '/delivery', '/images', '/stage-models', '/session-decision', '/config-mutation'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -661,6 +663,48 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision }; output.bindingVerified = false
     }
     if (data?.state !== 'closed' && isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
+    return json({ ok: true, data: output })
+  })
+  route('/delivery', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'requestId', 'confirmationId', 'operation', 'text', 'target', 'images']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    const targetShape = isObject(input.target) && only(input.target, ['sessionId', 'scopeRevision', 'factRevision']) && validWorkId(input.target.sessionId) && validHash(input.target.scopeRevision) && validHash(input.target.factRevision)
+    const imagesShape = input.images === undefined || Array.isArray(input.images) && input.images.length <= 5
+      && input.images.every(item => isObject(item) && only(item, ['imageId', 'digest', 'seq']) && validWorkId(item.imageId) && validHash(item.digest) && Number.isSafeInteger(item.seq) && Number(item.seq) > 0)
+      && new Set(input.images.map(item => item.imageId)).size === input.images.length
+    const shape = input.action === 'prepare' || input.action === 'confirm'
+      ? only(input, ['action', 'epoch', 'requestId', 'confirmationId', 'operation', 'text', 'target', 'images']) && validWorkId(input.requestId) && validWorkId(input.confirmationId)
+        && ['continue', 'supplement', 'steer'].includes(String(input.operation)) && typeof input.text === 'string' && Boolean(input.text.trim()) && !input.text.includes('\0') && Buffer.byteLength(input.text, 'utf8') <= 16_384
+        && targetShape && imagesShape
+      : input.action === 'status' || input.action === 'cancel' ? only(input, ['action', 'epoch', 'confirmationId']) && validWorkId(input.confirmationId) : false
+    if (!shape || !validWorkId(input.epoch)) return fail('invalid_input', 'Delivery request fields are invalid', 400)
+    if (!ports.delivery) return fail('delivery_unavailable', 'Delivery service is unavailable', 503)
+    const payload = input.action === 'prepare' || input.action === 'confirm'
+      ? { requestId: input.requestId, confirmationId: input.confirmationId, operation: input.operation, text: input.text, target: input.target, images: input.images ?? [] }
+      : { confirmationId: input.confirmationId }
+    const data = await ports.delivery({ action: input.action, epoch: input.epoch, ...payload }) as any
+    // Confirmation summary only. Raw body, caller payload, authority and dispatch claims never pass through.
+    const output: Record<string, unknown> = {}
+    if (data?.version === 1) output.version = 1
+    for (const field of ['epoch', 'requestId', 'confirmationId']) if (validWorkId(data?.[field])) output[field] = data[field]
+    if (['continue', 'supplement', 'steer'].includes(data?.operation)) output.operation = data.operation
+    if (validHash(data?.digest)) output.digest = data.digest
+    for (const field of ['seq', 'at', 'updatedAt', 'bodyBytes']) if (Number.isSafeInteger(data?.[field]) && data[field] >= 0) output[field] = data[field]
+    if (['prepared', 'confirmed', 'canceled'].includes(data?.state)) output.state = data.state
+    // A confirmed record is a human acceptance only; it is not target acceptance, execution or completion.
+    output.humanConfirmed = data?.state === 'confirmed'
+    output.delivered = false
+    output.accepted = false
+    output.executed = false
+    output.completed = false
+    if (['not-confirmed', 'confirmed-pending-delivery', 'canceled'].includes(data?.disposition)) output.disposition = data.disposition
+    if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
+    output.durable = data?.durable === true
+    const target = data?.target
+    if (isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) {
+      output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
+    }
+    if (Array.isArray(data?.images)) output.images = data.images.slice(0, 5).filter((item: any) => isObject(item) && validWorkId(item.imageId) && validHash(item.digest) && typeof item.seq === 'number' && Number.isSafeInteger(item.seq) && item.seq > 0).map((item: any) => ({ imageId: item.imageId, digest: item.digest, seq: item.seq }))
     return json({ ok: true, data: output })
   })
   route('/health', async request => { const parsed = await body(request, []); if (parsed.error) return parsed.error; return ok(await healthData()) })

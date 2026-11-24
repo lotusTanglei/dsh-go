@@ -133,6 +133,27 @@ export function createWorkspaceImages(store: Store, root: string, ports: ImagePo
         return { imageId: row.imageId, seq: next.seq, state: next.state, bytesRetained: true, thirdPartyErasureGuaranteed: false }
       })
     },
+    /** Host-only exact reference check for a pre-delivery confirmation; no bytes and no binding change. */
+    async verify(input: { epoch: string; references: readonly ImageReference[]; target: { sessionId: string; scopeRevision: string; factRevision: string } }) {
+      if (!plain(input) || !only(input, ['epoch', 'references', 'target']) || !id(input.epoch) || !requestedTarget(input.target)
+        || !Array.isArray(input.references) || input.references.length < 1 || input.references.length > 5
+        || !input.references.every(reference) || new Set(input.references.map(value => value.imageId)).size !== input.references.length) return fail('image_reference_invalid', 400)
+      const snapshot = structuredClone({ epoch: input.epoch, references: input.references as ImageReference[], target: { ...input.target } })
+      ports.requireEpoch(snapshot.epoch)
+      const scope = await scopeCut(); ports.requireEpoch(snapshot.epoch); scope.fence()
+      const check = () => {
+        ports.requireEpoch(snapshot.epoch)
+        scope.fence()
+        for (const reference of snapshot.references) {
+          const row = read(reference.imageId)
+          if (row.epoch !== snapshot.epoch || row.digest !== reference.digest || row.seq !== reference.seq || row.state !== 'bound' || !row.target
+            || row.scopeRevision !== snapshot.target.scopeRevision || row.target.sessionId !== snapshot.target.sessionId
+            || row.target.scopeRevision !== snapshot.target.scopeRevision || row.target.factRevision !== snapshot.target.factRevision) throw new WorkspaceError('image_reference_changed', 409)
+        }
+      }
+      check()
+      return { references: snapshot.references.map(reference => ({ imageId: reference.imageId, digest: reference.digest, seq: reference.seq })), fence: check }
+    },
     /** Host-internal byte lease; no HTTP caller may manufacture vision/authorization. */
     async acquire(input: { epoch: string; reference: ImageReference; purpose: 'understand' | 'target' }) {
       if (!plain(input) || !only(input, ['epoch', 'reference', 'purpose']) || !id(input.epoch) || !reference(input.reference) || !['understand', 'target'].includes(input.purpose)) return fail('image_reference_invalid', 400)

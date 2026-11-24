@@ -874,4 +874,102 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect(h.store.repos.ticket.get(task.ticketId)?.state).toBe('open')
     expect(h.store.repos.assignment.all()).toEqual([]); expect(h.workers).toEqual([]); expect(h.calls.realActivation).not.toHaveBeenCalled()
   })
+
+  it('confirms exact pre-delivery content through the panel seam with zero Fake Host effects before and after', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const agent = f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch
+    const located: any = await f.runtime.panelPorts.sessionLocate({ epoch, text: 'Repair callback' })
+    expect(located.status).toBe('located')
+    const target = { sessionId: located.target.sessionId, scopeRevision: located.revision, factRevision: located.target.factRevision }
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Continue the exact human request\n保留原字节 🧭', target, images: [] }
+    const prepared: any = await f.runtime.panelPorts.delivery({ action: 'prepare', ...input })
+    expect(prepared).toMatchObject({ epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'continue',
+      target: { ...target, project: { kind: 'project', key: 'p' } }, state: 'prepared', humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', durable: true })
+    expect(prepared.bodyBytes).toBe(Buffer.byteLength(input.text, 'utf8')); expect(prepared.digest).toMatch(/^[a-f0-9]{64}$/)
+    const zeroEffects = () => {
+      expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+      expect(f.calls.realActivation).not.toHaveBeenCalled(); expect(f.calls.resume).not.toHaveBeenCalled()
+      expect(f.store.repos.ticket.all()).toEqual([]); expect(f.store.repos.trigger.all()).toEqual([]); expect(f.store.repos.assignment.all()).toEqual([])
+      expect(agent.followup).not.toHaveBeenCalled(); expect(agent.steer).not.toHaveBeenCalled(); expect(agent.answer).not.toHaveBeenCalled()
+    }
+    zeroEffects()
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('Continue the exact human request')
+    const confirmed: any = await f.runtime.panelPorts.delivery({ action: 'confirm', ...input })
+    expect(confirmed).toMatchObject({ state: 'confirmed', humanConfirmed: true, delivered: false, accepted: false, executed: false, completed: false, disposition: 'confirmed-pending-delivery', seq: 2 })
+    zeroEffects()
+    expect(await f.runtime.panelPorts.delivery({ action: 'status', epoch, confirmationId: input.confirmationId })).toEqual(confirmed)
+    expect(await f.runtime.panelPorts.delivery({ action: 'confirm', ...input })).toEqual(confirmed)
+    zeroEffects()
+    await expect(f.runtime.panelPorts.delivery({ action: 'cancel', epoch, confirmationId: input.confirmationId })).rejects.toMatchObject({ code: 'delivery_confirmation_confirmed', status: 409 })
+    await f.restart({ production: true, missingRouter: true })
+    await expect(f.runtime.panelPorts.delivery({ action: 'status', epoch, confirmationId: input.confirmationId })).rejects.toMatchObject({ code: 'epoch_mismatch', status: 409 })
+    zeroEffects()
+  })
+
+  it('invalidates a prepared confirmation when target facts, body or bound images change', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const base = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'supplement' as const, text: 'Exact supplement body', target, images: [] as any[] }
+    await f.runtime.panelPorts.delivery({ action: 'prepare', ...base })
+    await expect(f.runtime.panelPorts.delivery({ action: 'confirm', ...base, text: 'Edited supplement body' })).rejects.toMatchObject({ code: 'delivery_confirmation_changed', status: 409 })
+    observations.values.set(observations.id, { title: 'Ordinary target', goal: { goal: { phase: 'active', objective: 'Changed facts after prepare' } } })
+    await expect(f.runtime.panelPorts.delivery({ action: 'confirm', ...base })).rejects.toMatchObject({ code: 'delivery_target_changed', status: 409 })
+    expect((await f.runtime.panelPorts.delivery({ action: 'status', epoch, confirmationId: base.confirmationId }) as any).state).toBe('prepared')
+    observations.values.set(observations.id, { title: 'Ordinary target', goal: { goal: { phase: 'active', objective: 'Repair callback' } } })
+    const original = rasterPNG(), uploadId = randomUUID()
+    const uploaded: any = await f.runtime.panelPorts.images({ action: 'upload', epoch, draftId: randomUUID(), uploadId, digest: sha(original), mediaType: 'image/png', encoded: original.toString('base64') })
+    const reference = { imageId: uploaded.imageId, seq: uploaded.seq, digest: uploaded.digest }
+    const bound: any = await f.runtime.panelPorts.images({ action: 'bind', epoch, reference, target })
+    const withImage = { ...base, requestId: randomUUID(), confirmationId: randomUUID(), images: [{ imageId: bound.imageId, digest: bound.digest, seq: bound.seq }] }
+    await f.runtime.panelPorts.delivery({ action: 'prepare', ...withImage })
+    await expect(f.runtime.panelPorts.delivery({ action: 'confirm', ...withImage, images: [] })).rejects.toMatchObject({ code: 'delivery_confirmation_changed', status: 409 })
+    expect(await f.runtime.panelPorts.delivery({ action: 'confirm', ...withImage })).toMatchObject({ state: 'confirmed', delivered: false })
+    const second = { ...base, requestId: randomUUID(), confirmationId: randomUUID(), images: [{ imageId: bound.imageId, digest: bound.digest, seq: bound.seq }] }
+    await f.runtime.panelPorts.delivery({ action: 'prepare', ...second })
+    expect(await f.runtime.panelPorts.images({ action: 'release', epoch, reference: { imageId: bound.imageId, seq: bound.seq, digest: bound.digest } })).toMatchObject({ state: 'released' })
+    await expect(f.runtime.panelPorts.delivery({ action: 'confirm', ...second })).rejects.toMatchObject({ code: 'delivery_image_changed', status: 409 })
+    expect((await f.runtime.panelPorts.delivery({ action: 'status', epoch, confirmationId: second.confirmationId }) as any).state).toBe('prepared')
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([]); expect(f.store.repos.ticket.all()).toEqual([])
+  })
+
+  it('keeps clarify and no_match non-selecting and creates no Worker, Ticket or delivery record', async () => {
+    const one = randomUUID(), two = randomUUID()
+    const observations = { records: [{ header: { id: one, createdAt: 2 } }, { header: { id: two, createdAt: 1 } }],
+      values: new Map([[one, { title: 'Same work title' }], [two, { title: 'Same work title' }]]), reads: [] as string[],
+      projects: [{ id: 'p', title: 'Project', sessionIds: [one, two] }] }
+    const f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch
+    const clarify: any = await f.runtime.panelPorts.sessionLocate({ epoch, text: 'Same work title' })
+    expect(clarify).toMatchObject({ status: 'clarify', candidates: [{ sessionId: one }, { sessionId: two }], controlAvailable: false })
+    expect(f.store.repos.side_effect.all().filter(row => String(row.kind).startsWith('delivery-'))).toEqual([])
+    expect(f.store.repos.ticket.all()).toEqual([]); expect(f.store.repos.trigger.all()).toEqual([]); expect(f.store.repos.assignment.all()).toEqual([])
+    const picked = clarify.candidates[0]
+    const target = { sessionId: picked.sessionId, scopeRevision: clarify.revision, factRevision: picked.factRevision }
+    const prepared: any = await f.runtime.panelPorts.delivery({ action: 'prepare', epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue', text: 'Human explicitly chose this candidate', target, images: [] })
+    expect(prepared).toMatchObject({ state: 'prepared', target: { sessionId: one, scopeRevision: clarify.revision, factRevision: picked.factRevision } })
+    const noMatch: any = await f.runtime.panelPorts.sessionLocate({ epoch, text: 'No recorded work matches this sentence' })
+    expect(noMatch.status).toBe('no_match'); expect(noMatch.candidates).toEqual([])
+    expect(f.store.repos.side_effect.all().filter(row => String(row.kind).startsWith('delivery-'))).toHaveLength(1)
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([]); expect(f.store.repos.ticket.all()).toEqual([]); expect(f.store.repos.assignment.all()).toEqual([])
+    const excluded = await f.runtime.panelPorts.sessionWork({ action: 'set-included', epoch, sessionId: one, included: false, revision: target.scopeRevision })
+    const blocked: any = await f.runtime.panelPorts.sessionLocate({ epoch, text: 'Same work title', sessionId: one })
+    expect(blocked).toMatchObject({ status: 'blocked', code: 'target_not_available', controlAvailable: false })
+    await expect(f.runtime.panelPorts.delivery({ action: 'prepare', epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue', text: 'Blocked target', target, images: [] })).rejects.toMatchObject({ code: 'delivery_target_changed', status: 409 })
+    expect(f.store.repos.side_effect.all().filter(row => String(row.kind).startsWith('delivery-'))).toHaveLength(1)
+    expect(excluded.revision).not.toBe(target.scopeRevision)
+  })
+
+  it('keeps same delivery request idempotent and rejects conflicting content without dispatch', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'steer' as const, text: 'Exact corrective request', target, images: [] }
+    const first: any = await f.runtime.panelPorts.delivery({ action: 'prepare', ...input })
+    expect(await f.runtime.panelPorts.delivery({ action: 'prepare', ...input })).toEqual(first)
+    await expect(f.runtime.panelPorts.delivery({ action: 'prepare', ...input, text: 'Different request content' })).rejects.toMatchObject({ code: 'delivery_request_conflict', status: 409 })
+    await expect(f.runtime.panelPorts.delivery({ action: 'prepare', ...input, requestId: randomUUID(), confirmationId: input.confirmationId })).rejects.toMatchObject({ code: 'delivery_request_conflict', status: 409 })
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-confirmation-v1')).toHaveLength(1)
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([]); expect(f.calls.realActivation).not.toHaveBeenCalled()
+  })
+
 })

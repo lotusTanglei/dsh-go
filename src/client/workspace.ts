@@ -210,6 +210,11 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const sessionActionsRef = React.useRef({} as any)
     const sessionActionComposing = React.useRef(false)
     const sessionActionFocus = React.useRef('')
+    // Pre-delivery confirmations are local evidence bound to the exact located target.
+    // They never send, dispatch, wake a model or modify the main composer.
+    const [deliveries, setDeliveries] = React.useState({} as any)
+    const deliveriesRef = React.useRef({} as any)
+    const deliveryBusyRef = React.useRef(null as any)
     const [imageDrafts, setImageDrafts] = React.useState({} as any)
     const imageDraftsRef = React.useRef({} as any)
     const imageScopeRef = React.useRef('')
@@ -1387,6 +1392,199 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
           unresolved && !entry?.pending ? h('p', { className: 'saw-error' }, tr('SessionActionUnresolved')) : null) : null,
         old.length ? h('details', { className: 'saw-box' }, h('summary', null, `${tr('SessionActionRetained')} · ${old.length}`), h('p', { className: 'saw-meta' }, tr('SessionActionRetainedHint')), ...old.map(value => sessionActionEvidence(value, true))) : null)
     }
+    const deliveryKey = (epoch: string, target: any) => JSON.stringify(['delivery', epoch, target.sessionId, target.scopeRevision, target.factRevision, target.project.kind, target.project.key])
+    const currentDelivery = () => {
+      const current = currentSessionAction()
+      if (!current) return null
+      return { key: deliveryKey(current.epoch, current.target), epoch: current.epoch, target: current.target, title: current.title, projectName: current.projectName }
+    }
+    const deliveryDraftText = (key: string) => {
+      const entry = sessionActionsRef.current?.[key]
+      return entry && typeof entry.text === 'string' ? entry.text : ''
+    }
+    const deliveryOperation = (key: string) => {
+      const entry = sessionActionsRef.current?.[key]
+      return entry && ['continue', 'supplement', 'steer'].includes(entry.operation) ? entry.operation : 'continue'
+    }
+    const deliveryImageRefs = () => {
+      const current = currentDelivery(), draft = current ? imageDraftsRef.current?.[current.epoch] : null, target = draft?.target
+      if (!current || !draft || !target || target.sessionId !== current.target.sessionId || target.scopeRevision !== current.target.scopeRevision
+        || target.factRevision !== current.target.factRevision || target.project?.kind !== current.target.project.kind || target.project?.key !== current.target.project.key) return []
+      return array(draft.items).filter((row: any) => row?.status === 'bound' && row.stale !== true && row.receipt && row.receipt.state === 'bound'
+        && typeof row.receipt.imageId === 'string' && typeof row.receipt.digest === 'string' && /^[a-f0-9]{64}$/.test(row.receipt.digest)
+        && Number.isSafeInteger(row.receipt.seq) && row.receipt.seq > 0 && row.receipt.digest === row.digest).slice(0, 5)
+        .map((row: any) => ({ imageId: row.receipt.imageId, digest: row.receipt.digest, seq: row.receipt.seq }))
+    }
+    const deliveryPayload = (entry: any, requestId: string, confirmationId: string) => {
+      const target = entry.target
+      const payload = { epoch: entry.epoch, requestId, confirmationId, operation: deliveryOperation(entry.key), text: deliveryDraftText(entry.key),
+        target: { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision }, images: deliveryImageRefs() }
+      return payload
+    }
+    const deliveryDigest = async (payload: any) => {
+      const bytes = new TextEncoder().encode(JSON.stringify([payload.epoch, payload.requestId, payload.confirmationId, payload.operation, payload.text,
+        payload.target.sessionId, payload.target.scopeRevision, payload.target.factRevision, array(payload.images).map((row: any) => [row.imageId, row.digest, row.seq])]))
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+      return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('')
+    }
+    const saveDelivery = (key: string, value: any) => {
+      deliveriesRef.current = { ...deliveriesRef.current, [key]: value }
+      if (alive.current) setDeliveries(deliveriesRef.current)
+    }
+    const validDeliveryReceipt = (receipt: any, entry: any) => {
+      const input = entry?.pending, previous = entry?.receipt, hash = (value: any) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+      if (!input || !receipt || typeof receipt !== 'object' || Array.isArray(receipt) || Object.getOwnPropertySymbols(receipt).length
+        || Object.keys(receipt).some(key => !['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition', 'durable', 'code'].includes(key))
+        || receipt.version !== 1 || !['epoch', 'requestId', 'confirmationId', 'operation'].every(key => receipt[key] === input[key])
+        || !receipt.target || typeof receipt.target !== 'object' || Array.isArray(receipt.target) || Object.keys(receipt.target).length !== 4
+        || ['sessionId', 'scopeRevision', 'factRevision'].some(key => receipt.target[key] !== input.target[key])
+        || receipt.target.project?.kind !== entry.target.project.kind || receipt.target.project?.key !== entry.target.project.key
+        || !hash(receipt.digest) || receipt.digest !== entry.digest || receipt.bodyBytes !== new TextEncoder().encode(input.text).length
+        || !Array.isArray(receipt.images) || receipt.images.length !== array(input.images).length
+        || receipt.images.some((row: any, index: number) => !row || Object.keys(row).length !== 3 || row.imageId !== input.images[index]?.imageId || row.digest !== input.images[index]?.digest || row.seq !== input.images[index]?.seq)
+        || !['prepared', 'confirmed', 'canceled'].includes(receipt.state) || receipt.seq !== (receipt.state === 'prepared' ? 1 : 2)
+        || receipt.humanConfirmed !== (receipt.state === 'confirmed') || receipt.delivered !== false || receipt.accepted !== false || receipt.executed !== false || receipt.completed !== false
+        || receipt.disposition !== (receipt.state === 'confirmed' ? 'confirmed-pending-delivery' : receipt.state === 'canceled' ? 'canceled' : 'not-confirmed')
+        || receipt.durable !== true || !Number.isSafeInteger(receipt.at) || receipt.at < 0 || !Number.isSafeInteger(receipt.updatedAt) || receipt.updatedAt < receipt.at
+        || receipt.code !== undefined && (typeof receipt.code !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(receipt.code))) return false
+      // A higher sequence cannot rewrite facts; terminal confirmations cannot roll back.
+      if (previous && (receipt.seq < previous.seq || receipt.at !== previous.at || receipt.updatedAt < previous.updatedAt
+        || receipt.seq === previous.seq && ['state', 'code', 'digest', 'bodyBytes', 'updatedAt', 'images', 'target'].some(key => JSON.stringify(receipt[key]) !== JSON.stringify(previous[key]))
+        || ['confirmed', 'canceled'].includes(previous.state) && (receipt.state !== previous.state || receipt.seq !== previous.seq))) return false
+      return true
+    }
+    const deliveryStatusName = (entry: any) => tr(({ draft: 'DeliveryDraft', pending: 'DeliveryPreparing', prepared: 'DeliveryPrepared', unknown: 'DeliveryUnknown', confirmed: 'DeliveryConfirmed', canceled: 'DeliveryDraft' } as any)[entry?.busy ? 'pending' : entry?.status] || 'DeliveryDraft')
+    const deliveryOperationName = (value: string) => tr(({ continue: 'SessionActionContinue', supplement: 'SessionActionSupplement', steer: 'SessionActionSteer' } as any)[value] || 'SessionActionContinue')
+    const deliverySummary = (value: string) => {
+      const line = value.split(/[\r\n]/, 1)[0]!.trim(), points = Array.from(line)
+      return points.length > 90 ? `${points.slice(0, 90).join('').trimEnd()}…` : line
+    }
+    const prepareDelivery = async () => {
+      const current = currentDelivery(), old = current ? deliveriesRef.current[current.key] : null
+      if (!alive.current || deliveryBusyRef.current || !current || old?.busy || ['pending', 'prepared', 'confirmed'].includes(old?.status) || old?.status === 'unknown' && old?.pending) return
+      const bodyText = deliveryDraftText(current.key), images = deliveryImageRefs()
+      const base = { key: current.key, epoch: current.epoch, target: current.target, title: current.title, projectName: current.projectName, operation: deliveryOperation(current.key), text: bodyText, images, busy: null, receipt: null, error: '' }
+      if (!bodyText.trim() || new TextEncoder().encode(bodyText).length > 16_384 || bodyText.includes('\0')) { saveDelivery(current.key, { ...base, pending: null, status: 'draft', error: tr(!bodyText.trim() ? 'DeliveryTextRequired' : 'TextLimit') }); return }
+      let payload: any
+      try { payload = deliveryPayload(current, mintId(), mintId()) } catch { saveDelivery(current.key, { ...base, pending: null, status: 'draft', error: tr('DeliveryUnavailable') }); return }
+      const operation = {}; deliveryBusyRef.current = operation
+      const entry = { ...base, pending: payload, busy: operation, status: 'pending' }
+      saveDelivery(current.key, entry)
+      let requested = false
+      try {
+        const digest = await deliveryDigest(payload)
+        const preparedEntry = { ...entry, digest }
+        saveDelivery(current.key, preparedEntry)
+        // Hashing is async: a new prepare still requires the exact currently located binding.
+        if (!alive.current || currentDelivery()?.key !== current.key) { saveDelivery(current.key, { ...preparedEntry, busy: null, pending: null, status: 'draft' }); return }
+        requested = true
+        const receipt = await call('delivery', { action: 'prepare', ...payload })
+        if (!validDeliveryReceipt(receipt, preparedEntry)) throw new Error('invalid_delivery_receipt')
+        saveDelivery(current.key, { ...preparedEntry, busy: null, receipt, status: receipt.state, error: '' })
+      } catch (e: any) {
+        const saved = deliveriesRef.current[current.key] || entry
+        if (requested && e?.status === 409) saveDelivery(current.key, { ...saved, busy: null, pending: null, status: 'draft', error: tr('DeliveryChanged') })
+        else saveDelivery(current.key, { ...saved, busy: null, pending: requested ? payload : null, status: requested ? 'unknown' : 'draft', error: tr(requested ? 'DeliveryUnknown' : 'DeliveryUnavailable') })
+      } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+    }
+    const confirmDelivery = async (key: string) => {
+      const entry = deliveriesRef.current[key], current = currentDelivery()
+      if (!alive.current || deliveryBusyRef.current || !entry?.pending || entry.busy || entry.status !== 'prepared' || !current || current.key !== key || entry.epoch !== epochRef.current) return
+      const payload = deliveryPayload(current, entry.pending.requestId, entry.pending.confirmationId)
+      const operation = {}; deliveryBusyRef.current = operation
+      saveDelivery(key, { ...entry, busy: operation })
+      try {
+        const digest = await deliveryDigest(payload)
+        if (!alive.current || currentDelivery()?.key !== key) { saveDelivery(key, { ...entry, busy: null }); return }
+        // Any body/image/target change invalidates the local prepared object before any confirm request.
+        if (digest !== entry.digest) { saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: tr('DeliveryContentChanged') }); return }
+        const receipt = await call('delivery', { action: 'confirm', ...payload })
+        if (!validDeliveryReceipt(receipt, entry) || receipt.state !== 'confirmed') throw new Error('invalid_delivery_confirmation')
+        saveDelivery(key, { ...entry, busy: null, receipt, status: 'confirmed', error: '' })
+      } catch (e: any) {
+        if (e?.status === 409) saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: tr('DeliveryChanged') })
+        else saveDelivery(key, { ...entry, busy: null, status: 'unknown', error: tr('DeliveryConfirmUnknown') })
+      } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+    }
+    const cancelDelivery = async (key: string) => {
+      const entry = deliveriesRef.current[key]
+      if (!alive.current || !entry || entry.busy) return
+      const clear = () => saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: '' })
+      if (!entry.pending || entry.status === 'confirmed') { if (entry.status === 'confirmed') return; clear(); return }
+      const operation = {}; deliveryBusyRef.current = operation
+      saveDelivery(key, { ...entry, busy: operation })
+      try {
+        // Tombstone the prepared id when possible; cancelling itself never sends or dispatches.
+        const receipt = await call('delivery', { action: 'cancel', epoch: entry.epoch, confirmationId: entry.pending.confirmationId })
+        if (receipt?.state !== 'canceled' || !validDeliveryReceipt(receipt, entry)) { clear(); return }
+      } catch (e: any) {
+        // Already confirmed elsewhere: never hide that behind a local draft.
+        if (e?.code === 'delivery_confirmation_confirmed') { saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryCancelConfirmed') }); if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null; return }
+        /* the local draft is retained regardless of the cancel receipt */
+      }
+      clear()
+      if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null
+    }
+    const checkDeliveryStatus = async (key: string) => {
+      const entry = deliveriesRef.current[key]
+      if (!alive.current || !entry?.pending || entry.busy || entry.epoch !== epochRef.current) return
+      const operation = {}; deliveryBusyRef.current = operation
+      saveDelivery(key, { ...entry, busy: operation, error: '' })
+      try {
+        const receipt = await call('delivery', { action: 'status', epoch: entry.epoch, confirmationId: entry.pending.confirmationId })
+        if (!validDeliveryReceipt(receipt, { ...entry, receipt: null })) throw new Error('invalid_delivery_status')
+        if (receipt.state === 'confirmed') saveDelivery(key, { ...entry, busy: null, receipt, status: 'confirmed', error: '' })
+        else if (receipt.state === 'prepared') saveDelivery(key, { ...entry, busy: null, receipt, status: 'prepared', error: '' })
+        else saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: '' })
+      } catch (e: any) {
+        // A 404 for this exact preparation means no prepared record exists; it never proves delivery.
+        if (e?.status === 404) saveDelivery(key, { ...entry, busy: null, pending: null, receipt: null, digest: undefined, status: 'draft', error: tr('DeliveryNotFound') })
+        else saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryErrorUnknown') })
+      }
+      finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+    }
+    const deliveryConfirmationView = () => {
+      const current = currentDelivery(), entry = current ? deliveries[current.key] : null
+      const bodyText = current ? deliveryDraftText(current.key) : '', operation = current ? deliveryOperation(current.key) : 'continue'
+      const images = current ? deliveryImageRefs() : [], busy = !!entry?.busy
+      const body = bodyText.trim() ? new TextEncoder().encode(bodyText).length : 0
+      return h('section', { className: 'saw-box saw-delivery', 'aria-label': tr('DeliveryTitle') },
+        h('h3', null, tr('DeliveryTitle')),
+        h('p', { className: 'saw-meta' }, tr('DeliveryHint')),
+        !current ? h('p', { className: 'saw-meta' }, tr('DeliveryNoTarget')) : h(React.Fragment, null,
+          h('p', { className: 'saw-meta' }, `${tr('Project')}: ${current.projectName} · ${current.target.project.key}`),
+          h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('SessionIdentity')}: ${current.target.sessionId}`),
+          h('p', { className: 'saw-meta' }, `${tr('Operation')}: ${deliveryOperationName(operation)}`),
+          entry?.busy || entry?.status === 'pending' ? h('p', { className: 'saw-meta', role: 'status', 'aria-live': 'polite' }, tr('DeliveryPreparing')) : null,
+          entry?.status === 'prepared' && entry.receipt ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryConfirmSummary') },
+            h('h4', null, tr('DeliveryConfirmSummary')),
+            h('p', null, `${tr('Project')}: ${current.projectName} · ${current.title}`),
+            h('p', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(current.target.sessionId).slice(-8)} · ${tr('Operation')}: ${deliveryOperationName(entry.receipt.operation)}`),
+            h('p', { className: 'saw-meta' }, tr('DeliveryBodySummary')), h('p', { className: 'saw-pre' }, deliverySummary(entry.text)),
+            h('p', { className: 'saw-meta' }, `${tr('DeliveryBodyBytes')}: ${entry.receipt.bodyBytes} · ${tr('DeliveryImages')}: ${array(entry.receipt.images).length}`),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('SessionActionScopeRevision')}: ${entry.receipt.target.scopeRevision}`),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('LocateFactRevision')}: ${entry.receipt.target.factRevision}`),
+            h('p', { className: 'saw-meta' }, tr('DeliveryConfirmHint')),
+            h('div', { className: 'saw-row' }, button(tr('DeliveryConfirm'), () => { void confirmDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }),
+              button(tr('DeliveryCancel'), () => { void cancelDelivery(current.key) }, busy)),
+            h('p', { className: 'saw-meta' }, tr('DeliveryPrepared'))) : null,
+          entry?.status === 'confirmed' && entry.receipt ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryConfirmed') },
+            h('strong', null, tr('DeliveryConfirmed')),
+            h('p', { className: 'saw-meta' }, tr('DeliveryConfirmedHint')),
+            h('p', { className: 'saw-meta' }, `${tr('DeliveryHandoff')}: ${entry.receipt.disposition}`),
+            h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
+            h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.receipt.updatedAt)}`)) : null,
+          entry?.status === 'unknown' ? h('div', { className: 'saw-row' },
+            h('p', { className: 'saw-error' }, entry.error || tr('DeliveryErrorUnknown')),
+            button(tr('DeliveryQueryStatus'), () => { void checkDeliveryStatus(current.key) }, busy)) : null,
+          !entry || entry.status === 'draft' ? h(React.Fragment, null,
+            h('p', { className: 'saw-meta' }, tr('DeliveryBodySummary')),
+            bodyText.trim() ? h('p', { className: 'saw-pre' }, deliverySummary(bodyText)) : h('p', { className: 'saw-meta' }, tr('DeliveryTextRequired')),
+            h('p', { className: 'saw-meta' }, `${tr('DeliveryBodyBytes')}: ${body} · ${tr('DeliveryImages')}: ${images.length}`),
+            h('p', { className: 'saw-meta' }, entry?.error || deliveryStatusName(entry)),
+            button(tr('DeliveryPrepare'), () => { void prepareDelivery() }, busy || !bodyText.trim(), { className: 'saw-btn saw-action-primary' })) : null))
+    }
     const locateView = (actions?: () => any, images?: () => any) => {
       const result = locateResult
       return h('section', { className: 'saw-session-work', 'aria-label': tr('LocateTitle') },
@@ -1542,7 +1740,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
           archive ? h('p', { className: 'saw-banner' }, tr('ArchiveReadonly')) : null,
           historyError ? h('p', { className: 'saw-error' }, historyError, ' ', tr('StaleData'), ' ', button(tr('Retry'), () => { void readConversation(historyEpoch) })) : null,
           h('div', { className: 'saw-messages', inert: planReview || replyOpen ? true : undefined, ref: messagesRef, onScroll: (e: any) => { const node = e.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80 }, 'aria-label': tr(activityView === 'briefing' ? 'DeskTitle' : 'ConversationHistory') },
-            chatSubmode ? h('section', { className: 'saw-chat-context' }, button(tr('GoBackToConversation'), () => navigatePrimary('chat')), system === 'locate' ? locateView(sessionActionView, imageLocateEntry) : imageDraftView()) : null,
+            chatSubmode ? h('section', { className: 'saw-chat-context' }, button(tr('GoBackToConversation'), () => navigatePrimary('chat')), system === 'locate' ? locateView(sessionActionView, imageLocateEntry) : imageDraftView(), system === 'locate' ? deliveryConfirmationView() : null) : null,
             activityView === 'briefing' ? briefingView() : h(React.Fragment, null,
             latestAssistant ? button(tr('ReadLatestReply'), openReply, false, { className: 'saw-btn saw-text-btn' }) : null,
             h('details', { className: 'saw-history-info' }, h('summary', null, tr('HistoryInfo')), h('p', { className: 'saw-meta' }, tr('HistoryRecordHint'))),

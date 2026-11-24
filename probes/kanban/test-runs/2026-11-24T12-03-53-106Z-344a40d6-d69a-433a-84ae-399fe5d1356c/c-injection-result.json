@@ -1,7 +1,7 @@
 {
   "kind": "closeout-c1-offline-injection-evidence",
-  "startedAt": "2026-11-24T11:10:57.756Z",
-  "finishedAt": "2026-11-24T11:10:57.836Z",
+  "startedAt": "2026-11-24T12:03:53.206Z",
+  "finishedAt": "2026-11-24T12:03:53.393Z",
   "state": "completed-with-gaps",
   "providerRequests": 0,
   "modelImmunity": "unavailable: no model was called; schema validation and source wrapping do not establish behavioral immunity",

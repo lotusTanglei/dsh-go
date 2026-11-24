@@ -22,6 +22,7 @@ import { createWorkspaceRuntime } from './workspace/runtime.js'
 import { createScopePreferences } from './workspace/scope-preferences.js'
 import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
+import { createDeliveries } from './workspace/deliveries.js'
 import { createStageModels, type StageCatalogPort } from './workspace/stage-models.js'
 import { WorkspaceError } from './workspace/commands.js'
 import { createSessionDecisions, sessionDecisionSnapshotDigest, type SessionDecisionProjection } from './workspace/session-decisions.js'
@@ -71,6 +72,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   let sessionWork: SessionWorkSource | undefined
   let sessionActions: ReturnType<typeof createSessionActions> | undefined
   let images: ReturnType<typeof createWorkspaceImages> | undefined
+  let deliveryConfirmations: ReturnType<typeof createDeliveries> | undefined
   let stageModels: ReturnType<typeof createStageModels> | undefined
   let stageCatalog: StageCatalogPort | undefined
   let sessionDecisions: ReturnType<typeof createSessionDecisions> | undefined
@@ -441,6 +443,12 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       scope: () => sessionWork!.imageScope(), target: input => sessionWork!.actionTarget(input),
       // Original-image interpretation/delivery needs a verified Host model+permission adapter.
     })
+    // Human confirmation only: no Agent, message or dispatch adapter is injected in this slice.
+    deliveryConfirmations = createDeliveries(store, {
+      requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('delivery_unavailable', 503); workspace.requireEpoch(epoch) },
+      target: input => sessionWork!.actionTarget(input),
+      images: input => images!.verify(input),
+    })
     sessionDecisions = createSessionDecisions(store, {
       requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('session_decision_unavailable', 503); workspace.requireEpoch(epoch) },
       target: input => sessionWork!.actionTarget(input),
@@ -617,6 +625,18 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (input.action === 'prepare') return sessionActions.prepare(input.input)
         if (input.action === 'close') return sessionActions.close(input.input)
         return sessionActions.status({ epoch: input.epoch, actionId: input.actionId })
+      },
+      async delivery(input: any) {
+        input = structuredClone(input)
+        await ready
+        if (disposed || !deliveryConfirmations || !workspace) throw new WorkspaceError('delivery_unavailable', 503)
+        workspace.requireEpoch(input?.epoch)
+        const { action, ...payload } = input
+        if (action === 'prepare') return deliveryConfirmations.prepare(payload)
+        if (action === 'confirm') return deliveryConfirmations.confirm(payload)
+        if (action === 'cancel') return deliveryConfirmations.cancel(payload)
+        if (action === 'status') return deliveryConfirmations.status(payload)
+        throw new WorkspaceError('invalid_input', 400)
       },
       async configMutation(input: any) {
         await ready

@@ -1,6 +1,6 @@
 {
   "case": "overflow",
-  "recordedAt": "2026-11-24T11:10:51.813Z",
+  "recordedAt": "2026-11-24T12:03:51.885Z",
   "mode": "offline-real-product-sqlite-explicit-test-doubles",
   "submitted": 225,
   "queueLimit": 200,
@@ -13,10 +13,10 @@
   "pendingCount": 200,
   "maxPending": 200,
   "ticketCount": 0,
-  "durationMs": 80.98245799999995,
-  "rssStart": 98975744,
-  "rssPeak": 109297664,
-  "rssDeltaBytes": 10321920,
+  "durationMs": 102.05854199999999,
+  "rssStart": 99729408,
+  "rssPeak": 110116864,
+  "rssDeltaBytes": 10387456,
   "peakScope": "sampled after every ingest, not continuous OS peak",
   "intake": [
     {
