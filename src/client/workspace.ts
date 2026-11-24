@@ -1482,7 +1482,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const validDeliveryReceipt = (receipt: any, entry: any) => {
       const input = entry?.pending, previous = entry?.receipt, hash = (value: any) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
       if (!input || !receipt || typeof receipt !== 'object' || Array.isArray(receipt) || Object.getOwnPropertySymbols(receipt).length
-        || Object.keys(receipt).some(key => !['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition', 'durable', 'code'].includes(key))
+        || Object.keys(receipt).some(key => !['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition', 'durable', 'code', 'targetState'].includes(key))
         || receipt.version !== 1 || !['epoch', 'requestId', 'confirmationId', 'operation'].every(key => receipt[key] === input[key])
         || !receipt.target || typeof receipt.target !== 'object' || Array.isArray(receipt.target) || Object.keys(receipt.target).length !== 4
         || ['sessionId', 'scopeRevision', 'factRevision'].some(key => receipt.target[key] !== input.target[key])
@@ -1493,6 +1493,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         || !['prepared', 'confirmed', 'canceled'].includes(receipt.state) || receipt.seq !== (receipt.state === 'prepared' ? 1 : 2)
         || receipt.humanConfirmed !== (receipt.state === 'confirmed') || receipt.delivered !== false || receipt.accepted !== false || receipt.executed !== false || receipt.completed !== false
         || receipt.disposition !== (receipt.state === 'confirmed' ? 'confirmed-pending-delivery' : receipt.state === 'canceled' ? 'canceled' : 'not-confirmed')
+        || !['live', 'cold', 'unknown'].includes(receipt.targetState)
         || receipt.durable !== true || !Number.isSafeInteger(receipt.at) || receipt.at < 0 || !Number.isSafeInteger(receipt.updatedAt) || receipt.updatedAt < receipt.at
         || receipt.code !== undefined && (typeof receipt.code !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(receipt.code))) return false
       // A higher sequence cannot rewrite facts; terminal confirmations cannot roll back.
@@ -1502,6 +1503,11 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       return true
     }
     const deliveryStatusName = (entry: any) => tr(({ draft: 'DeliveryDraft', pending: 'DeliveryPreparing', prepared: 'DeliveryPrepared', unknown: 'DeliveryUnknown', confirmed: 'DeliveryConfirmed', canceled: 'DeliveryDraft' } as any)[entry?.busy ? 'pending' : entry?.status] || 'DeliveryDraft')
+    // Cold wake failures keep their fixed code visible and are never retried under the same IDs.
+    const deliveryWakeCode = (code: any) => typeof code === 'string' && /^delivery_wake_/.test(code)
+    const deliveryBlockedName = (code: any, stop: boolean) => stop
+      ? (code === 'delivery_target_cold' ? 'DeliveryStopTargetCold' : 'DeliveryStopBlocked')
+      : code === 'delivery_target_cold' ? 'DeliveryTargetCold' : deliveryWakeCode(code) ? 'DeliveryWakeBlocked' : 'DeliveryDispatchBlocked'
     const deliveryOperationName = (value: string) => tr(({ continue: 'SessionActionContinue', supplement: 'SessionActionSupplement', steer: 'SessionActionSteer', stop: 'SessionActionStop' } as any)[value] || 'SessionActionContinue')
     const deliverySummary = (value: string) => {
       const line = value.split(/[\r\n]/, 1)[0]!.trim(), points = Array.from(line)
@@ -1563,7 +1569,16 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       const input = entry?.pending, previous = entry?.dispatch, hash = (value: any) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
       const uuid = (value: any) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
       const evidence = receipt?.stopEvidence, evidenceValid = evidence === 'turn-aborted' || evidence === 'cancel-accepted'
-      const keys = ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'messageId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'durable', 'humanConfirmed', 'delivered', 'accepted', 'interrupted', 'executed', 'completed', 'disposition', 'stopEvidence']
+      const keys = ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'messageId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'durable', 'humanConfirmed', 'delivered', 'accepted', 'interrupted', 'executed', 'completed', 'disposition', 'stopEvidence', 'woke', 'wake']
+      const boundedLabel = (value: any) => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value) && !value.includes('://')
+      const wake = receipt?.wake
+      const wakeValid = wake === undefined || typeof wake === 'object' && wake !== null && !Array.isArray(wake)
+        && Object.keys(wake).every(key => ['version', 'wakeId', 'sessionId', 'from', 'to', 'agentPreset', 'model'].includes(key))
+        && wake.version === 1 && uuid(wake.wakeId) && wake.sessionId === input?.target?.sessionId && wake.from === 'cold' && wake.to === 'live'
+        && (wake.agentPreset === undefined || boundedLabel(wake.agentPreset))
+        && (wake.model === undefined || typeof wake.model === 'object' && wake.model !== null && !Array.isArray(wake.model)
+          && Object.keys(wake.model).every(key => ['provider', 'model', 'reasoningEffort'].includes(key))
+          && boundedLabel(wake.model.provider) && boundedLabel(wake.model.model) && (wake.model.reasoningEffort === undefined || boundedLabel(wake.model.reasoningEffort)))
       if (!input || !receipt || typeof receipt !== 'object' || Array.isArray(receipt) || Object.getOwnPropertySymbols(receipt).length
         || Object.keys(receipt).some(key => !keys.includes(key))
         || receipt.version !== 1 || !['epoch', 'requestId', 'confirmationId', 'operation'].every(key => receipt[key] === input[key])
@@ -1580,18 +1595,20 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         || receipt.interrupted !== (receipt.state === 'interrupted')
         || receipt.executed !== (receipt.state === 'blocked' ? false : null) || receipt.completed !== (receipt.state === 'blocked' ? false : null)
         || receipt.disposition !== (receipt.state === 'accepted' ? 'target-durable-receipt' : receipt.state === 'interrupted' ? 'stop-interrupted' : receipt.state === 'blocked' ? 'not-dispatched' : 'reconcile-only')
+        || typeof receipt.woke !== 'boolean' || receipt.woke !== (wake !== undefined) || !wakeValid
         || receipt.durable !== true || receipt.humanConfirmed !== true
         || !Number.isSafeInteger(receipt.at) || receipt.at < 0 || !Number.isSafeInteger(receipt.updatedAt) || receipt.updatedAt < receipt.at
         || receipt.code !== undefined && (typeof receipt.code !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(receipt.code))) return false
-      // A stop never claims a message identity and needs explicit evidence; a text delivery keeps its message ref.
+      // A stop never claims a message identity or a wake; a text delivery keeps its message ref.
       if (input.operation === 'stop') {
-        if (receipt.messageId !== undefined || receipt.state === 'accepted' || (receipt.state === 'interrupted') !== evidenceValid || receipt.state === 'interrupted' && !evidenceValid) return false
+        if (receipt.messageId !== undefined || receipt.state === 'accepted' || receipt.woke !== false || receipt.wake !== undefined) return false
+        if ((receipt.state === 'interrupted') !== evidenceValid || receipt.state === 'interrupted' && !evidenceValid) return false
         if (receipt.state !== 'interrupted' && receipt.stopEvidence !== undefined) return false
       } else if (receipt.messageId !== `go:${receipt.dispatchId}` || receipt.interrupted || receipt.stopEvidence !== undefined) return false
       // A higher sequence cannot rewrite facts; terminal dispatch outcomes cannot roll back.
       if (previous) {
         if (receipt.seq < previous.seq || receipt.at !== previous.at || receipt.updatedAt < previous.updatedAt) return false
-        if (receipt.seq === previous.seq && ['state', 'code', 'updatedAt', 'digest', 'dispatchId', 'messageId'].some(key => receipt[key] !== previous[key])) return false
+        if (receipt.seq === previous.seq && ['state', 'code', 'updatedAt', 'digest', 'dispatchId', 'messageId', 'woke', 'wake'].some(key => JSON.stringify(receipt[key]) !== JSON.stringify(previous[key]))) return false
         if (previous.state === 'accepted' && receipt.state !== 'accepted') return false
         if (previous.state === 'interrupted' && receipt.state !== 'interrupted') return false
         if (previous.state === 'blocked' && receipt.state !== 'blocked') return false
@@ -1615,7 +1632,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         if (digest !== entry.digest) { saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryDispatchChanged') }); return }
         const receipt = await call('delivery', { action: 'dispatch', ...payload })
         if (!validDeliveryDispatchReceipt(receipt, entry)) throw new Error('invalid_delivery_dispatch_receipt')
-        const error = receipt.state === 'blocked' ? tr(entry.operation === 'stop' ? (receipt.code === 'delivery_target_cold' ? 'DeliveryStopTargetCold' : 'DeliveryStopBlocked') : (receipt.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked')) : ''
+        const error = receipt.state === 'blocked' ? tr(deliveryBlockedName(receipt.code, entry.operation === 'stop')) : ''
         saveDelivery(key, { ...entry, busy: null, dispatch: receipt, dispatchStatus: receipt.state, error })
       } catch (e: any) {
         if (e?.status === 409) saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryDispatchChanged') })
@@ -1714,6 +1731,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('SessionActionScopeRevision')}: ${entry.receipt.target.scopeRevision}`),
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('LocateFactRevision')}: ${entry.receipt.target.factRevision}`),
             h('p', { className: 'saw-meta' }, tr('DeliveryConfirmHint')),
+            entry.receipt.targetState === 'cold' ? h('p', { className: 'saw-error', role: 'status' }, tr('DeliveryColdWake')) : null,
             h('div', { className: 'saw-row' }, button(tr('DeliveryConfirm'), () => { void confirmDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }),
               button(tr('DeliveryCancel'), () => { void cancelDelivery(current.key) }, busy)),
             h('p', { className: 'saw-meta' }, tr('DeliveryPrepared')))) : null,
@@ -1721,6 +1739,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('strong', null, tr('DeliveryConfirmed')),
             h('p', { className: 'saw-meta' }, tr('DeliveryConfirmedHint')),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryHandoff')}: ${entry.receipt.disposition}`),
+            !stop && entry.receipt.targetState === 'cold' ? h('p', { className: 'saw-error', role: 'status' }, tr('DeliveryColdWake')) : null,
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
             h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.receipt.updatedAt)}`),
             entry.busy ? h('p', { className: 'saw-meta', role: 'status', 'aria-live': 'polite' }, tr(stop ? 'DeliveryStopDispatching' : 'DeliveryDispatching')) : null,
@@ -1729,6 +1748,11 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
               h('strong', null, tr(dispatch.state === 'accepted' ? 'DeliveryAccepted' : dispatch.state === 'interrupted' ? 'DeliveryStopInterrupted' : dispatch.state === 'blocked' ? (stop ? 'DeliveryStopBlocked' : 'DeliveryDispatchBlocked') : (stop ? 'DeliveryStopUnknown' : 'DeliveryDispatchUnknown'))),
               dispatch.state === 'accepted' ? h(React.Fragment, null,
                 h('p', { className: 'saw-meta' }, tr('DeliveryAcceptedHint')),
+                dispatch.woke && dispatch.wake ? h(React.Fragment, null,
+                  h('p', { className: 'saw-meta' }, tr('DeliveryWoke')),
+                  dispatch.wake.agentPreset ? h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryWakePreset')}: ${dispatch.wake.agentPreset}`) : null,
+                  dispatch.wake.model ? h('p', { className: 'saw-meta' }, `${tr('DeliveryWakeModel')}: ${dispatch.wake.model.provider}/${dispatch.wake.model.model}`) : null,
+                  h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryWakeId')}: ${dispatch.wake.wakeId}`)) : null,
                 h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDispatchId')}: ${dispatch.dispatchId}`),
                 h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(dispatch.updatedAt)}`)) : null,
               dispatch.state === 'interrupted' ? h(React.Fragment, null,
@@ -1742,8 +1766,9 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
                 h('p', { className: 'saw-error' }, tr(stop ? 'DeliveryStopUnknown' : 'DeliveryDispatchUnknown')),
                 button(tr('DeliveryQueryDispatch'), () => { void dispatchDelivery(current.key) }, busy)) : null,
               dispatch.state === 'blocked' ? h(React.Fragment, null,
-                h('p', { className: 'saw-error' }, tr(stop ? (dispatch.code === 'delivery_target_cold' ? 'DeliveryStopTargetCold' : 'DeliveryStopBlocked') : (dispatch.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked'))),
-                h('p', { className: 'saw-meta' }, tr(stop ? 'DeliveryStopBlockedHint' : 'DeliveryDispatchBlockedHint')),
+                dispatch.woke && dispatch.wake ? h('p', { className: 'saw-meta' }, tr('DeliveryWoke')) : null,
+                h('p', { className: 'saw-error' }, tr(deliveryBlockedName(dispatch.code, stop))),
+                h('p', { className: 'saw-meta' }, tr(stop ? 'DeliveryStopBlockedHint' : deliveryWakeCode(dispatch.code) ? 'DeliveryWakeBlockedHint' : 'DeliveryDispatchBlockedHint')),
                 dispatch.code ? h('p', { className: 'saw-meta' }, `${tr('Code')}: ${dispatch.code}`) : null,
                 button(tr('DeliveryPrepareAgain'), () => prepareAgainDelivery(current.key), busy)) : null) : null,
             !dispatch && entry.dispatchStatus === 'dispatch_unknown' ? h('div', { className: 'saw-row' },

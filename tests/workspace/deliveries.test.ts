@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { encodeJson, openStore, type Store } from '../../src/store/index.js'
 import { WorkspaceError } from '../../src/workspace/commands.js'
-import { createDeliveries, deliveryDigest, validDeliveryInput, type DeliveryDispatchEvidence, type DeliveryDispatchRecord, type DeliveryImageReference, type DeliveryInput, type DeliveryPorts } from '../../src/workspace/deliveries.js'
+import { createDeliveries, deliveryDigest, validDeliveryInput, type DeliveryDispatchEvidence, type DeliveryDispatchRecord, type DeliveryImageReference, type DeliveryInput, type DeliveryModelSelection, type DeliveryPorts, type DeliveryTargetState, type DeliveryWakeDecision, type DeliveryWakeEvidence, type DeliveryWakeRecord } from '../../src/workspace/deliveries.js'
 import type { SessionTargetBinding } from '../../src/workspace/session-actions.js'
 
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -34,7 +34,7 @@ function database() {
 
 interface ImageRow extends DeliveryImageReference { epoch: string; state: 'staged' | 'bound' | 'released'; target?: SessionTargetBinding }
 
-function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
+function fixture(options: { images?: boolean; dispatch?: boolean; wake?: boolean } = {}) {
   const db = database()
   const state = {
     epoch: EPOCH,
@@ -43,11 +43,20 @@ function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
     denied: false,
     failFenceOnce: false,
     images: new Map<string, ImageRow>(),
-    counts: { target: 0, image: 0, fence: 0, dispatch: 0 },
+    counts: { target: 0, image: 0, fence: 0, dispatch: 0, liveness: 0, wake: 0 },
     calls: [] as Array<{ record: DeliveryDispatchRecord; text: string; fencePersisted: boolean }>,
     decision: { state: 'accepted', code: undefined } as { state: 'accepted' | 'interrupted' | 'dispatch_unknown' | 'blocked'; code?: string; stopEvidence?: 'turn-aborted' | 'cancel-accepted' },
     throwDispatch: false,
     evidence: undefined as undefined | ((record: DeliveryDispatchRecord) => DeliveryDispatchEvidence | undefined),
+    liveness: 'unknown' as DeliveryTargetState,
+    throwLiveness: false,
+    wakeDecision: undefined as DeliveryWakeDecision | Error | undefined,
+    throwWake: false,
+    /** Per-call wake answers; the last one repeats. */
+    wakeDecisions: [] as Array<DeliveryWakeDecision | Error>,
+    wakeCalls: [] as Array<{ record: DeliveryDispatchRecord; wakeId: string; fencePersisted: boolean; fenceState?: string }>,
+    preset: 'dsh-preset-original' as string | null,
+    selection: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } as DeliveryModelSelection | null,
   }
   const ports: DeliveryPorts = {
     requireEpoch(epoch) { if (epoch !== state.epoch) throw new WorkspaceError('workspace_epoch_stale', 409) },
@@ -70,6 +79,18 @@ function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
           return { imageId: row.imageId, digest: row.digest, seq: row.seq }
         })
         return { references, fence() { for (const reference of references) { const row = state.images.get(reference.imageId); if (!row || row.state !== 'bound' || row.digest !== reference.digest || row.seq !== reference.seq) throw new WorkspaceError('image_reference_changed', 409) } } }
+      },
+    }),
+    ...(options.wake === false ? {} : {
+      async liveness(_sessionId: string) { state.counts.liveness++; if (state.throwLiveness) throw new Error('Host liveness unavailable'); return state.liveness },
+      async wake(record: Readonly<DeliveryDispatchRecord>, wakeId: string): Promise<DeliveryWakeDecision> {
+        state.counts.wake++
+        const persisted: any = db.store.repos.side_effect.get(`delivery-wake:v1:${record.confirmationId}`)
+        state.wakeCalls.push({ record: { ...record, target: { ...record.target, project: { ...record.target.project } } } as DeliveryDispatchRecord, wakeId, fencePersisted: persisted?.state === 'v1:1', fenceState: persisted?.state })
+        const queued = state.wakeDecisions.length ? state.wakeDecisions.shift()! : state.wakeDecision
+        if (queued instanceof Error) throw queued
+        if (!queued) throw new Error('unexpected wake call')
+        return queued
       },
     }),
     ...(options.dispatch === false ? {} : {
@@ -108,6 +129,23 @@ function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
       return record
     },
     dispatchRows() { return db.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1') },
+    wakeRows() { return db.store.repos.side_effect.all().filter(row => row.kind === 'delivery-wake-v1') },
+    wakeRecord(): DeliveryWakeRecord | undefined {
+      const row = db.store.repos.side_effect.all().find(row => row.kind === 'delivery-wake-v1')
+      return row?.detail as DeliveryWakeRecord | undefined
+    },
+    /** Simulate a process that persisted its wake fence and died before the resume outcome was stored. */
+    staleWake(input: DeliveryInput, state: 'waking' | 'wake_unknown' = 'waking') {
+      const at = Date.now(), wakeId = randomUUID()
+      const record: DeliveryWakeRecord = { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, wakeId,
+        sessionId: input.target.sessionId, seq: state === 'waking' ? 1 : 2, at, updatedAt: at, state, ...(state === 'wake_unknown' ? { code: 'delivery_wake_unknown' } : {}) }
+      db.store.db.prepare('INSERT INTO side_effect(key,kind,ticket_id,at,state,detail) VALUES (?,?,NULL,?,?,?)').run(`delivery-wake:v1:${input.confirmationId}`, 'delivery-wake-v1', at, `v1:${record.seq}`, encodeJson(record, false))
+      return record
+    },
+    wakeEvidence(wakeId?: string): DeliveryWakeEvidence {
+      return { version: 1, wakeId: wakeId ?? randomUUID(), sessionId: SESSION, from: 'cold', to: 'live',
+        ...(state.preset === null ? {} : { agentPreset: state.preset }), ...(state.selection === null ? {} : { model: { ...state.selection } }) }
+    },
   }
 }
 const imageRef = (image: ImageRow): DeliveryImageReference => ({ imageId: image.imageId, digest: image.digest, seq: image.seq })
@@ -122,7 +160,7 @@ describe('pre-delivery confirmation: prepared is not delivered', () => {
     expect(receipt).toEqual({
       version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'continue',
       target: { ...f.state.binding, project: { ...PROJECT } }, digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [],
-      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared',
+      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared', targetState: 'unknown',
       durable: true, humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed',
     })
     expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'dispatch', 'prepare', 'reconcile', 'status'])
@@ -283,12 +321,12 @@ describe('input shape gates', () => {
       await rejectsWith(f.service.prepare(value as DeliveryInput), 'delivery_invalid', 400)
     }
     expect(f.db.store.repos.side_effect.all()).toEqual([])
-    expect(f.state.counts).toEqual({ target: 0, image: 0, fence: 0, dispatch: 0 })
+    expect(f.state.counts).toEqual({ target: 0, image: 0, fence: 0, dispatch: 0, liveness: 0, wake: 0 })
   })
 
   it('exposes only the exact confirmation/dispatch service surface, with no Agent or body export', async () => {
     const f = fixture()
-    expect(Object.keys(f.ports).sort()).toEqual(['dispatch', 'evidence', 'images', 'requireEpoch', 'target'])
+    expect(Object.keys(f.ports).sort()).toEqual(['dispatch', 'evidence', 'images', 'liveness', 'requireEpoch', 'target', 'wake'])
     expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'dispatch', 'prepare', 'reconcile', 'status'])
   })
 })
@@ -524,4 +562,150 @@ describe('stop: one Host cancellation with honest interruption evidence', () => 
   })
 })
 
+})
+
+describe('cold wake: one fenced resume before the exact delivery', () => {
+  async function confirmed(f: ReturnType<typeof fixture>, input: DeliveryInput) {
+    await f.service.prepare(input)
+    await f.service.confirm(input)
+  }
+  it('wakes a cold text target once after the durable wake fence, then dispatches and reports checkable evidence', async () => {
+    const f = fixture(), input = f.input()
+    f.state.liveness = 'cold'
+    f.state.wakeDecision = { state: 'awake', agentPreset: 'dsh-preset-original', model: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } }
+    await confirmed(f, input)
+    const receipt = await f.service.dispatch(input)
+    expect(f.state.wakeCalls).toHaveLength(1)
+    expect(f.state.wakeCalls[0]).toMatchObject({ fencePersisted: true, fenceState: 'v1:1', record: { operation: 'continue', state: 'dispatching', confirmationId: input.confirmationId } })
+    expect(f.wakeRows()).toHaveLength(1)
+    const wake = f.wakeRecord()!
+    expect(wake).toMatchObject({ state: 'awake', seq: 2, sessionId: SESSION,
+      evidence: { version: 1, sessionId: SESSION, from: 'cold', to: 'live', agentPreset: 'dsh-preset-original', model: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } } })
+    expect(receipt).toMatchObject({ state: 'accepted', accepted: true, delivered: true, woke: true,
+      wake: { version: 1, wakeId: wake.wakeId, sessionId: SESSION, from: 'cold', to: 'live', agentPreset: 'dsh-preset-original',
+        model: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } }, disposition: 'target-durable-receipt' })
+    // The delivery is still exactly one exact Host control call.
+    expect(f.state.calls).toHaveLength(1)
+    expect(f.state.calls[0]!.text).toBe(input.text)
+    // The exact confirmed replay never wakes or delivers twice, and the evidence survives a real reopen.
+    expect(await f.service.dispatch(input)).toEqual(receipt)
+    expect(f.state.wakeCalls).toHaveLength(1); expect(f.state.calls).toHaveLength(1)
+    f.reopen()
+    expect(await f.service.dispatch(input)).toEqual(receipt)
+    expect(f.state.wakeCalls).toHaveLength(1); expect(f.state.calls).toHaveLength(1)
+    expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('Continue this exact work')
+  })
+
+  it('keeps a blocked wake terminal: no delivery call, visible fixed code, no second wake and a fresh confirmation is the only retry', async () => {
+    const f = fixture(), input = f.input()
+    f.state.liveness = 'cold'
+    f.state.wakeDecision = { state: 'blocked', code: 'delivery_wake_conflict' }
+    await confirmed(f, input)
+    const blocked = await f.service.dispatch(input)
+    expect(blocked).toMatchObject({ state: 'blocked', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched', code: 'delivery_wake_conflict', woke: false })
+    expect(blocked.wake).toBeUndefined()
+    expect(f.state.wakeCalls).toHaveLength(1); expect(f.state.calls).toEqual([])
+    expect(f.wakeRecord()).toMatchObject({ state: 'blocked', code: 'delivery_wake_conflict' })
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'blocked', code: 'delivery_wake_conflict' })
+    expect(f.state.wakeCalls).toHaveLength(1); expect(f.state.calls).toEqual([])
+    // A fresh human confirmation wakes on its own; the old blocked fence is never replayed.
+    const next = f.input({ text: 'Second human confirmation body' })
+    f.state.wakeDecision = { state: 'awake', agentPreset: 'dsh-preset-original' }
+    await confirmed(f, next)
+    expect(await f.service.dispatch(next)).toMatchObject({ state: 'accepted', woke: true, accepted: true })
+    expect(f.state.wakeCalls).toHaveLength(2); expect(f.state.calls).toHaveLength(1)
+  })
+
+  it('treats an exceptional wake answer as unknown, reconciles it once and never resumes again', async () => {
+    const f = fixture(), input = f.input()
+    f.state.liveness = 'cold'
+    f.state.wakeDecision = new Error('resume outcome lost')
+    await confirmed(f, input)
+    const unknown = await f.service.dispatch(input)
+    expect(unknown).toMatchObject({ state: 'dispatch_unknown', accepted: false, delivered: false, disposition: 'reconcile-only', code: 'delivery_wake_unknown', woke: false })
+    expect(f.state.wakeCalls).toHaveLength(1); expect(f.state.calls).toEqual([])
+    expect(f.wakeRecord()).toMatchObject({ state: 'wake_unknown', code: 'delivery_wake_unknown' })
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown', code: 'delivery_wake_unknown' })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
+    expect(f.state.wakeCalls).toHaveLength(1); expect(f.state.calls).toEqual([])
+  })
+
+  it('refuses to trust a malformed awake answer and never delivers after it', async () => {
+    for (const bogus of [
+      { state: 'awake', agentPreset: 'https://evil.example' },
+      { state: 'awake', model: { provider: '', model: 'x' } },
+      { state: 'awake', model: { provider: 'p', model: 'm', extra: true } },
+      { state: 'awake', extra: true },
+    ]) {
+      const f = fixture(), input = f.input()
+      f.state.liveness = 'cold'
+      f.state.wakeDecision = bogus as DeliveryWakeDecision
+      await confirmed(f, input)
+      const blocked = await f.service.dispatch(input)
+      expect(blocked, JSON.stringify(bogus)).toMatchObject({ state: 'blocked', code: 'delivery_wake_failed', woke: false, accepted: false })
+      expect(f.state.calls).toEqual([])
+      expect(f.wakeRecord()).toMatchObject({ state: 'blocked', code: 'delivery_wake_failed' })
+    }
+  })
+
+  it('uses no wake for a live target, an unknown liveness answer or a stop', async () => {
+    const live = fixture(), liveInput = live.input()
+    live.state.liveness = 'live'
+    await confirmed(live, liveInput)
+    expect(await live.service.dispatch(liveInput)).toMatchObject({ state: 'accepted', woke: false })
+    expect(live.wakeRows()).toEqual([]); expect(live.state.wakeCalls).toEqual([])
+    const unknown = fixture(), unknownInput = unknown.input()
+    unknown.state.liveness = 'unknown'
+    await confirmed(unknown, unknownInput)
+    expect(await unknown.service.dispatch(unknownInput)).toMatchObject({ state: 'accepted', woke: false })
+    expect(unknown.wakeRows()).toEqual([])
+    const stop = fixture(), stopInput = stop.input({ operation: 'stop', text: '', images: [] })
+    stop.state.liveness = 'cold'
+    stop.state.decision = { state: 'blocked', code: 'delivery_target_cold' }
+    await confirmed(stop, stopInput)
+    expect(await stop.service.dispatch(stopInput)).toMatchObject({ state: 'blocked', code: 'delivery_target_cold', woke: false })
+    expect(stop.wakeRows()).toEqual([]); expect(stop.state.wakeCalls).toEqual([])
+    expect(stop.state.calls).toHaveLength(1)
+  })
+
+  it('reports a wake that another actor completed as live without claiming it woke anything', async () => {
+    const f = fixture(), input = f.input()
+    f.state.liveness = 'cold'
+    f.state.wakeDecision = { state: 'live' }
+    await confirmed(f, input)
+    const receipt = await f.service.dispatch(input)
+    expect(receipt).toMatchObject({ state: 'accepted', woke: false })
+    expect(receipt.wake).toBeUndefined()
+    expect(f.wakeRecord()).toMatchObject({ state: 'already_live' })
+    expect(f.state.calls).toHaveLength(1)
+  })
+
+  it('keeps the confirmation card cold hint current through prepare and confirm without a wake side effect', async () => {
+    const f = fixture(), input = f.input()
+    f.state.liveness = 'cold'
+    const prepared = await f.service.prepare(input)
+    expect(prepared).toMatchObject({ state: 'prepared', targetState: 'cold' })
+    expect(f.state.counts.wake).toBe(0)
+    f.state.liveness = 'live'
+    const confirmedReceipt = await f.service.confirm(input)
+    expect(confirmedReceipt).toMatchObject({ state: 'confirmed', targetState: 'live' })
+    expect(await f.service.status({ epoch: input.epoch, confirmationId: input.confirmationId })).toMatchObject({ targetState: 'live' })
+    expect(f.state.counts.wake).toBe(0); expect(f.state.calls).toEqual([])
+  })
+
+  it('reconciles a crash-left waking fence to unknown on restart and never resumes or resends it', async () => {
+    const f = fixture(), input = f.input()
+    await confirmed(f, input)
+    f.staleDispatch(input, 'dispatching')
+    f.staleWake(input, 'waking')
+    f.reopen()
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
+    expect(f.wakeRecord()).toMatchObject({ state: 'wake_unknown', code: 'delivery_wake_unknown', seq: 2 })
+    const receipt = await f.service.dispatch(input)
+    expect(receipt).toMatchObject({ state: 'dispatch_unknown', code: 'delivery_dispatch_unknown', woke: false })
+    expect(f.state.wakeCalls).toEqual([]); expect(f.state.calls).toEqual([])
+    // Startup reconciliation is idempotent and never rewrites the unknown wake outcome.
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, interrupted: 0, unknown: 1, blocked: 0 })
+    expect(f.state.wakeCalls).toEqual([])
+  })
 })

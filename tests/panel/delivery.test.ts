@@ -73,7 +73,7 @@ describe('POST /delivery: one HTTP seam for pre-delivery confirmation', () => {
     expect(prepared.data).toEqual({
       version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'continue',
       target: { ...f.state.binding, project: { kind: 'project', key: 'project-one' } }, digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [],
-      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared',
+      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared', targetState: 'unknown',
       humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', durable: true,
     })
     expect(JSON.stringify(prepared.data)).not.toContain('PRIVATE ROUTE BODY')
@@ -222,7 +222,7 @@ describe('POST /delivery action=dispatch: one confirmed live control call over t
     const base = () => ({ version: 1, epoch: input.epoch, dispatchId, messageId: `go:${dispatchId}`, confirmationId: input.confirmationId, requestId: input.requestId, operation: input.operation,
       target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']), project: { kind: 'project', key: 'p' } },
       digest: digestValue, bodyBytes: 3, images: [], seq: 2, at: 1, updatedAt: 2, state: 'accepted', durable: true, humanConfirmed: true,
-      delivered: true, accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt' })
+      delivered: true, accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt', woke: false })
     const post = routesFixture({ delivery: async () => ({ ...base(),
       target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']), project: { kind: 'project', key: 'p', path: '/hidden' }, url: 'https://hidden.invalid' },
       executed: true, completed: true, code: 'ok', text: 'PRIVATE TEXT', raw: 'hidden' }) })
@@ -280,7 +280,7 @@ describe('POST /delivery operation=stop: real interruption receipt over the same
     const forged = (extra: any) => routesFixture({ delivery: async () => ({ version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId,
       dispatchId: randomUUID(), operation: 'stop', target: { sessionId: 'session-delivery-target', scopeRevision: digest(['scope', 0]), factRevision: digest(['fact', 0]), project: { kind: 'project', key: 'project-one' } },
       digest: digest(['d']), bodyBytes: 0, images: [], seq: 2, at: 1, updatedAt: 2, state: 'interrupted', durable: true, humanConfirmed: true,
-      delivered: false, accepted: false, interrupted: true, executed: null, completed: null, disposition: 'stop-interrupted', stopEvidence: 'turn-aborted', ...extra }) })
+      delivered: false, accepted: false, interrupted: true, executed: null, completed: null, disposition: 'stop-interrupted', stopEvidence: 'turn-aborted', woke: false, ...extra }) })
     for (const extra of [
       { state: 'accepted', accepted: true, delivered: true, interrupted: false, stopEvidence: undefined },
       { messageId: 'go:00000000-0000-4000-8000-000000000000' },
@@ -316,4 +316,71 @@ describe('POST /delivery operation=stop: real interruption receipt over the same
   })
 })
 
+})
+
+describe('cold wake evidence over the HTTP seam', () => {
+  const dispatchBody = () => {
+    const store = storeFixture(), epoch = bindWorkspace(store, 'delivery-wake-route').current.epoch
+    const dispatchId = randomUUID(), wakeId = randomUUID(), digestValue = digest(['d'])
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Exact wake body', target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']) }, images: [] }
+    const wake = { version: 1, wakeId, sessionId: 'session-target', from: 'cold', to: 'live', agentPreset: 'dsh-preset-original', model: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } }
+    const receipt = (extra: any = {}) => ({ version: 1, epoch: input.epoch, dispatchId, messageId: `go:${dispatchId}`, confirmationId: input.confirmationId, requestId: input.requestId, operation: input.operation,
+      target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']), project: { kind: 'project', key: 'p' } },
+      digest: digestValue, bodyBytes: 3, images: [], seq: 2, at: 1, updatedAt: 2, state: 'accepted', durable: true, humanConfirmed: true,
+      delivered: true, accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt', woke: true, wake, ...extra })
+    return { store, epoch, input, wake, receipt }
+  }
+  it('projects exact cold→live evidence without hidden fields or a completion claim', async () => {
+    const f = dispatchBody()
+    const post = routesFixture({ delivery: async () => ({ ...f.receipt(), text: 'PRIVATE WAKE TEXT', raw: 'hidden', wake: { ...f.wake, path: '/hidden' } }) })
+    // A wake with an extra hidden field is refused rather than partially trusted.
+    expect((await post('delivery', { action: 'dispatch', ...f.input })).status).toBe(503)
+    const exact = routesFixture({ delivery: async () => ({ ...f.receipt(), text: 'PRIVATE WAKE TEXT', raw: 'hidden' }) })
+    const result = await exact('delivery', { action: 'dispatch', ...f.input })
+    expect(result.status).toBe(200)
+    expect(result.data).toMatchObject({ state: 'accepted', accepted: true, woke: true, disposition: 'target-durable-receipt',
+      wake: { version: 1, wakeId: f.wake.wakeId, sessionId: 'session-target', from: 'cold', to: 'live', agentPreset: 'dsh-preset-original',
+        model: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } } })
+    expect(JSON.stringify(result.data)).not.toContain('PRIVATE WAKE TEXT'); expect(JSON.stringify(result.data)).not.toContain('hidden')
+    for (const forged of [
+      { woke: undefined, wake: undefined },
+      { woke: false },
+      { wake: undefined },
+      { wake: { ...f.wake, sessionId: 'other-session' } },
+      { wake: { ...f.wake, from: 'live' } },
+      { wake: { ...f.wake, to: 'cold' } },
+      { wake: { ...f.wake, version: 2 } },
+      { wake: { ...f.wake, wakeId: 'not-a-uuid' } },
+      { wake: { ...f.wake, agentPreset: 'https://evil.example' } },
+      { wake: { ...f.wake, model: { provider: 'p', model: 'm', extra: true } } },
+      { wake: { ...f.wake, extra: true } },
+      { woke: true, wake: undefined },
+    ]) {
+      const port = routesFixture({ delivery: async () => ({ ...f.receipt(), ...forged }) })
+      expect((await port('delivery', { action: 'dispatch', ...f.input })).status, JSON.stringify(forged)).toBe(503)
+    }
+  })
+
+  it('keeps a blocked wake honest and never projects a wake claim', async () => {
+    const f = dispatchBody()
+    const post = routesFixture({ delivery: async () => ({ ...f.receipt({ state: 'blocked', accepted: false, delivered: false, executed: false, completed: false,
+      disposition: 'not-dispatched', code: 'delivery_wake_conflict', woke: false, wake: undefined }) }) })
+    const result = await post('delivery', { action: 'dispatch', ...f.input })
+    expect(result.status).toBe(200)
+    expect(result.data).toMatchObject({ state: 'blocked', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched', code: 'delivery_wake_conflict', woke: false })
+    expect(result.data.wake).toBeUndefined()
+  })
+
+  it('projects the cold liveness hint and defaults a missing hint to unknown', async () => {
+    const f = dispatchBody()
+    const confirmation = { version: 1, epoch: f.epoch, requestId: f.input.requestId, confirmationId: f.input.confirmationId, operation: 'continue',
+      target: { ...f.input.target, project: { kind: 'project', key: 'p' } }, digest: digest(['confirm']), bodyBytes: 4, images: [], seq: 1, at: 1, updatedAt: 1,
+      state: 'prepared', humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', durable: true, targetState: 'cold' }
+    const live = routesFixture({ delivery: async () => confirmation })
+    expect((await live('delivery', { action: 'status', epoch: f.epoch, confirmationId: f.input.confirmationId })).data).toMatchObject({ targetState: 'cold', state: 'prepared' })
+    const missing = routesFixture({ delivery: async () => { const { targetState: _drop, ...rest } = confirmation; return rest } })
+    expect((await missing('delivery', { action: 'status', epoch: f.epoch, confirmationId: f.input.confirmationId })).data).toMatchObject({ targetState: 'unknown' })
+    const forged = routesFixture({ delivery: async () => ({ ...confirmation, targetState: 'warm' }) })
+    expect((await forged('delivery', { action: 'status', epoch: f.epoch, confirmationId: f.input.confirmationId })).data).toMatchObject({ targetState: 'unknown' })
+  })
 })

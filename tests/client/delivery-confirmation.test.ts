@@ -33,7 +33,7 @@ function receipt(input: any, state = 'prepared', extra: any = {}) {
   return { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: input.operation,
     target: { ...input.target, project: { kind: 'project', key: 'project-one' } }, digest: deliveryDigest(input), bodyBytes: new TextEncoder().encode(input.text).length,
     images: input.images.map((item: any) => ({ ...item })), seq: state === 'prepared' ? 1 : 2, at: 100, updatedAt: state === 'prepared' ? 100 : 101, state,
-    humanConfirmed: state === 'confirmed', delivered: false, accepted: false, executed: false, completed: false,
+    humanConfirmed: state === 'confirmed', delivered: false, accepted: false, executed: false, completed: false, targetState: 'unknown',
     disposition: state === 'confirmed' ? 'confirmed-pending-delivery' : state === 'canceled' ? 'canceled' : 'not-confirmed', durable: true, ...extra }
 }
 function dispatchReceipt(input: any, state = 'accepted', extra: any = {}) {
@@ -46,7 +46,7 @@ function dispatchReceipt(input: any, state = 'accepted', extra: any = {}) {
     delivered: state === 'accepted', accepted: state === 'accepted', interrupted: state === 'interrupted',
     executed: state === 'blocked' ? false : null, completed: state === 'blocked' ? false : null,
     disposition: state === 'accepted' ? 'target-durable-receipt' : state === 'interrupted' ? 'stop-interrupted' : state === 'blocked' ? 'not-dispatched' : 'reconcile-only',
-    ...(stop && state === 'interrupted' ? { stopEvidence: 'turn-aborted' } : {}), ...extra }
+    woke: false, ...(stop && state === 'interrupted' ? { stopEvidence: 'turn-aborted' } : {}), ...extra }
 }
 const stageLocated = (target = row(), revision = scope, code?: string) => ({ version: 1, status: 'located', ...(code ? { code } : {}), stage: null, intent: { action: 'continue', confidence: 0.9 }, receipt: null, locate: located(target, revision) })
 function harness() {
@@ -80,7 +80,7 @@ function harness() {
   for (const name of ['sessionActionKey', 'currentSessionAction', 'deliveryKey', 'currentDelivery', 'deliveryDraftText', 'deliveryStopReason', 'deliveryOperation',
     'selectDeliveryOperation', 'editDeliveryStopReason', 'deliveryImageRefs',
     'deliveryPayload', 'deliveryDigest', 'saveDelivery', 'validDeliveryReceipt', 'deliveryStatusName', 'deliveryOperationName', 'deliverySummary',
-    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'prepareAgainDelivery',
+    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'deliveryWakeCode', 'deliveryBlockedName', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'prepareAgainDelivery',
     'recreateFromStoppedDelivery', 'deliveryConfirmationView', 'resetLocate',
     'stageLocateEvidence', 'readLocate']) g[name] = closure(name, g)
   const edit = (textValue = '  本次人类文字\r\nKeep Unicode 🧭 exactly  ', operation = 'continue') => {
@@ -529,5 +529,108 @@ describe('stop operation in the same confirmation card (human confirm, real Host
     expect(languages[0].wDeliveryStopInterruptedHint).toContain('不保证'); expect(languages[1].wDeliveryStopInterruptedHint).toContain('does not guarantee')
     expect(languages[0].wDeliveryStopConfirmHint).toContain('不会撤销已外发内容'); expect(languages[1].wDeliveryStopConfirmHint).toContain('does not undo content already sent')
     expect(languages[0].wDeliveryStopRecreateHint).toContain('不会被恢复'); expect(languages[1].wDeliveryStopRecreateHint).toContain('not resumed')
+  })
+})
+
+describe('cold wake copy and evidence in the same confirmation card', () => {
+  const cold = (h: ReturnType<typeof harness>) => {
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input }); return receipt(input, 'prepared', { targetState: 'cold' }) }
+  }
+  it('states on the confirmation card that dispatch will wake the cold conversation, before any wake side effect', async () => {
+    const h = harness(), key = h.edit('Wake this cold target deliberately')
+    cold(h)
+    await h.g.prepareDelivery()
+    expect(h.calls.map(value => value.input.action)).toEqual(['prepare'])
+    const prepared = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(prepared).toContain('DeliveryColdWake'); expect(prepared).toContain('DeliveryConfirmSummary')
+    expect(prepared).not.toContain('DeliveryAccepted')
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input }); return receipt(input, 'confirmed', { targetState: 'cold' }) }
+    await h.g.confirmDelivery(key)
+    const confirmed = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(confirmed).toContain('DeliveryColdWake'); expect(confirmed).toContain('DeliveryDispatch')
+  })
+
+  it('renders a failed wake as blocked with its fixed code and requires a fresh confirmation to retry', async () => {
+    const h = harness(), key = h.edit('Blocked wake body')
+    await h.g.prepareDelivery(); await h.g.confirmDelivery(key)
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input })
+      if (input.action === 'dispatch') return dispatchReceipt(input, 'blocked', { code: 'delivery_wake_conflict' })
+      return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared') }
+    await h.g.dispatchDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ dispatchStatus: 'blocked', error: 'DeliveryWakeBlocked',
+      dispatch: { state: 'blocked', code: 'delivery_wake_conflict', accepted: false, delivered: false, woke: false } })
+    const blocked = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(blocked).toContain('DeliveryWakeBlocked'); expect(blocked).toContain('DeliveryWakeBlockedHint'); expect(blocked).toContain('delivery_wake_conflict')
+    expect(blocked).not.toContain('DeliveryWoke'); expect(blocked).not.toContain('DeliveryAccepted')
+    await h.g.dispatchDelivery(key)
+    expect(h.calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(1)
+    expect(h.g.sessionActionsRef.current[key].text).toBe('Blocked wake body')
+    h.g.prepareAgainDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ status: 'draft', dispatch: undefined })
+    await h.g.prepareDelivery()
+    const prepares = h.calls.filter(value => value.input?.action === 'prepare')
+    expect(prepares).toHaveLength(2)
+    expect(prepares[1].input.confirmationId).not.toBe(prepares[0].input.confirmationId)
+  })
+
+  it('renders accepted wake evidence and rejects forged woke receipts instead of claiming a wake', async () => {
+    const h = harness(), key = h.edit('Woken before delivery')
+    await h.g.prepareDelivery(); await h.g.confirmDelivery(key)
+    const wakeId = h.g.mintId()
+    const wake = { version: 1, wakeId, sessionId: 'session-one', from: 'cold', to: 'live', agentPreset: 'dsh-preset-original',
+      model: { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } }
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input })
+      if (input.action === 'dispatch') return dispatchReceipt(input, 'accepted', { woke: true, wake })
+      return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared') }
+    await h.g.dispatchDelivery(key)
+    expect(h.g.deliveries[key]).toMatchObject({ dispatchStatus: 'accepted', dispatch: { woke: true, wake, accepted: true, delivered: true } })
+    const accepted = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(accepted).toContain('DeliveryWoke'); expect(accepted).toContain('DeliveryWakePreset'); expect(accepted).toContain('dsh-preset-original')
+    expect(accepted).toContain('DeliveryWakeModel'); expect(accepted).toContain('fake-model'); expect(accepted).toContain('DeliveryWakeId')
+    expect(accepted).toContain('DeliveryAccepted'); expect(accepted).not.toContain('DeliveryCompleted')
+    for (const forged of [
+      { woke: undefined, wake: undefined },
+      { woke: true, wake: undefined },
+      { woke: false, wake },
+      { woke: true, wake: { ...wake, sessionId: 'other-session' } },
+      { woke: true, wake: { ...wake, from: 'live' } },
+      { woke: true, wake: { ...wake, wakeId: 'not-a-uuid' } },
+      { woke: true, wake: { ...wake, agentPreset: 'https://evil.example' } },
+      { woke: true, wake: { ...wake, extra: true } },
+      { woke: true, wake: { ...wake, model: { provider: 'p', model: 'm', extra: true } } },
+    ]) {
+      const g = harness(), forgedKey = g.edit('Forged wake body')
+      await g.g.prepareDelivery(); await g.g.confirmDelivery(forgedKey)
+      g.g.call = async (path: string, input: any) => { g.calls.push({ path, input })
+        if (input.action === 'dispatch') return dispatchReceipt(input, 'accepted', forged as any)
+        return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared') }
+      await g.g.dispatchDelivery(forgedKey)
+      expect(g.g.deliveries[forgedKey].dispatch, JSON.stringify(forged)).toBeUndefined()
+      expect(g.g.deliveries[forgedKey].dispatchStatus).toBe('dispatch_unknown')
+      expect(JSON.stringify(g.g.deliveryConfirmationView())).not.toContain('DeliveryWoke')
+    }
+  })
+
+  it('ships localized cold-wake and failed-wake copy in both languages', () => {
+    const languages = ['zh', 'en'].map(language => JSON.parse(readFileSync(`locale/${language}.json`, 'utf8')).panel)
+    for (const key of ['wDeliveryColdWake', 'wDeliveryWoke', 'wDeliveryWakePreset', 'wDeliveryWakeModel', 'wDeliveryWakeId', 'wDeliveryWakeBlocked', 'wDeliveryWakeBlockedHint']) {
+      for (const locale of languages) expect(locale[key], key).toBeTruthy()
+    }
+    expect(languages[0].wDeliveryColdWake).toContain('唤醒'); expect(languages[1].wDeliveryColdWake).toContain('wake')
+    expect(languages[0].wDeliveryWakeBlockedHint).toContain('不会自动重试'); expect(languages[1].wDeliveryWakeBlockedHint).toContain('never retried')
+  })
+})
+
+describe('cold stop never claims a wake', () => {
+  it('keeps the stop confirmation free of wake copy even when the target is cold', async () => {
+    const h = harness(), key = h.g.currentDelivery().key
+    h.g.selectDeliveryOperation(key, 'stop')
+    h.g.editDeliveryStopReason(key, 'Owner stops a cold target')
+    h.g.call = async (path: string, input: any) => { h.calls.push({ path, input }); return receipt(input, 'prepared', { targetState: 'cold' }) }
+    await h.g.prepareDelivery()
+    const prepared = JSON.stringify(h.g.deliveryConfirmationView())
+    expect(prepared).toContain('DeliveryStopConfirmSummary'); expect(prepared).toContain('DeliveryStopHint')
+    expect(prepared).not.toContain('DeliveryColdWake')
+    expect(h.g.deliveries[key].receipt).toMatchObject({ operation: 'stop', targetState: 'cold' })
   })
 })

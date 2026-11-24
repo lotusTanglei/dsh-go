@@ -765,11 +765,27 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       const stop = input.operation === 'stop'
       const evidence = data?.stopEvidence
       const evidenceValid = evidence === 'turn-aborted' || evidence === 'cancel-accepted'
+      const boundedLabel = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value) && !value.includes('://')
+      const wakeTarget = isObject(data?.target) ? data.target.sessionId : undefined
+      const rawWake = data?.wake
+      const wakeModel = isObject(rawWake) && isObject(rawWake.model) ? rawWake.model : undefined
+      const wake = isObject(rawWake) && uuidText(rawWake?.wakeId) && rawWake.sessionId === wakeTarget && rawWake.from === 'cold' && rawWake.to === 'live'
+        && only(rawWake, ['version', 'wakeId', 'sessionId', 'from', 'to', 'agentPreset', 'model']) && rawWake.version === 1
+        && (rawWake.agentPreset === undefined || boundedLabel(rawWake.agentPreset))
+        && (rawWake.model === undefined || isObject(wakeModel) && only(wakeModel, ['provider', 'model', 'reasoningEffort'])
+          && boundedLabel(wakeModel.provider) && boundedLabel(wakeModel.model) && (wakeModel.reasoningEffort === undefined || boundedLabel(wakeModel.reasoningEffort)))
+        ? { version: 1 as const, wakeId: rawWake.wakeId as string, sessionId: rawWake.sessionId as string, from: 'cold' as const, to: 'live' as const,
+          ...(rawWake.agentPreset === undefined ? {} : { agentPreset: rawWake.agentPreset as string }),
+          ...(rawWake.model === undefined ? {} : { model: { provider: (wakeModel as any).provider as string, model: (wakeModel as any).model as string,
+            ...((wakeModel as any).reasoningEffort === undefined ? {} : { reasoningEffort: (wakeModel as any).reasoningEffort as string }) } }) }
+        : undefined
+      const woke = typeof data?.woke === 'boolean' ? data.woke : undefined
       if (!['accepted', 'interrupted', 'dispatch_unknown', 'blocked'].includes(String(state)) || !uuidText(data?.confirmationId) || !uuidText(data?.dispatchId)
         || !validHash(data?.digest) || !Number.isSafeInteger(data?.seq) || Number(data.seq) < 2
-        || data?.epoch !== input.epoch || data?.confirmationId !== input.confirmationId || data?.requestId !== input.requestId || data?.operation !== input.operation) return fail('delivery_dispatch_record_invalid', 'Delivery dispatch receipt is invalid', 503)
-      // A stop never claims a message identity; a text delivery keeps its exact message reference.
-      if (stop ? state === 'accepted' || data?.messageId !== undefined || (state === 'interrupted') !== evidenceValid || state === 'interrupted' && !evidenceValid
+        || data?.epoch !== input.epoch || data?.confirmationId !== input.confirmationId || data?.requestId !== input.requestId || data?.operation !== input.operation
+        || woke === undefined || woke !== (wake !== undefined)) return fail('delivery_dispatch_record_invalid', 'Delivery dispatch receipt is invalid', 503)
+      // A stop never claims a message identity or a wake; a text delivery keeps its exact message ref.
+      if (stop ? state === 'accepted' || data?.messageId !== undefined || (state === 'interrupted') !== evidenceValid || state === 'interrupted' && !evidenceValid || woke
         : state === 'interrupted' || typeof data?.messageId !== 'string' || data.messageId !== `go:${data.dispatchId}` || evidence !== undefined) return fail('delivery_dispatch_record_invalid', 'Delivery dispatch receipt is invalid', 503)
       const accepted = data.accepted === true, interrupted = data.interrupted === true
       if (accepted !== (state === 'accepted') || interrupted !== (state === 'interrupted') || data.delivered !== accepted) return fail('delivery_dispatch_record_invalid', 'Delivery dispatch receipt is invalid', 503)
@@ -785,10 +801,12 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       output.delivered = accepted
       output.accepted = accepted
       output.interrupted = interrupted
+      output.woke = woke === true
       output.executed = state === 'blocked' ? false : null
       output.completed = state === 'blocked' ? false : null
       output.disposition = accepted ? 'target-durable-receipt' : interrupted ? 'stop-interrupted' : state === 'blocked' ? 'not-dispatched' : 'reconcile-only'
       if (stop && interrupted && evidenceValid) output.stopEvidence = evidence
+      if (wake !== undefined) output.wake = wake
       if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
       const target = targetOut(); if (target) output.target = target
       output.images = imagesOut()
@@ -808,6 +826,8 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     output.accepted = false
     output.executed = false
     output.completed = false
+    // A read-only liveness hint only: it enables "this dispatch will wake" copy, not a wake guarantee.
+    output.targetState = ['live', 'cold', 'unknown'].includes(String(data?.targetState)) ? data.targetState : 'unknown'
     if (['not-confirmed', 'confirmed-pending-delivery', 'canceled'].includes(data?.disposition)) output.disposition = data.disposition
     if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
     output.durable = data?.durable === true

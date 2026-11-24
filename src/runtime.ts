@@ -22,7 +22,7 @@ import { createWorkspaceRuntime } from './workspace/runtime.js'
 import { createScopePreferences } from './workspace/scope-preferences.js'
 import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
-import { createDeliveries, type DeliveryDispatchRecord } from './workspace/deliveries.js'
+import { createDeliveries, type DeliveryDispatchRecord, type DeliveryModelSelection, type DeliveryTargetState, type DeliveryWakeDecision } from './workspace/deliveries.js'
 import { createStageModels, type StageCallConfig, type StageCatalogPort, type StageModelInfo } from './workspace/stage-models.js'
 import { createStageCallHost, createStageLocateService, type StageCallHost, type StageLlmHost, type StageLocateService } from './workspace/stage-call.js'
 import { WorkspaceError } from './workspace/commands.js'
@@ -93,6 +93,8 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   const sources = new SourceRegistry()
   const workers = new Map<string, WorkerHandle>()
   const ownedHandles: any[] = []
+  /** Live handles published by a cold wake; disposal returns the Session to cold without deleting it. */
+  const wokeHandles: any[] = []
   const tasks = new Set<Promise<unknown>>()
   const controller = new AbortController()
   let mainId: string | undefined
@@ -478,15 +480,117 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       scope: () => sessionWork!.imageScope(), target: input => sessionWork!.actionTarget(input),
       // Original-image interpretation/delivery needs a verified Host model+permission adapter.
     })
-    // Human-confirmed dispatch to an already live managed target. Scope/epoch/binding are re-verified
-    // by the service before the fence; the only Host side effect is one exact control call.
+    // Human-confirmed dispatch to a managed target. Scope/epoch/binding are re-verified by the
+    // service before each fence. A live target takes one exact control call; a cold text target is
+    // first woken once from its persisted Session, while a cold stop remains an explicit block.
+    /** Read-only Host liveness of the exact target; never wakes or persists anything. */
+    const deliveryTargetState = (sessionId: string): DeliveryTargetState => ctx.agents.get(sessionId) ? 'live' : 'cold'
+    const wakeBlocked = (record: Readonly<DeliveryDispatchRecord>, wakeId: string, code: string, error?: unknown): DeliveryWakeDecision => {
+      audit('delivery_wake', { sessionId: record.target.sessionId, wakeId, confirmationId: record.confirmationId, outcome: 'blocked', code,
+        ...(error === undefined ? {} : { errorName: String((error as any)?.name ?? 'Error').slice(0, 80) }) })
+      return { state: 'blocked', code }
+    }
+    /** Compare the preserved route; absent reasoning effort is its own value. */
+    const sameWakeSelection = (current: any, expected: DeliveryModelSelection) => Boolean(current && typeof current === 'object'
+      && current.provider === expected.provider && current.model === expected.model
+      && (current.reasoningEffort ?? undefined) === (expected.reasoningEffort ?? undefined))
+    /**
+     * Read the persisted composition with a minimal projection cut. `agentPreset` is projected from
+     * the header plus later `agent-preset/selected` events, so it is the authoritative original
+     * composition; the header stays the fallback when no projection surface exists. The model
+     * selection is the persisted projection of the last used/pending route.
+     */
+    async function readWakeComposition(sessionId: string): Promise<{ agentPreset: string | null; selection: DeliveryModelSelection | null }> {
+      const snapshot = await ctx.sessionQuery.readSession(sessionId)
+      if (!snapshot || typeof snapshot !== 'object' || !snapshot.session || typeof snapshot.session !== 'object' || !Array.isArray(snapshot.events)) throw new Error('delivery wake: invalid persisted session snapshot')
+      const header = snapshot.session
+      if (header.id !== sessionId) throw new Error('delivery wake: persisted session identity mismatch')
+      let agentPreset = typeof header.agentPreset === 'string' && header.agentPreset ? header.agentPreset : null
+      let selection: DeliveryModelSelection | null = null
+      if (ctx.sessionQuery.inspectSession && ctx.sessionProjections) {
+        try {
+          const cut = await ctx.sessionQuery.inspectSession(sessionId, session => {
+            const projected = ctx.sessionProjections!.snapshot(session, ['agentPreset', 'modelSelection'])
+            const preset = projected.values.agentPreset
+            const raw = projected.values.modelSelection as { lastUsed?: any; next?: any } | undefined
+            const current = raw && typeof raw === 'object' ? raw.next ?? raw.lastUsed : undefined
+            const model = current && typeof current === 'object' && typeof current.provider === 'string' && current.provider && typeof current.model === 'string' && current.model
+              ? { provider: current.provider as string, model: current.model as string, ...(typeof current.reasoningEffort === 'string' && current.reasoningEffort ? { reasoningEffort: current.reasoningEffort as string } : {}) }
+              : null
+            return { preset: typeof preset === 'string' && preset ? preset : null, model }
+          })
+          if (cut && typeof cut === 'object') { agentPreset = cut.preset ?? agentPreset; selection = cut.model ?? null }
+        } catch { /* header-only fallback: the preset remains known, the selection stays unknown */ }
+      }
+      return { agentPreset, selection }
+    }
+    /** Fixed failure codes for a wake attempt; no path ever falls back to a new Session. */
+    function wakeErrorCode(error: unknown): string {
+      const name = (error as { name?: unknown } | undefined)?.name
+      const text = String((error as { message?: unknown } | undefined)?.message ?? '')
+      if (name === 'SessionAlreadyOwnedError' || /already owned|is already registered|already live/i.test(text)) return 'delivery_wake_conflict'
+      if (/persistence is not configured|no agent factory registered/i.test(text)) return 'delivery_wake_unavailable'
+      return 'delivery_wake_failed'
+    }
+    /**
+     * One cold wake: read the persisted header/projections, resume with the original preset mounted
+     * inside `setup`, then verify the exact live identity, mounted preset and preserved model route.
+     * It never passes an explicit route (only the Host-style live default getters as a fallback) and
+     * never selects a model or changes permissions. A failed verification releases the handle again.
+     */
+    async function wakeColdTarget(record: Readonly<DeliveryDispatchRecord>, wakeId: string): Promise<DeliveryWakeDecision> {
+      const sessionId = record.target.sessionId
+      if (disposed) return { state: 'blocked', code: 'delivery_unavailable' }
+      if (ctx.agents.get(sessionId)) { audit('delivery_wake', { sessionId, wakeId, confirmationId: record.confirmationId, outcome: 'already-live' }); return { state: 'live' } }
+      const resume = ctx.agents.resume
+      if (typeof resume !== 'function') return wakeBlocked(record, wakeId, 'delivery_wake_unavailable')
+      if (ctx.get && ctx.get('sessionPersistence') === undefined) return wakeBlocked(record, wakeId, 'delivery_wake_unavailable')
+      let composition: Awaited<ReturnType<typeof readWakeComposition>>
+      try { composition = await readWakeComposition(sessionId) } catch (error) { return wakeBlocked(record, wakeId, 'delivery_wake_failed', error) }
+      const preset = composition.agentPreset
+      const setup = preset === null ? undefined : async (agentCtx: any): Promise<void> => { await ctx.agentPresets.mount(agentCtx, preset) }
+      const defaults = ctx.get ? ctx.get('agentDefaultModel') : ctx.agentDefaultModel
+      const currentDefault = () => { try { return defaults?.currentSelection?.() } catch { return undefined } }
+      // Dynamic getters, not a pinned snapshot: a Session that records no selection keeps following
+      // the Host default, while a recorded route always wins inside the Agent model.
+      const agentOptions = defaults ? {
+        get provider() { return currentDefault()?.provider }, get model() { return currentDefault()?.model }, get reasoningEffort() { return currentDefault()?.reasoningEffort },
+      } : undefined
+      let handle: any
+      try { handle = await resume({ resumeSessionId: sessionId, ...(agentOptions === undefined ? {} : { agentOptions }), ...(setup === undefined ? {} : { setup }) }) }
+      catch (error) { return wakeBlocked(record, wakeId, wakeErrorCode(error), error) }
+      const agent = handle?.agent
+      const live = ctx.agents.get(sessionId)
+      const rollback = async () => { try { await handle?.dispose?.() } catch { /* Session history stays persisted; only this live handle is released */ } }
+      if (!agent || agent.id !== sessionId || live !== agent || typeof handle?.dispose !== 'function') { await rollback(); return wakeBlocked(record, wakeId, 'delivery_wake_failed') }
+      if (disposed) { await rollback(); return wakeBlocked(record, wakeId, 'delivery_unavailable') }
+      // The mounted composition must equal the persisted preset: never a default or another preset.
+      if (preset !== null) {
+        let composed: string | undefined
+        try { composed = ctx.agentPresets.composedPreset(agent.ctx) } catch { composed = undefined }
+        if (composed !== preset) { await rollback(); return wakeBlocked(record, wakeId, 'delivery_wake_failed') }
+      }
+      // The live route must still be the persisted selection; nothing in this path sets a model.
+      if (composition.selection) {
+        let current: any
+        try { current = agent.model?.current?.() } catch { current = undefined }
+        if (!sameWakeSelection(current, composition.selection)) { await rollback(); return wakeBlocked(record, wakeId, 'delivery_wake_failed') }
+      }
+      wokeHandles.push(handle)
+      audit('delivery_wake', { sessionId, wakeId, confirmationId: record.confirmationId, outcome: 'awake', agentPreset: preset,
+        ...(composition.selection === null ? {} : { provider: composition.selection.provider, model: composition.selection.model,
+          ...(composition.selection.reasoningEffort === undefined ? {} : { reasoningEffort: composition.selection.reasoningEffort }) }) })
+      return { state: 'awake', agentPreset: preset, model: composition.selection }
+    }
     deliveryConfirmations = createDeliveries(store, {
       requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('delivery_unavailable', 503); workspace.requireEpoch(epoch) },
       target: input => sessionWork!.actionTarget(input),
       images: input => images!.verify(input),
+      liveness: deliveryTargetState,
+      wake: wakeColdTarget,
       async dispatch(record, text) {
         if (disposed) return { state: 'blocked', code: 'delivery_unavailable' }
-        // A cold target is an explicit block for this issue; #6 owns any cold wake-up.
+        // Text targets are woken by the service before this call; a still-cold target is a lost race.
         const agent = ctx.agents.get(record.target.sessionId)
         if (!agent) {
           if (record.operation === 'stop') auditStop(record, text, { outcome: 'cold', code: 'delivery_target_cold' })
@@ -887,6 +991,9 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       await sources.stopAll()
       await Promise.allSettled([...workers.values()].map(worker => worker.dispose()))
       await Promise.allSettled([...tasks])
+      // Wake handles are ours: releasing them closes the write handle and returns the Session to cold
+      // without deleting its persisted history. The plugin's own context still owns any surviving agent.
+      for (const handle of wokeHandles.splice(0).reverse()) await Promise.resolve(handle.dispose()).catch(() => {})
       for (const handle of ownedHandles.reverse()) await handle.dispose()
     },
   }

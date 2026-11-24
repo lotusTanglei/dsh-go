@@ -61,3 +61,32 @@ G2可安全部分最终全量门禁：**58 files / 959 tests通过**，typecheck
 
 独立UX复核通过上述三条修复的静态/真实闭包合同：blocked/closed显式新草稿、409/404后主动封存、常驻状态与焦点回调；无浏览器，未作DOM/IME实机/视觉声明。真实Host/GUI、L1/L2隔离、持久最小受理证据适配与跨epoch恢复仍待验，不可由上述测试推论生产普通会话可控。
 
+
+## #6 cold 唤醒与投递（2026-11-24）
+
+冷目标不再一律 `delivery_target_cold`：文字操作（continue / supplement / steer）在真正投递前按确认后的目标唤醒一次；`stop` 仍不唤醒（停止 cold 会话无意义），保持 blocked。唤醒是外部副作用，先持久 wake fence，再调用 Host `resume`；唤醒失败是固定码 blocked，不降级为新建会话、不吞草稿、unknown 不重发。
+
+### 安装版 rc.5 只读合同（非真实唤醒验收）
+
+以下均按安装版源码核实，未在真实宿主上执行 resume：
+
+- [ResumeAgentOptions](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent/src/index.ts#L127-L144>)：`{ resumeSessionId, agentOptions?, signal?, setup? }`；`setup(agentCtx, agent)` 在持久化读入、Session 发布后、Agent 注册前运行，失败回滚且保留已存事件与 pending inbox。`ctx.agents.resume` 需先有 [AgentFactory](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent/src/index.ts#L194-L205>)。
+- [AgentLoop.resume](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent-loop/src/index.ts#L749-L761>)：无 `sessionPersistence` 时抛 “cannot resume: session persistence is not configured…”；[resumeWith](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent-loop/src/index.ts#L764-L835>) 先 `persistence.open(id,'write')` 取得写所有权，再冷读、修复 interrupted turn 并交给 `initializeAgent`；[setup 调用点](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent-loop/src/index.ts#L616-L651>) 在 `sessions.enter/announce` 之后。
+- 写锁冲突：[SessionAlreadyOwnedError](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-session-persistence/src/errors.ts#L31-L35>)（`name='SessionAlreadyOwnedError'`，另一个 live 写句柄持有时）。Host 内部同款处理见 [api-session-controller resolve](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-api-session-controller/src/agent.ts#L164-L210>)。
+- 原组合：SessionHeader 持久 [agentPreset](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-session/src/types.ts#L92-L136>)；等价投影 [agentPreset](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent-preset-registry/src/session.ts#L37-L46>) 以 header 为初值、由 `agent-preset/selected` 事件更新。`resume` 不自动套 preset；Host 自己的写法是 [composeAgent](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-api-session-controller/src/agent.ts#L256-L274>)：`presets.resolve` 后在 `setup` 内 `await presets.mount(agentCtx, resolvedId)`；[resumeObserved](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-api-session-controller/src/agent.ts#L298-L318>) 再用 `projections.values.agentPreset` 读原 preset。
+- 模型保持：持久 selection 投影 [modelSelection](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent/src/model-selection.ts#L72-L90>)（`{lastUsed,pending}`，wire `{lastUsed,next}`）；[AgentModel.current](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-agent/src/model-selection.ts#L98-L121>) 先返回已记录 selection，再落到 live `agentOptions`。Host 传 [动态 getter agentOptions](</Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-api-session-controller/src/agent.ts#L453-L461>) 作为无记录时的回退，从不 `select` 已有 Session 的模型。
+
+### 本切片实现合同
+
+- **wake fence**：`side_effect` kind `delivery-wake-v1`，键 `delivery-wake:v1:<confirmationId>`；状态 `waking`（调用 resume 前持久）→ `awake`（带证据）/ `already_live`（另一 actor 已唤醒，本切片未 resume）/ `blocked`（固定码）/ `wake_unknown`（回答不确定）。同一 confirmed 至多一次 wake；重启把遗留 `waking` 规范为 `wake_unknown`，只对账、绝不再 resume（避免双开会话）。
+- **顺序**：确认 → 目标/图片 fence → dispatch fence `dispatching` → （cold 文字目标）`waking` fence → 一次 `wake` → 一次原操作投递 → 终态。stop 不经过 wake。
+- **固定码**：`delivery_wake_unavailable`（无 resume 或 sessionPersistence）、`delivery_wake_conflict`（写锁/已 live）、`delivery_wake_failed`（读/挂载/校验失败）；Host 契约之外的异常回答按 `delivery_wake_unknown` 记 unknown（dispatch_unknown）。均不新建会话、不换 ID 重发。
+- **回执**：dispatch receipt 增 `woke:true|false` 与 `wake:{version,wakeId,sessionId,from:'cold',to:'live',agentPreset?,model?}`；`accepted` 仍只表示目标持久收到该消息，不表示开始/完成。confirmation receipt 增只读 `targetState:'live'|'cold'|'unknown'` 用于确认卡“将先唤醒”提示，不构成唤醒保证。
+- **唤醒适配器**（生产 runtime）：只读 `readSession` 头 + `inspectSession`/`sessionProjections.snapshot(['agentPreset','modelSelection'])`；`setup` 仅挂载原 preset（无记录 preset 时不挂默认组合）；resume 后核对 live 身份、`composedPreset` 等于原 preset、`agent.model.current()` 仍等于持久 selection，否则释放该 live handle 并 blocked。不写模型选择、不改权限/审批策略、不创建新 Session。
+- **测试**：服务状态机 + 真实 SQLite；Fake Host + 真实 SQLite + HTTP seam 覆盖 cold→确认→唤醒→followup/inject/steer、resume 抛错/写锁/无持久化/挂载失败、重复 dispatch 不重复 resume、重启 unknown 不重发、stop 不唤醒、模型与权限不变；客户端覆盖确认卡 cold 提示、blocked 原因与“重试需新确认”。
+
+### 仍未验（真实安装版证据）
+
+没有在真实 Desktop Host 上对真实持久化 Session 执行过 resume；未证明真实 preset 挂载后的工具/提示组合、真实 `SessionAlreadyOwnedError` 的实际触发、真实模型与权限在唤醒后不变、真实 GUI 点击与真实回执。以上仍是本地 Fake Host + rc.5 只读源码推导的合同测试，不能当作真实唤醒验收。
+
+诚实披露：cold 唤醒在 dispatch fence 之后增加了一次 Host `resume` await，因此“fence 必到唯一 Host 控制调用”之间现在存在唤醒窗口。scope/epoch/目标事实仍以 dispatch fence 前的校验为准；唤醒成功后投递精确绑定记录，不重读正文、不换 ID。该窗口不构成新的授权，也不把唤醒当完成。

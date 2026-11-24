@@ -6,13 +6,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { defaults, resolveConfig, type Config } from '../../src/config.js'
 import { createRuntime, type RuntimeContext } from '../../src/runtime.js'
-import { openStore, type Store } from '../../src/store/index.js'
+import { encodeJson, openStore, type Store } from '../../src/store/index.js'
 import type { TicketBrief } from '../../src/domain/ticket.js'
 import type { Report } from '../../src/engine/report.js'
 import type { AdmissionPlanDTO } from '../../src/workspace/admission.js'
 import { commandDigest, type CommandRecord, type WorkspaceCommand } from '../../src/workspace/commands.js'
 import type { ActivationResult, Spawner, SpawnActivationInput } from '../../src/sessions/worker.js'
 import { installPanelRoutes } from '../../src/panel/routes.js'
+import { deliveryDigest } from '../../src/workspace/deliveries.js'
 
 type Message = { id: string; role: string; content: Array<{ type: string; text: string }>; source: { kind: string; form?: string } }
 type Event = { type: string; seq: number; time: number; data: any }
@@ -55,6 +56,14 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
   const interruptions: Array<{ id: string; ticketState?: unknown; currentAssignment?: unknown; assignmentState?: unknown; endedReason?: unknown }> = []
   const calls = { followup: [] as Message[], inject: [] as Message[], realActivation: vi.fn(), model: vi.fn(), modelCall: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(), resume: vi.fn(), cancel: vi.fn(), history: vi.fn(), snapshots: [] as Array<{ id: string; keys: string[] }> }
   let durable = true, modelVerified = true, turns = 0, modelWait: (() => Promise<void>) | undefined
+  // Explicit fake Host state for cold wake: persisted headers, projected model selection, mount outcome.
+  const headers = new Map<string, any>(), wakeSelections = new Map<string, any>(), wakeReceived = new Map<string, { followup: Message[]; inject: Message[]; steer: Message[] }>()
+  const mountedPresets: string[] = [], disposedHandles: string[] = [], createdSessions: string[] = []
+  const modelSet = vi.fn()
+  let resumeMode: 'ok' | 'conflict' | 'unavailable' | 'fail' = 'ok'
+  let persistenceAvailable = true
+  let mountFailure: Error | undefined
+  let modelDrift = false
   const append = (id: string, type: string, data: unknown) => {
     const events = logs.get(id)!
     const event = { type, data, seq: events.length, time: Date.now() }
@@ -75,41 +84,86 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
     },
   }
   let router: any
+  const agentPresets = {
+    async mount(scope: any, id: string) {
+      if (mountFailure) throw mountFailure
+      mountedPresets.push(id)
+      if (scope && typeof scope === 'object') scope.__agentPreset = id
+      return { id }
+    },
+    composedPreset(scope: any) { return scope && typeof scope === 'object' ? scope.__agentPreset : undefined },
+  }
+  const agentDefaultModel = { currentSelection() { return { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } } }
+  const sessionPersistence = { backend: 'fake' }
+  const llm = { listProviders() { calls.listProviders(); return [{ id: 'fake-provider', name: 'Fake provider' }] },
+    async listModels(provider: string) { calls.listModels(provider); return ['fake-model', 'stage-model'].map(id => ({ provider, id, name: id })) },
+    async resolveModelInfo(provider: string, model: string) {
+      calls.model(provider, model)
+      if (modelWait) await modelWait()
+      if (!modelVerified) throw new Error('fake model is unavailable')
+      return { provider, id: model, name: 'Verified fake model', reasoning: { efforts: [{ id: 'medium', name: 'Medium' }] } }
+    } }
+  const services: Record<string, any> = { agentPresets, agentDefaultModel, sessionPersistence, llm }
   const ctx: RuntimeContext = {
     workspaceRegistry: { list: () => options.sessionWork?.projects ?? [] },
     remoteAccess: { allows({id}) { return !options.sessionWork?.denied?.has(id) } },
+    get(name: string) { return name === 'sessionPersistence' ? (persistenceAvailable ? sessionPersistence : undefined) : services[name] },
     sessionProjections: { snapshot(session, keys) {
-      expect([['title','goal','todos','agentTeam','userQuestions'], ['userQuestions']]).toContainEqual([...keys])
       calls.snapshots.push({ id: session.id, keys: [...keys] })
-      const values = options.sessionWork?.values.get(session.id) ?? {}
+      const projected = options.sessionWork?.values.get(session.id) ?? {}
+      const values: Record<string, unknown> = {}
+      for (const key of keys) {
+        if (key === 'agentPreset') { values.agentPreset = headers.get(session.id)?.agentPreset ?? null; continue }
+        if (key === 'modelSelection') { values.modelSelection = { lastUsed: wakeSelections.get(session.id) ?? null, next: null }; continue }
+        if (key in projected) values[key] = projected[key]
+      }
       // Honor the selected projection keys; no full transcript or settled answers are read.
-      return { asOfSeq: 3, values: Object.fromEntries(keys.filter(key => key in values).map(key => [key, values[key]])) }
+      return { asOfSeq: 3, values }
     } },
     effect(factory) { return factory() },
     on(name, callback) {
       const set = listeners.get(name) ?? new Set(); listeners.set(name, set); set.add(callback)
       return () => { set.delete(callback) }
     },
-    agentPresets: { async mount() {}, composedPreset() { return 'dsh-superagent-router' } },
-    agentDefaultModel: { currentSelection() { return { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } } },
-    llm: { listProviders() { calls.listProviders(); return [{ id: 'fake-provider', name: 'Fake provider' }] },
-      async listModels(provider) { calls.listModels(provider); return ['fake-model', 'stage-model'].map(id => ({ provider, id, name: id })) },
-      async resolveModelInfo(provider, model) {
-      calls.model(provider, model)
-      if (modelWait) await modelWait()
-      if (!modelVerified) throw new Error('fake model is unavailable')
-      return { provider, id: model, name: 'Verified fake model', reasoning: { efforts: [{ id: 'medium', name: 'Medium' }] } }
-    } },
+    agentPresets,
+    agentDefaultModel,
+    llm,
     sessions: { async flush() { return durable } },
     agents: {
       get(id) { return agents.get(id) },
-      async resume(input) { calls.resume(input); throw new Error('unexpected fake Router resume') },
+      /**
+       * Explicit fake of the installed rc.5 resume contract: load a persisted Session, run `setup`
+       * with the fresh Agent context before publication, and never auto-apply a preset outside setup.
+       */
+      async resume(input) {
+        calls.resume(input)
+        const id = String(input?.resumeSessionId)
+        if (resumeMode === 'conflict') throw Object.assign(new Error(`session "${id}" is already owned by an active write handle`), { name: 'SessionAlreadyOwnedError' })
+        if (resumeMode === 'unavailable') throw new Error('cannot resume: session persistence is not configured (load a dsh-session-persistence backend)')
+        if (resumeMode === 'fail') throw new Error('fake resume failure')
+        if (!headers.has(id) || !logs.has(id)) throw Object.assign(new Error(`missing fake session "${id}"`), { code: 'SESSION_QUERY_SESSION_NOT_FOUND' })
+        const received = { followup: [] as Message[], inject: [] as Message[], steer: [] as Message[] }
+        const selection = wakeSelections.get(id) ?? null
+        const agent: any = { id, session: { id }, ctx: {}, status: 'idle',
+          // The Agent returns the persisted projection route; this slice must never select one.
+          model: { current() { return modelDrift ? { provider: 'drifted-provider', model: 'drifted-model' } : selection ? { ...selection } : undefined }, set: modelSet },
+          followup(value: Message) { received.followup.push(value); append(id, 'agent/inbox/spliced', { target: 'next-turn', start: received.followup.length - 1, removedCount: 0, inserted: [value] }) },
+          inject(value: Message) { received.inject.push(value); append(id, 'agent/inbox/spliced', { target: 'next-step', start: received.inject.length - 1, removedCount: 0, inserted: [value] }) },
+          steer(value: Message) { received.steer.push(value); append(id, 'agent/inbox/spliced', { target: 'next-step', start: received.steer.length - 1, removedCount: 0, inserted: [value] }) },
+          cancel: calls.cancel,
+        }
+        await input.setup?.(agent.ctx, agent)
+        agents.set(id, agent)
+        wakeReceived.set(id, received)
+        return { agent, async dispose() { disposedHandles.push(id); agents.delete(id) } }
+      },
       async create(input) {
+        createdSessions.push(input.sessionId)
         logs.set(input.sessionId, [])
         inbox['next-turn'] = []; inbox['next-step'] = []; turns = 0
         const id = input.sessionId
         router = { id, ctx: {}, session: { id },
-          model: { current() { return { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } } },
+          model: { current() { return { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } }, set: modelSet },
           // Host followup/inject are void; the committed splice is visible synchronously.
           followup(value: Message) {
             calls.followup.push(value)
@@ -122,7 +176,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
             append(router.id, 'agent/inbox/spliced', { target: 'next-step', start, removedCount: 0, inserted: [value] })
           },
         }
-        agents.set(router.id, router); await input.setup?.({})
+        agents.set(router.id, router); await input.setup?.(router.ctx, router)
         return { agent: router, async dispose() { agents.delete(id) } }
       },
     },
@@ -136,12 +190,13 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
     },
     sessionQuery: {
       async listSessions() { return options.sessionWork?.records ?? [] },
-      async inspectSession(id, read) { options.sessionWork?.reads.push(id); return read({id}) },
+      async inspectSession(id, read) { options.sessionWork?.reads.push(id); return read({ id, header: headers.get(id) ?? {} }) },
       async readSession(id) {
       calls.history(id)
       const events = logs.get(id)
       if (!events || missingSessions.has(id)) throw Object.assign(new Error('missing fake session'), { code: 'SESSION_QUERY_SESSION_NOT_FOUND' })
-      return { session: { id, agentPreset: 'dsh-superagent-router' }, events: [...events] }
+      const header = headers.get(id) ?? (id === router?.id ? { id, agentPreset: 'dsh-superagent-router' } : { id, cwd: '/tmp/fake-target', agentPreset: 'dsh-preset-target' })
+      return { session: { ...header }, events: [...events] }
     } },
   }
   // legacyInput is deliberately omitted: this exercises the new workspace path.
@@ -157,6 +212,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
   })
   return {
     get store() { return store }, get runtime() { return runtime }, calls, workers: workerHandles, interruptions,
+    mountedPresets, disposedHandles, createdSessions, modelSet, wakeReceived, headers, wakeSelections,
     seedExternal(id: string) { const agent = { id, status: 'idle', model: { current: vi.fn(() => ({ provider: 'original-provider', model: 'original-model' })), set: vi.fn() }, answer: vi.fn(), steer: vi.fn(), followup: vi.fn() }; agents.set(id, agent); return agent },
     router: () => router, events: () => logs.get(router.id)!,
     restoreHistory(id: string) { missingSessions.delete(id) },
@@ -194,6 +250,27 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
       }
       agents.set(sessionId, agent)
       return { sessionId, agent, received, emit: (type: string, data: unknown) => append(sessionId, type, data), openTurn: () => append(sessionId, 'turn/start', { turn: 0 }) }
+    },
+    /** Persisted-but-cold target: a real log/header plus its projected model selection, no live Agent. */
+    seedColdTarget(sessionId: string, target: { preset?: string | null; selection?: any } = {}) {
+      logs.set(sessionId, [])
+      headers.set(sessionId, { id: sessionId, cwd: '/tmp/fake-target', ...(target.preset === null ? {} : { agentPreset: target.preset ?? 'dsh-preset-target' }) })
+      if (target.selection === null) wakeSelections.delete(sessionId)
+      else wakeSelections.set(sessionId, target.selection ?? { provider: 'original-provider', model: 'original-model', reasoningEffort: 'medium' })
+      return { sessionId }
+    },
+    setResumeMode(value: 'ok' | 'conflict' | 'unavailable' | 'fail') { resumeMode = value },
+    setPersistenceAvailable(value: boolean) { persistenceAvailable = value },
+    setMountFailure(value: Error | undefined) { mountFailure = value },
+    setModelDrift(value: boolean) { modelDrift = value },
+    seedWakingFence(input: { epoch: string; requestId: string; confirmationId: string; sessionId: string; digest: string; target: { scopeRevision: string; factRevision: string } }) {
+      const at = Date.now(), wakeId = randomUUID(), dispatchId = randomUUID()
+      const target = { sessionId: input.sessionId, scopeRevision: input.target.scopeRevision, factRevision: input.target.factRevision, project: { kind: 'project' as const, key: 'p' } }
+      const wake = { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, wakeId, sessionId: input.sessionId, seq: 1, at, updatedAt: at, state: 'waking' }
+      const dispatch = { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, dispatchId,
+        operation: 'continue', target, digest: input.digest, messageId: `go:${dispatchId}`, seq: 1, at, updatedAt: at, state: 'dispatching' }
+      store.db.prepare('INSERT INTO side_effect(key,kind,ticket_id,at,state,detail) VALUES (?,?,NULL,?,?,?)').run(`delivery-wake:v1:${input.confirmationId}`, 'delivery-wake-v1', at, 'v1:1', encodeJson(wake, false))
+      store.db.prepare('INSERT INTO side_effect(key,kind,ticket_id,at,state,detail) VALUES (?,?,NULL,?,?,?)').run(`delivery-dispatch:v1:${input.confirmationId}`, 'delivery-dispatch-v1', at, 'v1:1', encodeJson(dispatch, false))
     },
     setDurable(value: boolean) { durable = value }, setModelVerified(value: boolean) { modelVerified = value }, setModelWait(value: (() => Promise<void>) | undefined) { modelWait = value },
     async input(text = 'same task body', patch: Partial<WorkspaceCommand> = {}): Promise<WorkspaceCommand> {
@@ -1077,17 +1154,182 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1')).toEqual([])
   })
 
-  it('blocks a cold managed target without waking it or calling resume', async () => {
+  it.each(['continue', 'supplement', 'steer'] as const)('wakes a cold managed target once with its recorded preset and then dispatches %s', async operation => {
     const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id)
+    const createdBefore = f.createdSessions.length
     const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
-    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Cold target body', target, images: [] }
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation, text: `Cold ${operation} body
+保留原字节 🧭`, target, images: [] }
+    const prepared = await post('delivery', { action: 'prepare', ...input })
+    expect(prepared.status).toBe(200)
+    // The confirmation card is told this exact target is cold before any wake side effect happens.
+    expect(prepared.data).toMatchObject({ state: 'prepared', targetState: 'cold' })
+    expect(f.calls.resume).not.toHaveBeenCalled()
+    expect((await post('delivery', { action: 'confirm', ...input })).data).toMatchObject({ state: 'confirmed', targetState: 'cold' })
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.status).toBe(200)
+    expect(dispatched.data).toMatchObject({ state: 'accepted', accepted: true, delivered: true, woke: true, disposition: 'target-durable-receipt', operation })
+    expect(dispatched.data.messageId).toBe(`go:${dispatched.data.dispatchId}`)
+    // One resume with the exact persisted id; its setup mounted exactly the session's recorded preset.
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    const resumeInput = f.calls.resume.mock.calls[0]![0]
+    expect(resumeInput.resumeSessionId).toBe(observations.id)
+    expect(typeof resumeInput.setup).toBe('function')
+    // Exactly the resume contract surfaces: no meta, permission, approval-policy or pinned model field.
+    expect(Object.keys(resumeInput).sort()).toEqual(['agentOptions', 'resumeSessionId', 'setup'])
+    expect(resumeInput.meta).toBeUndefined(); expect(resumeInput.signal).toBeUndefined()
+    // No pinned route is passed: only the Host-style live default getters remain as a fallback,
+    // so a recorded Session selection always wins and the default is never frozen into the resume.
+    expect(typeof Object.getOwnPropertyDescriptor(resumeInput.agentOptions, 'provider')?.get).toBe('function')
+    expect('model' in resumeInput.agentOptions && 'reasoningEffort' in resumeInput.agentOptions).toBe(true)
+    expect(f.mountedPresets.filter(preset => preset === 'dsh-preset-target')).toHaveLength(1)
+    expect(dispatched.data.wake).toMatchObject({ sessionId: observations.id, from: 'cold', to: 'live', agentPreset: 'dsh-preset-target',
+      model: { provider: 'original-provider', model: 'original-model', reasoningEffort: 'medium' } })
+    // Exactly the confirmed Host operation reached the woken conversation.
+    const received = f.wakeReceived.get(observations.id)!
+    const method = ({ continue: 'followup', supplement: 'inject', steer: 'steer' } as const)[operation]
+    expect(received[method]).toHaveLength(1)
+    expect(received[method][0]).toMatchObject({ id: dispatched.data.messageId, role: 'user', content: [{ type: 'text', text: input.text }] })
+    for (const other of ['followup', 'inject', 'steer'] as const) if (other !== method) expect(received[other]).toEqual([])
+    // Waking preserved the route and created no new conversation; the body never enters the fences.
+    expect(f.modelSet).not.toHaveBeenCalled(); expect(f.createdSessions).toHaveLength(createdBefore)
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('保留原字节')
+    // Same confirmed dispatch replays the stored receipt without a second resume or Host call.
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(f.calls.resume).toHaveBeenCalledTimes(1); expect(received[method]).toHaveLength(1)
+    expect(f.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+  it('keeps a failed wake blocked with a fixed code, never delivers and never creates another conversation', async () => {
+    const failures = [
+      { mode: 'conflict' as const, code: 'delivery_wake_conflict' },
+      { mode: 'unavailable' as const, code: 'delivery_wake_unavailable' },
+      { mode: 'fail' as const, code: 'delivery_wake_failed' },
+    ]
+    for (const failure of failures) {
+      const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+      f.seedColdTarget(observations.id); f.setResumeMode(failure.mode)
+      const createdBefore = f.createdSessions.length
+      const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+      const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: `Blocked wake ${failure.mode}`, target, images: [] }
+      await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+      const blocked = await post('delivery', { action: 'dispatch', ...input })
+      expect(blocked.status, failure.mode).toBe(200)
+      expect(blocked.data).toMatchObject({ state: 'blocked', code: failure.code, accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched', woke: false })
+      expect(f.wakeReceived.has(observations.id)).toBe(false)
+      expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+      expect(f.createdSessions).toHaveLength(createdBefore)
+      expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain(`Blocked wake ${failure.mode}`)
+      // The blocked fence is terminal for its exact IDs; replay never resumes a second time.
+      const resumes = f.calls.resume.mock.calls.length
+      expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(blocked)
+      expect(f.calls.resume.mock.calls.length).toBe(resumes)
+    }
+  })
+
+  it('retries a blocked wake only through a fresh human confirmation, never by replaying the old fence', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id); f.setResumeMode('conflict')
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const first = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'First blocked wake attempt', target, images: [] }
+    await post('delivery', { action: 'prepare', ...first }); await post('delivery', { action: 'confirm', ...first })
+    const blocked = await post('delivery', { action: 'dispatch', ...first })
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_wake_conflict', woke: false })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    f.setResumeMode('ok')
+    // The old IDs stay terminal; a fresh confirmation is the only retry and wakes once on its own.
+    expect((await post('delivery', { action: 'dispatch', ...first })).data).toMatchObject({ state: 'blocked', code: 'delivery_wake_conflict' })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    const second = { ...first, requestId: randomUUID(), confirmationId: randomUUID(), text: 'Second human confirmation' }
+    await post('delivery', { action: 'prepare', ...second }); await post('delivery', { action: 'confirm', ...second })
+    const accepted = await post('delivery', { action: 'dispatch', ...second })
+    expect(accepted.data).toMatchObject({ state: 'accepted', accepted: true, woke: true })
+    expect(f.calls.resume).toHaveBeenCalledTimes(2)
+    expect(f.wakeReceived.get(observations.id)!.followup).toHaveLength(1)
+    expect(f.modelSet).not.toHaveBeenCalled()
+  })
+
+  it('blocks with a fixed code when the original preset cannot be mounted, without substituting another one', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id); f.setMountFailure(new Error('agent preset no longer exists'))
+    const createdBefore = f.createdSessions.length
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Preset mount failure body', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_wake_failed', woke: false, accepted: false, delivered: false })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    expect(f.wakeReceived.has(observations.id)).toBe(false)
+    expect(f.createdSessions).toHaveLength(createdBefore)
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-wake-v1').map(row => row.state)).toEqual(['v1:2'])
+  })
+
+  it('rolls a wake back when the resumed route differs from the persisted model selection', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id); f.setModelDrift(true)
+    const createdBefore = f.createdSessions.length
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'supplement' as const, text: 'Drifted model body', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_wake_failed', woke: false, accepted: false, delivered: false })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    // The unverified live handle was released again; the Session stays persisted and cold.
+    expect(f.disposedHandles).toContain(observations.id)
+    expect(f.createdSessions).toHaveLength(createdBefore)
+    expect(f.modelSet).not.toHaveBeenCalled()
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-wake-v1').map(row => row.state)).toEqual(['v1:2'])
+  })
+
+  it('keeps a rejected resume blocked across restart and never re-wakes the same confirmation', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id); f.setResumeMode('fail')
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Rejected resume body', target, images: [] }
     await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
     const blocked = await post('delivery', { action: 'dispatch', ...input })
     expect(blocked.status).toBe(200)
-    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_target_cold', durable: true, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-dispatched' })
-    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(blocked)
-    expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
-    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_wake_failed', accepted: false, delivered: false, disposition: 'not-dispatched', woke: false })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-wake-v1').map(row => row.state)).toEqual(['v1:2'])
+    await f.restart({ production: true })
+    const replay = await httpPanel(f)('delivery', { action: 'dispatch', ...input })
+    expect(replay.status).toBe(200)
+    expect(replay.data).toMatchObject({ state: 'blocked', code: 'delivery_wake_failed' })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1)
+    expect(f.wakeReceived.has(observations.id)).toBe(false)
+    expect(f.calls.followup).toEqual([])
+  })
+
+  it('normalizes a crash-left waking fence to unknown on restart and never resumes it', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Crash-left wake body', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    f.seedWakingFence({ epoch, requestId: input.requestId, confirmationId: input.confirmationId, sessionId: observations.id, digest: deliveryDigest(input), target })
+    await f.restart({ production: true })
+    const resumesAfterRestart = f.calls.resume.mock.calls.length
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-wake-v1').map(row => row.state)).toEqual(['v1:2'])
+    const replay = await httpPanel(f)('delivery', { action: 'dispatch', ...input })
+    expect(replay.status).toBe(200)
+    expect(replay.data).toMatchObject({ state: 'dispatch_unknown', code: 'delivery_dispatch_unknown', woke: false })
+    expect(f.calls.resume.mock.calls.length).toBe(resumesAfterRestart)
+    expect(f.calls.followup).toEqual([])
+  })
+
+  it('keeps a cold stop blocked without waking or resuming the conversation', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'stop' as const, text: '', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.status).toBe(200)
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_target_cold', accepted: false, interrupted: false, disposition: 'not-dispatched', woke: false })
+    expect(f.calls.resume).not.toHaveBeenCalled()
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-wake-v1')).toEqual([])
   })
 
   it('keeps a lost dispatch unknown across restart, reconciles from target evidence only and never resends', async () => {
