@@ -23,7 +23,8 @@ import { createScopePreferences } from './workspace/scope-preferences.js'
 import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
 import { createDeliveries } from './workspace/deliveries.js'
-import { createStageModels, type StageCatalogPort } from './workspace/stage-models.js'
+import { createStageModels, type StageCallConfig, type StageCatalogPort, type StageModelInfo } from './workspace/stage-models.js'
+import { createStageCallHost, createStageLocateService, type StageCallHost, type StageLlmHost, type StageLocateService } from './workspace/stage-call.js'
 import { WorkspaceError } from './workspace/commands.js'
 import { createSessionDecisions, sessionDecisionSnapshotDigest, type SessionDecisionProjection } from './workspace/session-decisions.js'
 import { createConfigMutations, type ConfigMutationJSON, type ConfigMutationKind } from './workspace/config-mutations.js'
@@ -42,7 +43,7 @@ export interface RuntimeContext {
   readonly get?: (name: string) => any
   readonly sessions?: { flush(session: any): Promise<boolean> }
   readonly agentDefaultModel?: { currentSelection(): any }
-  readonly llm?: { resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<any>; listProviders?(): readonly { id: string; name: string }[]; listModels?(provider: string): Promise<readonly { provider: string; id: string; name: string }[]> }
+  readonly llm?: { resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<any>; listProviders?(): readonly { id: string; name: string }[]; listModels?(provider: string): Promise<readonly { provider: string; id: string; name: string }[]>; prepareCall?(config: StageCallConfig, signal: AbortSignal | undefined, configure: (controls: Omit<StageCallConfig, 'provider' | 'model'>, info: StageModelInfo) => Omit<StageCallConfig, 'provider' | 'model'>): Promise<{ readonly config: StageCallConfig; stream(options: Readonly<Record<string, unknown>>): AsyncIterable<unknown> }>; stream?(options: Readonly<Record<string, unknown>>): AsyncIterable<unknown> }
   readonly effect: (factory: () => (() => void | Promise<void>)) => unknown
   readonly on: (event: string, callback: (...args: any[]) => any) => (() => void)
 }
@@ -75,6 +76,8 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   let deliveryConfirmations: ReturnType<typeof createDeliveries> | undefined
   let stageModels: ReturnType<typeof createStageModels> | undefined
   let stageCatalog: StageCatalogPort | undefined
+  let stageCallHost: StageCallHost | undefined
+  let stageLocate: StageLocateService | undefined
   let sessionDecisions: ReturnType<typeof createSessionDecisions> | undefined
   let configMutations: ReturnType<typeof createConfigMutations> | undefined
   let disposed = false
@@ -483,8 +486,35 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     if (llm?.listProviders && llm?.listModels && llm?.resolveModelInfo) stageCatalog = {
       listProviders: () => llm.listProviders(), listModels: provider => llm.listModels(provider), resolveModelInfo: (provider, model, signal) => llm.resolveModelInfo(provider, model, signal),
     }
-    stageModels = createStageModels(store, { ...(stageCatalog ? { catalog: stageCatalog } : {}) })
-    // Catalog inspection/configuration only: no call, bind, or provider authorization port.
+    // Stage calls require the exact installed surface (resolveModelInfo/prepareCall/stream).
+    // A partial Host surface keeps the service configuration-only and visibly blocked.
+    const stageLlm = llm && typeof llm.prepareCall === 'function' && typeof llm.stream === 'function' && stageCatalog ? llm as StageLlmHost : undefined
+    if (stageLlm && stageCatalog && workspace) {
+      stageCallHost = createStageCallHost({
+        store, llm: stageLlm, catalog: stageCatalog,
+        requireEpoch: epoch => workspace!.requireEpoch(epoch),
+        signal: controller.signal,
+        paused: () => disposed || config.paused || engine.paused(),
+      })
+    }
+    stageModels = createStageModels(store, { ...(stageCatalog ? { catalog: stageCatalog } : {}), ...(stageCallHost?.ports ?? {}) })
+    if (stageCallHost) stageLocate = createStageLocateService({
+      host: stageCallHost, stageModels,
+      locate: input => sessionWork!.locate(input),
+      signal: controller.signal,
+      paused: () => disposed || config.paused || engine.paused(),
+      projects: async () => {
+        const projects: { key: string; name: string }[] = []
+        let cursor: string | undefined
+        for (let page = 0; page < 5; page++) {
+          const listing = await sessionWork!.listScopeProjects({ limit: 20, ...(cursor === undefined ? {} : { cursor }) })
+          for (const item of listing.items) if (item.kind === 'project' && typeof item.name === 'string' && item.name) projects.push({ key: item.key, name: item.name })
+          if (!listing.hasMore || listing.next === undefined) break
+          cursor = listing.next
+        }
+        return projects
+      },
+    })
     if (!testAdapter) {
       // Upgrades/reloads cannot keep an old, unverified Worker executable.
       for (const assignment of store.repos.assignment.all().filter(row => row.state === 'running')) {
@@ -616,6 +646,17 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         if (!workspace || !sessionWork || disposed) throw Object.assign(new Error('session_work_unavailable'), { code: 'session_work_unavailable', status: 503 })
         workspace.requireEpoch(input.epoch)
         const result = await sessionWork.locate(input)
+        workspace.requireEpoch(input.epoch)
+        return result
+      },
+      /** One model-backed locate stage call, then the existing bounded locate evidence chain. */
+      async stageLocate(input: { epoch: string; text: string }) {
+        await ready
+        if (disposed || !workspace || !sessionWork) throw new WorkspaceError('stage_models_unavailable', 503)
+        if (!stageLocate || !stageCallHost) throw new WorkspaceError('stage_models_call_unavailable', 503)
+        workspace.requireEpoch(input.epoch)
+        if (config.paused || engine.paused()) throw new WorkspaceError('stage_models_unavailable', 503)
+        const result = await stageLocate.run({ epoch: input.epoch, text: input.text })
         workspace.requireEpoch(input.epoch)
         return result
       },

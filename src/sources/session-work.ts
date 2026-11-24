@@ -136,32 +136,39 @@ export class SessionWorkSource implements Source {
   }
   /** Bounded fact search, not a control grant. Explicit stable IDs never bypass membership.
    * A title match alone requires clarification; only structured objective evidence locates.
+   * Optional Host-authoritative filters: an exact session id or an exact project key never authorize by themselves.
+   * Empty text is accepted only together with an explicit filter, and then only structured work evidence locates.
    */
-  locate(input: { text: string; sessionId?: string; revision?: string }) {
+  locate(input: { text: string; sessionId?: string; revision?: string; projectKey?: string }) {
     return this.track((async () => {
-      if (!input || typeof input.text !== 'string' || !input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 16_384 || input.text.includes('\0') || input.sessionId !== undefined && !idValid(input.sessionId)) throw new WorkspaceError('invalid_input', 400)
-      input = { text: input.text, ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }), ...(input.revision === undefined ? {} : { revision: input.revision }) }
+      if (!input || typeof input.text !== 'string' || Buffer.byteLength(input.text, 'utf8') > 16_384 || input.text.includes('\0') || input.sessionId !== undefined && !idValid(input.sessionId) || input.projectKey !== undefined && !projectKeyValid(input.projectKey)) throw new WorkspaceError('invalid_input', 400)
+      if (!input.text.trim() && input.sessionId === undefined && input.projectKey === undefined) throw new WorkspaceError('invalid_input', 400)
+      input = { text: input.text, ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }), ...(input.revision === undefined ? {} : { revision: input.revision }), ...(input.projectKey === undefined ? {} : { projectKey: input.projectKey }) }
       const roster = await this.getRoster(true), generation = this.generation
       if (input.revision !== undefined && input.revision !== roster.revision) return resync()
       const base = { revision: roster.revision, controlAvailable: false as const, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }
       const blocked = (code: string) => ({ ...base, status: 'blocked' as const, code, candidates: [] })
       if (input.sessionId !== undefined && (!roster.included.includes(input.sessionId) || this.exclusion(input.sessionId, roster.projects) || !this.access(input.sessionId))) return blocked('target_not_available')
       // Avoid silently selecting a target outside the inspected window. No unbounded scan.
-      const ids = input.sessionId ? [input.sessionId] : roster.included.slice(0, 100)
-      const items = await Promise.all(ids.filter(id => !this.exclusion(id, roster.projects)).map(id => this.project(id, generation, true)))
+      const projectOf = (id: string) => roster.projects[id]?.kind === 'project' ? `project:${roster.projects[id]!.key}` : roster.projects[id]?.kind
+      // Exclusions are an intentional scope decision, not missing coverage; only the window cap is partial.
+      const eligible = (input.sessionId ? [input.sessionId] : roster.included)
+        .filter(id => (input.projectKey === undefined || projectOf(id) === input.projectKey) && !this.exclusion(id, roster.projects))
+      const ids = input.sessionId ? eligible : eligible.slice(0, 100)
+      const items = await Promise.all(ids.map(id => this.project(id, generation, true)))
       if (!this.available() || generation !== this.generation || this.makeRosterFromMembership(roster).revision !== roster.revision || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || ids.some(id => !this.access(id))) return resync()
-      const partial = roster.partial || !input.sessionId && roster.included.length > ids.length || items.some(item => item.evidence === 'unavailable')
+      const partial = roster.partial || !input.sessionId && eligible.length > ids.length || items.some(item => item.evidence === 'unavailable')
       const needle = input.text.normalize('NFC').trim().toLocaleLowerCase()
-      const matches = items.filter(item => input.sessionId === item.sessionId || [item.objective, item.progress, item.nextAction, item.title].some(value => value && value.normalize('NFC').toLocaleLowerCase().includes(needle)))
+      const matches = items.filter(item => input.sessionId === item.sessionId || !needle || [item.objective, item.progress, item.nextAction, item.title].some(value => value && value.normalize('NFC').toLocaleLowerCase().includes(needle)))
       const candidates = matches.slice(0, 20).map(item => {
         const fields = ['objective', 'progress', 'nextAction', 'title'] as const
-        const matchField = fields.find(field => item[field]?.normalize('NFC').toLocaleLowerCase().includes(needle)) ?? (item.objective ? 'objective' : 'title')
+        const matchField = (needle ? fields.find(field => item[field]?.normalize('NFC').toLocaleLowerCase().includes(needle)) : undefined) ?? (item.objective ? 'objective' : 'title')
         return { sessionId: item.sessionId, title: item.title, project: roster.projects[item.sessionId]!, factRevision: item.factRevision, observedAt: item.observedAt, evidence: item.evidence,
           matchField, matchText: item[matchField]?.slice(0, 600) ?? '' }
       })
       if (partial) return { ...base, status: 'blocked' as const, code: 'locate_coverage_partial', coverage: 'partial' as const, searched: ids.length, candidates }
       if (!matches.length) return { ...base, status: 'no_match' as const, coverage: 'complete' as const, searched: ids.length, candidates }
-      const only = matches[0]!, strong = input.sessionId === only.sessionId || only.evidence === 'structured' && Boolean(only.objective?.normalize('NFC').toLocaleLowerCase().includes(needle))
+      const only = matches[0]!, strong = input.sessionId === only.sessionId || only.evidence === 'structured' && (!needle || Boolean(only.objective?.normalize('NFC').toLocaleLowerCase().includes(needle)))
       if (matches.length !== 1 || !strong) return { ...base, status: 'clarify' as const, code: matches.length > 1 ? 'target_ambiguous' : 'title_only_match', candidates, candidateTotal: matches.length }
       return { ...base, status: 'located' as const, target: candidates[0], candidates, coverage: 'complete' as const, searched: ids.length }
     })())

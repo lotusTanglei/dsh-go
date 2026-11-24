@@ -10,6 +10,7 @@ import { validSessionAction } from '../workspace/session-actions.js'
 import { validSessionDecision } from '../workspace/session-decisions.js'
 import { approvalImpact } from '../engine/approval-impact.js'
 import type { Config } from '../config.js'
+import { stageOutcomeMessage } from '../workspace/stage-call.js'
 import { effectiveSettings, type EffectiveSetting } from './settings.js'
 import { transitionApproval, type Approval } from '../domain/approval.js'
 import { approvalId } from '../domain/ids.js'
@@ -61,6 +62,8 @@ export interface PanelPorts {
   readonly sessionWork?: (input: any) => Promise<unknown>
   /** Side-effect-free target proposal only; never dispatches to the returned Session. */
   readonly sessionLocate?: (input: any) => Promise<unknown>
+  /** One model-backed locate stage call followed by the existing bounded locate evidence chain. */
+  readonly stageLocate?: (input: any) => Promise<unknown>
   /** Exact prepared control metadata only; production is blocked before any Agent activation. */
   readonly sessionAction?: (input: any) => Promise<unknown>
   /** Pre-delivery human confirmation summary only; never dispatches or activates an Agent. */
@@ -85,7 +88,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/session-work', '/session-locate', '/session-action', '/delivery', '/images', '/stage-models', '/session-decision', '/config-mutation'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/session-work', '/session-locate', '/session-action', '/delivery', '/images', '/stage-models', '/stage-locate', '/session-decision', '/config-mutation'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -271,6 +274,60 @@ function asTicket(row: Row): Ticket {
 }
 function repoRows(repo: TableRepo | undefined): Row[] { return repo ? repo.all() : [] }
 function statusForError(error: unknown): number { return error instanceof Error && error.message.includes('already') ? 409 : 500 }
+
+/** Exact target evidence DTO reused by both the literal and the model-backed locate routes. */
+function locateResultData(data: any, options: { readonly matchText: boolean }): unknown {
+  const candidate = (item: any) => {
+    if (!isObject(item) || !validWorkId(item.sessionId)) return undefined
+    const safe = sessionWorkData({ items: [item] }) as any
+    return { ...safe.items?.[0], ...(validHash(item.factRevision) ? { factRevision: item.factRevision } : {}),
+      ...(['objective', 'progress', 'nextAction', 'title'].includes(String(item.matchField)) && typeof item.matchText === 'string'
+        ? { matchField: item.matchField, ...(options.matchText ? { matchText: sanitize(item.matchText.slice(0, 600)) } : {}) } : {}) }
+  }
+  // Nothing supplied by a model/caller is an authority or control acknowledgement.
+  const candidates = Array.isArray(data?.candidates) ? data.candidates.slice(0, 20).map(candidate).filter(Boolean) : []
+  return { status: ['located', 'clarify', 'no_match', 'blocked'].includes(data?.status) ? data.status : 'blocked',
+    ...(validHash(data?.revision) ? { revision: data.revision } : {}), controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED',
+    ...(typeof data?.code === 'string' && /^[a-z_]{1,80}$/.test(data.code) ? { code: data.code } : {}), ...(data?.coverage === 'partial' || data?.coverage === 'complete' ? { coverage: data.coverage } : {}),
+    ...(Number.isSafeInteger(data?.searched) ? { searched: data.searched } : {}), ...(Number.isSafeInteger(data?.candidateTotal) ? { candidateTotal: data.candidateTotal } : {}),
+    candidates, ...(data?.status === 'located' && candidate(data.target) ? { target: candidate(data.target) } : {}) }
+}
+const metadataText = (value: unknown, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined
+/** Actual route metadata only: stage, version and exact selection; never prompt or output. */
+function stageRouteMeta(value: any): Record<string, unknown> | undefined {
+  if (!isObject(value) || value.stage !== 'locate' || !Number.isSafeInteger(value.configVersion) || Number(value.configVersion) <= 0 || !['inherit', 'override'].includes(String(value.mode))) return undefined
+  const provider = metadataText(value.provider), model = metadataText(value.model)
+  if (!provider || !model) return undefined
+  const effort = metadataText(value.reasoningEffort)
+  return { stage: 'locate', configVersion: Number(value.configVersion), mode: value.mode, provider, model, ...(effort === undefined ? {} : { reasoningEffort: effort }) }
+}
+function proofState(value: unknown): 'supported' | 'unsupported' | 'unknown' | undefined {
+  return value === 'supported' || value === 'unsupported' || value === 'unknown' ? value : undefined
+}
+/** Actual prepared route + capability evidence + fixed no-atomic-dispatch disclosure. */
+function stageCallReceipt(value: any): Record<string, unknown> | undefined {
+  if (!isObject(value)) return undefined
+  const config = isObject(value.config) ? value.config : {}
+  const provider = metadataText(config.provider), model = metadataText(config.model)
+  const callId = typeof value.callId === 'string' && /^stage-call:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.callId) ? value.callId : undefined
+  if (!provider || !model || !callId || !Number.isSafeInteger(value.configVersion) || Number(value.configVersion) <= 0) return undefined
+  const effort = metadataText(config.reasoningEffort)
+  const disclosure = isObject(value.disclosure) && value.disclosure.atomicProviderDispatch === false && value.disclosure.window === 'authorization-to-provider-io' && value.disclosure.reason === 'dsh-llm-stream-middleware-may-await' && value.disclosure.providerDispatchPermit === 'unavailable'
+    ? { atomicProviderDispatch: false, window: 'authorization-to-provider-io', reason: 'dsh-llm-stream-middleware-may-await', providerDispatchPermit: 'unavailable' } : undefined
+  if (!disclosure || !validHash(value.inputDigest) || !validHash(value.authorizationRevision)) return undefined
+  const proof = isObject(value.capabilityProof) ? value.capabilityProof : undefined
+  const vision = proofState(proof?.vision), tools = proofState(proof?.tools), structured = proofState(proof?.structured)
+  const contextWindow = proof?.contextWindow === null ? null : Number.isSafeInteger(proof?.contextWindow) && Number(proof?.contextWindow) > 0 ? Number(proof?.contextWindow) : undefined
+  const defaultMaxTokens = proof?.defaultMaxTokens === null ? null : Number.isSafeInteger(proof?.defaultMaxTokens) && Number(proof?.defaultMaxTokens) > 0 ? Number(proof?.defaultMaxTokens) : undefined
+  const inputModalities = proof?.inputModalities === null ? null : Array.isArray(proof?.inputModalities) && proof.inputModalities.every((item: unknown) => metadataText(item) !== undefined) ? proof.inputModalities : undefined
+  const reasoningEfforts = Array.isArray(proof?.reasoningEfforts) && proof.reasoningEfforts.every((item: unknown) => metadataText(item) !== undefined) ? proof.reasoningEfforts : undefined
+  const defaultEffort = proof?.defaultEffort === null ? null : metadataText(proof?.defaultEffort)
+  if (vision === undefined || tools === undefined || structured === undefined || contextWindow === undefined || defaultMaxTokens === undefined || inputModalities === undefined || reasoningEfforts === undefined || defaultEffort === undefined || proof?.modelInfoEvidence !== 'dsh.resolveModelInfo' || !Array.isArray(proof.hostEvidence) || !proof.hostEvidence.every((item: unknown) => metadataText(item) !== undefined)) return undefined
+  return { callId, stage: 'locate', mode: value.mode === 'override' ? 'override' : 'inherit', configVersion: Number(value.configVersion),
+    config: { provider, model, ...(effort === undefined ? {} : { reasoningEffort: effort }), ...(Number.isSafeInteger(config.maxTokens) && Number(config.maxTokens) > 0 ? { maxTokens: Number(config.maxTokens) } : {}) },
+    capabilityProof: { vision, tools, structured, contextWindow, inputModalities, defaultMaxTokens, reasoningEfforts, defaultEffort, modelInfoEvidence: 'dsh.resolveModelInfo', hostEvidence: proof.hostEvidence },
+    disclosure, inputDigest: value.inputDigest, authorizationRevision: value.authorizationRevision }
+}
 
 export function installPanelRoutes(context: PanelContext, store: Store, config: PanelConfig, ports: PanelPorts = {}): PanelInstallation {
   const now = () => Date.now()
@@ -538,20 +595,24 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     const input = parsed.value!
     if (!validId(input.epoch) || typeof input.text !== 'string' || !input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 16_384 || input.text.includes('\0') || input.sessionId !== undefined && !validWorkId(input.sessionId) || input.revision !== undefined && !validHash(input.revision)) return fail('invalid_input', 'Target lookup fields are invalid', 400)
     if (!ports.sessionLocate) return fail('session_work_unavailable', 'Target lookup is unavailable', 503)
-    const data = await ports.sessionLocate(input) as any
-    const candidate = (item: any) => {
-      if (!isObject(item) || !validWorkId(item.sessionId)) return undefined
-      const safe = sessionWorkData({ items: [item] }) as any
-      return { ...safe.items?.[0], ...(validHash(item.factRevision) ? { factRevision: item.factRevision } : {}),
-        ...(['objective', 'progress', 'nextAction', 'title'].includes(String(item.matchField)) && typeof item.matchText === 'string' ? { matchField: item.matchField, matchText: sanitize(item.matchText.slice(0, 600)) } : {}) }
-    }
-    // Nothing supplied by a model/caller is an authority or control acknowledgement.
-    const candidates = Array.isArray(data?.candidates) ? data.candidates.slice(0, 20).map(candidate).filter(Boolean) : []
-    return json({ ok: true, data: { status: ['located', 'clarify', 'no_match', 'blocked'].includes(data?.status) ? data.status : 'blocked',
-      ...(validHash(data?.revision) ? { revision: data.revision } : {}), controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED',
-      ...(typeof data?.code === 'string' && /^[a-z_]{1,80}$/.test(data.code) ? { code: data.code } : {}), ...(data?.coverage === 'partial' || data?.coverage === 'complete' ? { coverage: data.coverage } : {}),
-      ...(Number.isSafeInteger(data?.searched) ? { searched: data.searched } : {}), ...(Number.isSafeInteger(data?.candidateTotal) ? { candidateTotal: data.candidateTotal } : {}),
-      candidates, ...(data?.status === 'located' && candidate(data.target) ? { target: candidate(data.target) } : {}) } })
+    return json({ ok: true, data: locateResultData(await ports.sessionLocate(input), { matchText: true }) })
+  })
+  route('/stage-locate', async request => {
+    const parsed = await body(request, ['epoch', 'text']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!validWorkId(input.epoch) || typeof input.text !== 'string' || !input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 16_384 || input.text.includes('\0')) return fail('invalid_input', 'Locate fields are invalid', 400)
+    if (!ports.stageLocate) return fail('stage_models_call_unavailable', 'Stage locate is unavailable', 503)
+    const data = await ports.stageLocate(input) as any
+    // Fixed metadata only: no prompt, request body, model output, session body text or secret.
+    const stage = stageRouteMeta(data?.stage)
+    const receipt = stageCallReceipt(data?.receipt)
+    const intent = isObject(data?.intent) && ['continue', 'progress', 'new'].includes(String(data.intent.action)) && typeof data.intent.confidence === 'number' && Number.isFinite(data.intent.confidence) && data.intent.confidence >= 0 && data.intent.confidence <= 1
+      ? { action: data.intent.action, confidence: data.intent.confidence } : null
+    const code = typeof data?.code === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(data.code) ? data.code : undefined
+    return json({ ok: true, data: { version: 1, status: ['located', 'clarify', 'no_match', 'blocked'].includes(data?.status) ? data.status : 'blocked',
+      ...(code === undefined ? {} : { code, message: stageOutcomeMessage(code) }),
+      stage: stage ?? null, intent, receipt: receipt ?? null,
+      locate: data?.locate === undefined || data.locate === null ? null : locateResultData(data.locate, { matchText: false }) } })
   })
   route('/config-mutation', async request => {
     const parsed = await body(request, ['action', 'epoch', 'requestId', 'kind', 'payload']); if (parsed.error) return parsed.error

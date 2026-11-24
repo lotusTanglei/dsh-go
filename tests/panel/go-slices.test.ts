@@ -43,7 +43,7 @@ function fixture() {
 }
 
 describe('Go HTTP integration with real isolated SQLite, no provider or remote document call', () => {
-  it('preserves full actual model capability/default metadata in save and status receipts without a call endpoint', async () => {
+  it('preserves full actual model capability/default metadata in save and status receipts without a generic stage-models call action', async () => {
     const f = fixture(), config = { revision: 0, default: { provider: 'synthetic', model: 'model' }, stages: Object.fromEntries(STAGES.map(stage => [stage, { mode: 'inherit' }])) }, requestId = randomUUID()
     const saved = await f.post('stage-models', { action: 'save', epoch: f.epoch, requestId, config })
     expect(saved.status).toBe(200); expect(saved.data.mutation.state).toBe('settled')

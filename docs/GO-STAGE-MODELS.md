@@ -26,7 +26,9 @@ type Config = {
 
 保存时将默认及每个去重 route 的推理默认档、档位集合、modalities、上下文、defaultMaxTokens、额外 Host 能力证据随配置同事务持久化。随后相同 configVersion 若能力/默认值漂移则 `stage_models_capability_changed`；旧配置缺基线则 `stage_models_baseline_missing`，原配置保留，只能显式重存为新 revision，绝不静默补基线。旧在途快照使用原 revision 基线，不被新设置劫持。
 
-迭代器只在 consumer 真正拉取时创建，每次 `next()` 前后 checkpoint，首次拉流前 consumer 自身 await 后撤权不会 dispatch。**这不是完整原子外发授权保证**：rc.5 的 `llm/stream` middleware 可在本地最终 checkpoint 后、provider I/O 前 await；安装版没有最终 provider dispatch 原子许可接口。prepareCall 默认 maxTokens 等控制项仅记录实际回执，不宣称都已被配置层逐项授权。因此生产只注入 catalog，不注入 bind/authorize/call；真实阶段调用仍 blocked。
+迭代器只在 consumer 真正拉取时创建，每次 `next()` 前后 checkpoint，首次拉流前 consumer 自身 await 后撤权不会 dispatch。**这不是完整原子外发授权保证**：rc.5 的 `llm/stream` middleware 可在本地最终 checkpoint 后、provider I/O 前 await；安装版没有最终 provider dispatch 原子许可接口。prepareCall 默认 maxTokens 等控制项仅记录实际回执，不宣称都已被配置层逐项授权。
+
+#9（2026-11-24）起生产按 Q8 的窄定义接线：`ctx.llm` 同时具备 `resolveModelInfo`/`prepareCall`/`stream` 时才注入 Host 自有的 `bind`/`authorize`/`call`，否则服务保持未配置可读、调用显式 blocked（`stage_models_call_unavailable`），不伪造能力。`authorize` 是独立外发闸：只有本进程受信任 HTTP 动作签发的单次 send permit 可放行，按 `text` 数据类别、当前 epoch、未暂停与同步 fence 校验；拒绝即 blocked，不重试、不换模型。每次调用先写本地 `side_effect` journal（精确模型可见 payload、prepared config、digest、授权 revision），后使用同一 prepared handle 单次 stream。回执固定写入实际 `stage/mode/provider/model/reasoningEffort/configVersion`、能力证据与 `disclosure: { atomicProviderDispatch:false, window:'authorization-to-provider-io', reason:'dsh-llm-stream-middleware-may-await', providerDispatchPermit:'unavailable' }`；适配器若声称原子授权或换路由则整单 blocked。
 
 ## 安装版只读证据
 
@@ -43,3 +45,11 @@ type Config = {
 ## 验证（实现后补充）
 
 定向 fake provider 验证实际 call config/回执、快照版本、换配置隔离、unknown/incompatible/reasoning、权限拒绝、并发、CAS、重启和迟到边界；新增默认能力漂移、旧配置缺基线、consumer 首次拉流前撤权、返回授权对象被回调篡改等反例。完整集成门禁见 [Go 实施记录](<GO-IMPLEMENTATION-20261121.md>)；不把 fake 证据当真实 provider 或 GUI 运行证据。
+
+## #9 实现与证据（2026-11-24）
+
+- **[stage-call](../src/workspace/stage-call.ts)**：`createStageCallHost` 组装 catalog + `bind` + `authorize` + `call`；为每个受信任请求签发/撤销单次 permit；journal 在 `prepareCall` 后、`stream` 前写入（`tests/workspace/stage-call.test.ts` 断言流 dispatch 时 journal 已存在）。
+- **回执**：[stage-models](../src/workspace/stage-models.ts) 的 `StageCallReceipt` 增 `stage/mode/capabilityProof/disclosure`，`runStage` 逐项核对并拒绝被篡改回执；`tests/workspace/stage-call.test.ts` 覆盖实际 route、inherit/override、在途版本固定、拒绝即无 stream、失败不重试、模型不可用/能力 unknown/unsupported、原子授权与换路由伪造回执。
+- **locate 意图解析（#3 追加验收）**：locate 阶段模型把口语请求解析为 `{action:continue|progress|new, confidence, hints:{project?,session?,objective?}}`；严格 JSON、低置信/不可解析/`new`/项目名不精确命中都显式追问；项目名只与当前范围真实项目名精确匹配，不做标题猜测；命中后调用既有 `sessionWork.locate()` 证据链（可带精确 `projectKey` 过滤），返回 `factRevision`。模型或调用 blocked 时返回固定 code/message（如 `stage_models_not_configured` 提示先配置阶段模型），不退化到关键字匹配。
+- **HTTP 最小面**：新增 `/api/superagent/stage-locate`（仅 `epoch/text`，固定状态/码，回执与定位证据白名单脱敏；不返回 prompt、请求正文、模型原文或密钥）。runtime 只在 `ctx.llm` 三接口齐全时接线，缺任一保持 503 `stage_models_call_unavailable`。
+- **未验**：真实 provider 调用、真实安装版 `ctx.llm` 挂载、GUI 点击与真实 Host 会话；全部测试使用 Fake LLM + 隔离 SQLite。既有 Session 模型保持不变（无 `selectModel`/`model.set`）。

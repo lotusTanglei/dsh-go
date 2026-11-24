@@ -42,6 +42,25 @@ describe('non-dispatching target lookup', () => {
       expect(await f.source.locate({ text: 'specific ID', sessionId: 'session-100' })).toMatchObject({ status: 'located', target: { sessionId: 'session-100' } })
     } finally { await f.source.stop() }
   })
+  it('treats an intentional exclusion as scope, not as missing coverage', async () => {
+    const f = fixture(3); f.state.excluded = ['session-001']; await f.source.start()
+    try {
+      expect(await f.source.locate({ text: 'Work session-000' })).toMatchObject({ status: 'located', target: { sessionId: 'session-000' }, coverage: 'complete' })
+      expect(f.read).toHaveBeenCalledTimes(2)
+      expect(f.read).not.toHaveBeenCalledWith('session-001')
+    } finally { await f.source.stop() }
+  })
+  it('resolves an exact project filter without raw text, but asks when more than one structured session remains', async () => {
+    const many = fixture(2); await many.source.start()
+    try {
+      expect(await many.source.locate({ text: '', projectKey: 'project:project-a' })).toMatchObject({ status: 'clarify', code: 'target_ambiguous', candidateTotal: 2 })
+      await expect(many.source.locate({ text: '' })).rejects.toMatchObject({ code: 'invalid_input' })
+    } finally { await many.source.stop() }
+    const one = fixture(1); await one.source.start()
+    try {
+      expect(await one.source.locate({ text: '', projectKey: 'project:project-a' })).toMatchObject({ status: 'located', target: { sessionId: 'session-000' }, coverage: 'complete' })
+    } finally { await one.source.stop() }
+  })
   it('does not read excluded or unknown targets, and rejects a pre-exclusion version even after restore', async () => {
     const f = fixture(); await f.source.start()
     try {

@@ -59,8 +59,21 @@ export interface StageCallRequest {
   /** Must be called at every asynchronous boundary inside the Host adapter and immediately before dispatch. */
   checkpoint(): void
 }
+/** Fixed disclosure: rc.5 has no final provider-dispatch permit, so the claimed window is explicit. */
+export interface StageDispatchDisclosure {
+  readonly atomicProviderDispatch: false
+  readonly window: 'authorization-to-provider-io'
+  readonly reason: 'dsh-llm-stream-middleware-may-await'
+  readonly providerDispatchPermit: 'unavailable'
+}
+export const STAGE_DISPATCH_DISCLOSURE: StageDispatchDisclosure = Object.freeze({
+  atomicProviderDispatch: false, window: 'authorization-to-provider-io',
+  reason: 'dsh-llm-stream-middleware-may-await', providerDispatchPermit: 'unavailable',
+})
 export interface StageCallReceipt {
   readonly callId: string; readonly config: StageCallConfig; readonly configVersion: number
+  readonly stage: Stage; readonly mode: 'inherit' | 'override'
+  readonly capabilityProof: StageCapabilityProof; readonly disclosure: StageDispatchDisclosure
   readonly inputDigest: string; readonly inputRevision: string; readonly scopeRevision: string
   readonly sourceRevisions: StageRunContext['sourceRevisions']; readonly authorizationRevision: string
 }
@@ -88,6 +101,8 @@ interface StageSavedBaseline {
 }
 class StageModelError extends Error { constructor(readonly code: string) { super(code) } }
 function fail(code: string): never { throw new StageModelError(code) }
+/** Host adapters may reject with one of this contract's fixed codes instead of a generic fallback. */
+export function stageFailure(code: string): never { throw new StageModelError(code) }
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v && !/[\u0000-\u001f\u007f]/.test(v)
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) || Reflect.ownKeys(value).some(k => typeof k !== 'string' || !keys.includes(k) || !Object.getOwnPropertyDescriptor(value, k)?.enumerable || !('value' in Object.getOwnPropertyDescriptor(value, k)!))) fail('stage_models_schema_invalid')
@@ -307,7 +322,7 @@ export function createStageModels(store: Store, ports: StageModelPorts) {
         const outcome = { receipt: structuredClone(rawOutcome.receipt), output: canonicalJson(rawOutcome.output) }
         checkpoint()
         const receipt = outcome.receipt, s = resolved.snapshot
-        if (!text(receipt.callId) || receipt.config.provider !== s.provider || receipt.config.model !== s.model || receipt.config.reasoningEffort !== s.reasoningEffort || receipt.configVersion !== version || receipt.inputDigest !== context.inputDigest || receipt.inputRevision !== context.inputRevision || receipt.scopeRevision !== context.scopeRevision || !same(receipt.sourceRevisions, context.sourceRevisions) || receipt.authorizationRevision !== auth.authorizationRevision) fail('stage_models_receipt_mismatch')
+        if (!text(receipt.callId) || receipt.config.provider !== s.provider || receipt.config.model !== s.model || receipt.config.reasoningEffort !== s.reasoningEffort || receipt.configVersion !== version || receipt.stage !== s.stage || receipt.mode !== s.mode || receipt.inputDigest !== context.inputDigest || receipt.inputRevision !== context.inputRevision || receipt.scopeRevision !== context.scopeRevision || !same(receipt.sourceRevisions, context.sourceRevisions) || receipt.authorizationRevision !== auth.authorizationRevision || !same(receipt.capabilityProof, s.capabilityProof) || !same(receipt.disclosure, STAGE_DISPATCH_DISCLOSURE)) fail('stage_models_receipt_mismatch')
         return freeze({ state: 'completed', snapshot: s, output: canonicalJson(outcome.output), receipt: structuredClone(receipt) })
       } catch (error) { return blocked(error, version, request.signal?.aborted ? 'stage_models_aborted' : 'stage_models_call_failed') }
     },
@@ -392,7 +407,7 @@ export function createDshStageCallPort(llm: DshStageLlm, hooks: DshStageCallHook
       request.checkpoint()
       if (streamFailure) throw streamFailure
       if (!finished || !drained) fail('stage_models_stream_incomplete')
-      return { output, receipt: { callId: recorded.callId, config: prepared.config, configVersion: s.configVersion, inputDigest: request.context.inputDigest, inputRevision: request.context.inputRevision, scopeRevision: request.context.scopeRevision, sourceRevisions: request.context.sourceRevisions, authorizationRevision: request.authorizationRevision } }
+      return { output, receipt: { callId: recorded.callId, config: prepared.config, configVersion: s.configVersion, stage: s.stage, mode: s.mode, capabilityProof: s.capabilityProof, disclosure: STAGE_DISPATCH_DISCLOSURE, inputDigest: request.context.inputDigest, inputRevision: request.context.inputRevision, scopeRevision: request.context.scopeRevision, sourceRevisions: request.context.sourceRevisions, authorizationRevision: request.authorizationRevision } }
     },
   }
 }
