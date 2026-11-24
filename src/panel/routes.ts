@@ -66,7 +66,7 @@ export interface PanelPorts {
   readonly stageLocate?: (input: any) => Promise<unknown>
   /** Exact prepared control metadata only; production is blocked before any Agent activation. */
   readonly sessionAction?: (input: any) => Promise<unknown>
-  /** Pre-delivery human confirmation summary only; never dispatches or activates an Agent. */
+  /** Pre-delivery human confirmation; `dispatch` performs one confirmed live control call. */
   readonly delivery?: (input: any) => Promise<unknown>
   /** Bounded original-byte upload/preview and target binding; no model or delivery call. */
   readonly images?: (input: any) => Promise<unknown>
@@ -729,21 +729,57 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
   route('/delivery', async request => {
     const parsed = await body(request, ['action', 'epoch', 'requestId', 'confirmationId', 'operation', 'text', 'target', 'images']); if (parsed.error) return parsed.error
     const input = parsed.value!
+    const full = input.action === 'prepare' || input.action === 'confirm' || input.action === 'dispatch'
     const targetShape = isObject(input.target) && only(input.target, ['sessionId', 'scopeRevision', 'factRevision']) && validWorkId(input.target.sessionId) && validHash(input.target.scopeRevision) && validHash(input.target.factRevision)
     const imagesShape = input.images === undefined || Array.isArray(input.images) && input.images.length <= 5
       && input.images.every(item => isObject(item) && only(item, ['imageId', 'digest', 'seq']) && validWorkId(item.imageId) && validHash(item.digest) && Number.isSafeInteger(item.seq) && Number(item.seq) > 0)
       && new Set(input.images.map(item => item.imageId)).size === input.images.length
-    const shape = input.action === 'prepare' || input.action === 'confirm'
+    const shape = full
       ? only(input, ['action', 'epoch', 'requestId', 'confirmationId', 'operation', 'text', 'target', 'images']) && validWorkId(input.requestId) && validWorkId(input.confirmationId)
         && ['continue', 'supplement', 'steer'].includes(String(input.operation)) && typeof input.text === 'string' && Boolean(input.text.trim()) && !input.text.includes('\0') && Buffer.byteLength(input.text, 'utf8') <= 16_384
         && targetShape && imagesShape
       : input.action === 'status' || input.action === 'cancel' ? only(input, ['action', 'epoch', 'confirmationId']) && validWorkId(input.confirmationId) : false
     if (!shape || !validWorkId(input.epoch)) return fail('invalid_input', 'Delivery request fields are invalid', 400)
     if (!ports.delivery) return fail('delivery_unavailable', 'Delivery service is unavailable', 503)
-    const payload = input.action === 'prepare' || input.action === 'confirm'
+    const payload = full
       ? { requestId: input.requestId, confirmationId: input.confirmationId, operation: input.operation, text: input.text, target: input.target, images: input.images ?? [] }
       : { confirmationId: input.confirmationId }
     const data = await ports.delivery({ action: input.action, epoch: input.epoch, ...payload }) as any
+    const targetOut = () => {
+      const target = data?.target
+      if (!isObject(target) || !validWorkId(target.sessionId) || !validHash(target.scopeRevision) || !validHash(target.factRevision) || !isObject(target.project) || !['project', 'unassigned'].includes(String(target.project.kind)) || !validWorkId(target.project.key)) return undefined
+      return { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
+    }
+    const imagesOut = () => Array.isArray(data?.images)
+      ? (data.images as any[]).slice(0, 5).filter(item => isObject(item) && validWorkId(item.imageId) && validHash(item.digest) && Number.isSafeInteger(item.seq) && Number(item.seq) > 0).map(item => ({ imageId: item.imageId, digest: item.digest, seq: item.seq }))
+      : []
+    // Dispatch receipts are target evidence only: accepted != execution/completion and the body never passes through.
+    if (input.action === 'dispatch') {
+      const state = data?.state, uuidText = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+      if (!['accepted', 'dispatch_unknown', 'blocked'].includes(String(state)) || !uuidText(data?.confirmationId) || !uuidText(data?.dispatchId)
+        || typeof data?.messageId !== 'string' || data.messageId !== `go:${data.dispatchId}` || !validHash(data?.digest) || !Number.isSafeInteger(data?.seq) || Number(data.seq) < 2
+        || data?.epoch !== input.epoch || data?.confirmationId !== input.confirmationId || data?.requestId !== input.requestId || data?.operation !== input.operation) return fail('delivery_dispatch_record_invalid', 'Delivery dispatch receipt is invalid', 503)
+      const accepted = data.accepted === true
+      if (accepted !== (state === 'accepted') || data.delivered !== accepted) return fail('delivery_dispatch_record_invalid', 'Delivery dispatch receipt is invalid', 503)
+      const output: Record<string, unknown> = { version: 1 }
+      for (const field of ['epoch', 'requestId', 'confirmationId', 'dispatchId']) if (validWorkId(data?.[field])) output[field] = data[field]
+      if (['continue', 'supplement', 'steer'].includes(data?.operation)) output.operation = data.operation
+      if (typeof data?.messageId === 'string' && /^go:[0-9a-f-]{36}$/i.test(data.messageId)) output.messageId = data.messageId
+      output.digest = data.digest
+      for (const field of ['seq', 'at', 'updatedAt', 'bodyBytes']) if (Number.isSafeInteger(data?.[field]) && data[field] >= 0) output[field] = data[field]
+      output.state = state
+      output.durable = data?.durable === true
+      output.humanConfirmed = data?.humanConfirmed === true
+      output.delivered = accepted
+      output.accepted = accepted
+      output.executed = state === 'blocked' ? false : null
+      output.completed = state === 'blocked' ? false : null
+      output.disposition = accepted ? 'target-durable-receipt' : state === 'blocked' ? 'not-dispatched' : 'reconcile-only'
+      if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
+      const target = targetOut(); if (target) output.target = target
+      output.images = imagesOut()
+      return json({ ok: true, data: output })
+    }
     // Confirmation summary only. Raw body, caller payload, authority and dispatch claims never pass through.
     const output: Record<string, unknown> = {}
     if (data?.version === 1) output.version = 1
@@ -761,11 +797,8 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     if (['not-confirmed', 'confirmed-pending-delivery', 'canceled'].includes(data?.disposition)) output.disposition = data.disposition
     if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
     output.durable = data?.durable === true
-    const target = data?.target
-    if (isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) {
-      output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
-    }
-    if (Array.isArray(data?.images)) output.images = data.images.slice(0, 5).filter((item: any) => isObject(item) && validWorkId(item.imageId) && validHash(item.digest) && typeof item.seq === 'number' && Number.isSafeInteger(item.seq) && item.seq > 0).map((item: any) => ({ imageId: item.imageId, digest: item.digest, seq: item.seq }))
+    const target = targetOut(); if (target) output.target = target
+    output.images = imagesOut()
     return json({ ok: true, data: output })
   })
   route('/health', async request => { const parsed = await body(request, []); if (parsed.error) return parsed.error; return ok(await healthData()) })

@@ -3,9 +3,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
-import { openStore, type Store } from '../../src/store/index.js'
+import { encodeJson, openStore, type Store } from '../../src/store/index.js'
 import { WorkspaceError } from '../../src/workspace/commands.js'
-import { createDeliveries, deliveryDigest, validDeliveryInput, type DeliveryImageReference, type DeliveryInput, type DeliveryPorts } from '../../src/workspace/deliveries.js'
+import { createDeliveries, deliveryDigest, validDeliveryInput, type DeliveryDispatchEvidence, type DeliveryDispatchRecord, type DeliveryImageReference, type DeliveryInput, type DeliveryPorts } from '../../src/workspace/deliveries.js'
 import type { SessionTargetBinding } from '../../src/workspace/session-actions.js'
 
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -34,7 +34,7 @@ function database() {
 
 interface ImageRow extends DeliveryImageReference { epoch: string; state: 'staged' | 'bound' | 'released'; target?: SessionTargetBinding }
 
-function fixture(options: { images?: boolean } = {}) {
+function fixture(options: { images?: boolean; dispatch?: boolean } = {}) {
   const db = database()
   const state = {
     epoch: EPOCH,
@@ -43,7 +43,11 @@ function fixture(options: { images?: boolean } = {}) {
     denied: false,
     failFenceOnce: false,
     images: new Map<string, ImageRow>(),
-    counts: { target: 0, image: 0, fence: 0 },
+    counts: { target: 0, image: 0, fence: 0, dispatch: 0 },
+    calls: [] as Array<{ record: DeliveryDispatchRecord; text: string; fencePersisted: boolean }>,
+    decision: { state: 'accepted', code: undefined } as { state: 'accepted' | 'dispatch_unknown' | 'blocked'; code?: string },
+    throwDispatch: false,
+    evidence: undefined as undefined | ((record: DeliveryDispatchRecord) => DeliveryDispatchEvidence | undefined),
   }
   const ports: DeliveryPorts = {
     requireEpoch(epoch) { if (epoch !== state.epoch) throw new WorkspaceError('workspace_epoch_stale', 409) },
@@ -68,6 +72,16 @@ function fixture(options: { images?: boolean } = {}) {
         return { references, fence() { for (const reference of references) { const row = state.images.get(reference.imageId); if (!row || row.state !== 'bound' || row.digest !== reference.digest || row.seq !== reference.seq) throw new WorkspaceError('image_reference_changed', 409) } } }
       },
     }),
+    ...(options.dispatch === false ? {} : {
+      async dispatch(record: Readonly<DeliveryDispatchRecord>, text: string) {
+        state.counts.dispatch++
+        const persisted: any = db.store.repos.side_effect.get(`delivery-dispatch:v1:${record.confirmationId}`)
+        state.calls.push({ record: { ...record, target: { ...record.target, project: { ...record.target.project } } } as DeliveryDispatchRecord, text, fencePersisted: persisted?.state === `v1:${record.seq}` })
+        if (state.throwDispatch) throw new Error('Host call outcome lost')
+        return { state: state.decision.state, ...(state.decision.code === undefined ? {} : { code: state.decision.code }) }
+      },
+      async evidence(record: Readonly<DeliveryDispatchRecord>) { return state.evidence?.(record as DeliveryDispatchRecord) as DeliveryDispatchEvidence | undefined },
+    }),
   }
   let service = createDeliveries(db.store, ports)
   return {
@@ -84,6 +98,16 @@ function fixture(options: { images?: boolean } = {}) {
       return { epoch: state.epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue', text: 'Continue this exact work\n保留原字节 🧭',
         target: { sessionId: state.binding.sessionId, scopeRevision: state.binding.scopeRevision, factRevision: state.binding.factRevision }, images: [], ...patch }
     },
+    /** Simulate a process that persisted its dispatch fence and died before a result was stored. */
+    staleDispatch(input: DeliveryInput, mode: 'dispatching' | 'dispatch_unknown') {
+      const dispatchId = randomUUID(), at = Date.now(), seq = mode === 'dispatching' ? 1 : 2
+      const record: DeliveryDispatchRecord = { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, dispatchId,
+        operation: input.operation, target: { sessionId: input.target.sessionId, scopeRevision: input.target.scopeRevision, factRevision: input.target.factRevision, project: { ...PROJECT } },
+        digest: deliveryDigest(input), messageId: `go:${dispatchId}`, seq, at, updatedAt: at, state: mode, ...(mode === 'dispatch_unknown' ? { code: 'delivery_dispatch_unknown' } : {}) }
+      db.store.db.prepare('INSERT INTO side_effect(key,kind,ticket_id,at,state,detail) VALUES (?,?,NULL,?,?,?)').run(`delivery-dispatch:v1:${input.confirmationId}`, 'delivery-dispatch-v1', at, `v1:${seq}`, encodeJson(record, false))
+      return record
+    },
+    dispatchRows() { return db.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1') },
   }
 }
 const imageRef = (image: ImageRow): DeliveryImageReference => ({ imageId: image.imageId, digest: image.digest, seq: image.seq })
@@ -92,7 +116,7 @@ async function rejectsWith(promise: Promise<unknown>, code: string, status: numb
 }
 
 describe('pre-delivery confirmation: prepared is not delivered', () => {
-  it('prepares exact content metadata with no body persistence and no dispatch surface', async () => {
+  it('prepares exact content metadata with no body persistence', async () => {
     const f = fixture(), input = f.input({ text: 'PRIVATE EXACT BODY — 保留换行\nsecond line' })
     const receipt = await f.service.prepare(input)
     expect(receipt).toEqual({
@@ -101,7 +125,7 @@ describe('pre-delivery confirmation: prepared is not delivered', () => {
       seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared',
       durable: true, humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed',
     })
-    expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'prepare', 'status'])
+    expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'dispatch', 'prepare', 'reconcile', 'status'])
     const rows = f.db.store.repos.side_effect.all()
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'delivery-confirmation-v1', state: 'v1:1' })
@@ -259,12 +283,146 @@ describe('input shape gates', () => {
       await rejectsWith(f.service.prepare(value as DeliveryInput), 'delivery_invalid', 400)
     }
     expect(f.db.store.repos.side_effect.all()).toEqual([])
-    expect(f.state.counts).toEqual({ target: 0, image: 0, fence: 0 })
+    expect(f.state.counts).toEqual({ target: 0, image: 0, fence: 0, dispatch: 0 })
   })
 
-  it('exposes only the four human/service operations, with no dispatch or Agent surface', async () => {
+  it('exposes only the exact confirmation/dispatch service surface, with no Agent or body export', async () => {
     const f = fixture()
-    expect(Object.keys(f.ports).sort()).toEqual(['images', 'requireEpoch', 'target'])
-    expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'prepare', 'status'])
+    expect(Object.keys(f.ports).sort()).toEqual(['dispatch', 'evidence', 'images', 'requireEpoch', 'target'])
+    expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'dispatch', 'prepare', 'reconcile', 'status'])
+  })
+})
+
+
+describe('dispatch: one durable control call for the exact confirmed payload', () => {
+  it.each(['continue', 'supplement', 'steer'] as const)('calls the Host adapter once for %s and reports accepted without completion', async operation => {
+    const f = fixture(), input = f.input({ operation, text: `  exact ${operation} body\r\n保留原字节 🧭  ` })
+    await f.service.prepare(input); await f.service.confirm(input)
+    const receipt = await f.service.dispatch(input)
+    expect(f.state.calls).toHaveLength(1)
+    expect(f.state.calls[0]).toMatchObject({ text: input.text, fencePersisted: true, record: { operation, digest: deliveryDigest(input), state: 'dispatching', seq: 1,
+      target: { sessionId: SESSION, scopeRevision: input.target.scopeRevision, factRevision: input.target.factRevision, project: { ...PROJECT } } } })
+    expect(receipt).toMatchObject({ version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation,
+      digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [], state: 'accepted', durable: true, humanConfirmed: true,
+      delivered: true, accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt', seq: 2 })
+    expect(receipt.messageId).toBe(`go:${receipt.dispatchId}`)
+    // Same request/content replays the stored receipt; the Host is never called twice.
+    expect(await f.service.dispatch(input)).toEqual(receipt)
+    expect(f.state.calls).toHaveLength(1)
+    expect(f.dispatchRows()).toHaveLength(1)
+    // Neither the confirmation nor the dispatch fence may contain the raw body.
+    expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('exact continue body')
+    expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('保留原字节')
+  })
+
+  it('rejects unconfirmed, changed, canceled, forged, replayed and cross-epoch dispatches without any Host call', async () => {
+    const f = fixture(), input = f.input({ text: 'Original exact body' })
+    await rejectsWith(f.service.dispatch(input), 'delivery_confirmation_not_found', 404)
+    await f.service.prepare(input)
+    await rejectsWith(f.service.dispatch(input), 'delivery_confirmation_not_confirmed', 409)
+    await f.service.confirm(input)
+    await rejectsWith(f.service.dispatch({ ...input, text: 'Edited body' }), 'delivery_confirmation_changed', 409)
+    await rejectsWith(f.service.dispatch({ ...input, operation: 'steer' }), 'delivery_confirmation_changed', 409)
+    await rejectsWith(f.service.dispatch({ ...input, target: { ...input.target, sessionId: 'other-session' } }), 'delivery_confirmation_changed', 409)
+    await rejectsWith(f.service.dispatch({ ...input, requestId: randomUUID() }), 'delivery_request_conflict', 409)
+    await rejectsWith(f.service.dispatch({ ...input, confirmationId: randomUUID() }), 'delivery_confirmation_not_found', 404)
+    await rejectsWith(f.service.dispatch({ ...input, extra: true } as any), 'delivery_invalid', 400)
+    expect(f.state.calls).toEqual([])
+    expect(f.dispatchRows()).toEqual([])
+    f.state.epoch = 'delivery-next-epoch'
+    await rejectsWith(f.service.dispatch({ ...input, epoch: EPOCH }), 'workspace_epoch_stale', 409)
+    expect(f.state.calls).toEqual([])
+  })
+
+  it('rejects a canceled confirmation and never turns a cancel into a dispatch', async () => {
+    const f = fixture(), input = f.input()
+    await f.service.prepare(input); await f.service.cancel({ epoch: input.epoch, confirmationId: input.confirmationId })
+    await rejectsWith(f.service.dispatch(input), 'delivery_confirmation_canceled', 409)
+    expect(f.state.calls).toEqual([]); expect(f.dispatchRows()).toEqual([])
+  })
+
+  it('rejects target facts, target fences and bound images that changed after confirmation, before any fence or Host call', async () => {
+    const f = fixture(), input = f.input()
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.binding = { ...f.state.binding, factRevision: digest(['fact', 1]) }
+    await rejectsWith(f.service.dispatch(input), 'delivery_target_changed', 409)
+    expect(f.dispatchRows()).toEqual([]); expect(f.state.calls).toEqual([])
+    f.state.binding = { ...f.state.binding, factRevision: input.target.factRevision }
+    f.state.denied = true
+    await rejectsWith(f.service.dispatch(input), 'delivery_target_changed', 409)
+    f.state.denied = false
+    const image = f.bindImage(), withImage = f.input({ images: [imageRef(image)] })
+    await f.service.prepare(withImage); await f.service.confirm(withImage)
+    image.state = 'released'
+    await rejectsWith(f.service.dispatch(withImage), 'delivery_image_changed', 409)
+    expect(f.dispatchRows()).toEqual([]); expect(f.state.calls).toEqual([])
+  })
+
+  it('keeps an unresolved Host call as dispatch_unknown, never resends and stays unknown across a real SQLite reopen', async () => {
+    const f = fixture(), input = f.input({ text: 'Unknown outcome body' })
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.throwDispatch = true
+    const first = await f.service.dispatch(input)
+    expect(first).toMatchObject({ state: 'dispatch_unknown', accepted: false, delivered: false, executed: null, completed: null, disposition: 'reconcile-only', code: 'delivery_dispatch_unknown' })
+    expect(f.state.calls).toHaveLength(1)
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
+    expect(f.state.calls).toHaveLength(1)
+    f.reopen()
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'dispatch_unknown' })
+    expect(f.state.calls).toHaveLength(1)
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
+    expect(f.state.calls).toHaveLength(1)
+    expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('Unknown outcome body')
+    // Exact target evidence may reconcile the unknown later; it never becomes a resend.
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
+    const reconciled = await f.service.dispatch(input)
+    expect(reconciled).toMatchObject({ state: 'accepted', accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt', seq: 3 })
+    expect(f.state.calls).toHaveLength(1)
+  })
+
+  it('reports a cold target as blocked without an adapter call and never retries it', async () => {
+    const f = fixture(), input = f.input()
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.decision = { state: 'blocked', code: 'delivery_target_cold' }
+    const blocked = await f.service.dispatch(input)
+    expect(blocked).toMatchObject({ state: 'blocked', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched', code: 'delivery_target_cold' })
+    expect(f.state.calls).toHaveLength(1)
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'blocked', seq: 2 })
+    expect(f.state.calls).toHaveLength(1)
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 0, blocked: 1 })
+  })
+
+  it('blocks visibly when no Host dispatch adapter is wired', async () => {
+    const f = fixture({ dispatch: false }), input = f.input()
+    await f.service.prepare(input); await f.service.confirm(input)
+    const blocked = await f.service.dispatch(input)
+    expect(blocked).toMatchObject({ state: 'blocked', code: 'delivery_adapter_unavailable', accepted: false, executed: false, completed: false, disposition: 'not-dispatched' })
+    expect(f.dispatchRows()).toHaveLength(1)
+  })
+
+  it('reconciles a crash-left dispatching fence to unknown, then only to accepted with exact evidence, never by resending', async () => {
+    const f = fixture(), input = f.input({ text: 'Crash fence body' })
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.staleDispatch(input, 'dispatching')
+    const unknown = await f.service.dispatch(input)
+    expect(unknown).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
+    expect(f.state.calls).toEqual([])
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
+    expect(f.state.calls).toEqual([])
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 1, unknown: 0, blocked: 0 })
+    expect(await f.service.dispatch(input)).toMatchObject({ state: 'accepted', seq: 3 })
+    expect(f.state.calls).toEqual([])
+  })
+
+  it('rejects contradictory or mismatched target evidence instead of claiming acceptance', async () => {
+    const f = fixture(), input = f.input()
+    await f.service.prepare(input); await f.service.confirm(input)
+    f.state.throwDispatch = true
+    await f.service.dispatch(input)
+    f.state.evidence = record => ({ dispatchId: randomUUID(), confirmationId: record.confirmationId, sessionId: record.target.sessionId, digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
+    f.state.evidence = record => ({ dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: 'other-session', digest: record.digest, messageId: record.messageId, durable: true, accepted: true })
+    expect(await f.service.reconcile()).toEqual({ accepted: 0, unknown: 1, blocked: 0 })
   })
 })

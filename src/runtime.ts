@@ -49,6 +49,14 @@ export interface RuntimeContext {
 }
 const safeConfigJSON = (value: unknown): ConfigMutationJSON => JSON.parse(JSON.stringify(value)) as ConfigMutationJSON
 const message = (text: string) => ({ id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'superagent', form: 'notice', summary: 'Superagent runtime context' } })
+/** Durable target evidence: the exact message id must be committed to the target session log.
+ * A Host inbox splice is a committed event; an accepted dispatch is never inferred from a call return.
+ */
+function deliverySeen(snapshot: any, messageId: string): boolean {
+  return Boolean(Array.isArray(snapshot?.events) && snapshot.events.some((event: any) =>
+    event?.type === 'user/message' && event.data?.id === messageId
+    || event?.type === 'agent/inbox/spliced' && Array.isArray(event.data?.inserted) && event.data.inserted.some((item: any) => item?.id === messageId)))
+}
 
 /** Every tool execution obtains a fresh trusted DB snapshot, not model-supplied ids. */
 export function readWorkerSnapshot(store: Store, sessionId: string): WorkerGuardSnapshot | undefined {
@@ -446,11 +454,40 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       scope: () => sessionWork!.imageScope(), target: input => sessionWork!.actionTarget(input),
       // Original-image interpretation/delivery needs a verified Host model+permission adapter.
     })
-    // Human confirmation only: no Agent, message or dispatch adapter is injected in this slice.
+    // Human-confirmed dispatch to an already live managed target. Scope/epoch/binding are re-verified
+    // by the service before the fence; the only Host side effect is one exact control call.
     deliveryConfirmations = createDeliveries(store, {
       requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('delivery_unavailable', 503); workspace.requireEpoch(epoch) },
       target: input => sessionWork!.actionTarget(input),
       images: input => images!.verify(input),
+      async dispatch(record, text) {
+        if (disposed) return { state: 'blocked', code: 'delivery_unavailable' }
+        // A cold target is an explicit block for this issue; #6 owns any cold wake-up.
+        const agent = ctx.agents.get(record.target.sessionId)
+        if (!agent) return { state: 'blocked', code: 'delivery_target_cold' }
+        // Exact DSH operation semantics: continue wakes, supplement rides the next step, steer corrects.
+        const value = { ...message(text), id: record.messageId, source: { kind: 'superagent', form: 'notice', summary: 'Superagent delivery' } }
+        try {
+          if (record.operation === 'continue') await agent.followup(value)
+          else if (record.operation === 'supplement') await agent.inject(value)
+          else await agent.steer(value)
+        } catch { return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' } }
+        // The Host call returning is not acceptance: require target-committed evidence.
+        try {
+          if (!ctx.sessions || await ctx.sessions.flush(agent.session) !== true) return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
+          const snapshot = await ctx.sessionQuery.readSession(record.target.sessionId)
+          if (!deliverySeen(snapshot, record.messageId)) return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' }
+          return { state: 'accepted' }
+        } catch { return { state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' } }
+      },
+      async evidence(record) {
+        try {
+          const snapshot = await ctx.sessionQuery.readSession(record.target.sessionId)
+          if (!deliverySeen(snapshot, record.messageId)) return undefined
+          return { dispatchId: record.dispatchId, confirmationId: record.confirmationId, sessionId: record.target.sessionId,
+            digest: record.digest, messageId: record.messageId, durable: true, accepted: true }
+        } catch { return undefined }
+      },
     })
     sessionDecisions = createSessionDecisions(store, {
       requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('session_decision_unavailable', 503); workspace.requireEpoch(epoch) },
@@ -528,6 +565,8 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
     await source.start()
     await engine.recover()
     await workspace?.recover()
+    // Reconcile uncertain dispatches against target evidence only. Never resend, never wake cold targets.
+    await deliveryConfirmations?.reconcile().catch(() => {})
     if (!disposed) await pump()
     if (disposed) return
     timer = setInterval(() => {
@@ -675,6 +714,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         const { action, ...payload } = input
         if (action === 'prepare') return deliveryConfirmations.prepare(payload)
         if (action === 'confirm') return deliveryConfirmations.confirm(payload)
+        if (action === 'dispatch') return deliveryConfirmations.dispatch(payload)
         if (action === 'cancel') return deliveryConfirmations.cancel(payload)
         if (action === 'status') return deliveryConfirmations.status(payload)
         throw new WorkspaceError('invalid_input', 400)

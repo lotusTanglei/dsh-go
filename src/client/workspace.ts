@@ -578,6 +578,20 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const editLocateText = (value: string) => {
       locateTextRef.current = value; setLocateText(value); resetLocate()
     }
+    /**
+     * The locate stage only translates a colloquial request into a strict retrieval intent; the
+     * bounded locate evidence chain still owns the target. A low-confidence or unreadable intent
+     * becomes an explicit clarification question, never a silent literal-search substitution.
+     */
+    const stageLocateEvidence = (value: any) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1 || !['located', 'clarify', 'no_match', 'blocked'].includes(value.status)) return { fallback: true as const }
+      if (value.locate && typeof value.locate === 'object' && !Array.isArray(value.locate)) return { result: value.locate }
+      if (value.status === 'clarify') {
+        const code = typeof value.code === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(value.code) ? value.code : undefined
+        return { result: { status: 'clarify', controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED', candidates: [], candidateTotal: 0, ...(code === undefined ? {} : { code }) } }
+      }
+      return { fallback: true as const }
+    }
     const readLocate = async (candidate?: any) => {
       const epoch = epochRef.current, query = locateTextRef.current, version = locateVersion.current, old = locateResultRef.current
       if (!epoch || locateBusyRef.current || systemRef.current !== 'locate' || !query.trim()) return
@@ -585,9 +599,22 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       if (candidate && (old?.status !== 'clarify' || typeof old.revision !== 'string' || !old.revision || !array(old.candidates).includes(candidate) || !scopeProjectKey(candidate.project) || candidate.project.kind === 'unknown')) return
       const operation = {}; locateBusyRef.current = operation; setLocateBusy(true); setLocateError(''); locateResultRef.current = null; setLocateResult(null)
       try {
-        const result = await call('session-locate', { epoch, text: query, ...(candidate ? { sessionId: candidate.sessionId, revision: old.revision } : {}) })
+        let result: any
+        if (candidate) result = await call('session-locate', { epoch, text: query, sessionId: candidate.sessionId, revision: old.revision })
+        else {
+          // The model-backed stage is primary; only a stage capability outage falls back to the
+          // literal chain. Intent clarifications stay clarifications and never fall through.
+          let stage: any = null
+          try { stage = await call('stage-locate', { epoch, text: query }) }
+          catch (error: any) { if (error?.status !== 503) throw error }
+          const outcome = stage ? stageLocateEvidence(stage) : { fallback: true as const }
+          result = 'result' in outcome ? outcome.result : await call('session-locate', { epoch, text: query })
+        }
         if (!alive.current || epochRef.current !== epoch || systemRef.current !== 'locate' || locateVersion.current !== version || locateTextRef.current !== query) return
-        if (!result || !['located', 'clarify', 'no_match', 'blocked'].includes(result.status) || result.controlAvailable !== false || typeof result.executionReason !== 'string' || !result.executionReason || !Array.isArray(result.candidates) || result.candidates.some((row: any) => typeof row?.sessionId !== 'string' || !row.sessionId || !scopeProjectKey(row.project) || row.project.kind === 'unknown') || ['located', 'clarify'].includes(result.status) && (typeof result.revision !== 'string' || !result.revision) || result.status === 'located' && (!result.target || !result.candidates.some((row: any) => row.sessionId === result.target.sessionId) || candidate && result.target.sessionId !== candidate.sessionId || !scopeProjectKey(result.target.project) || result.target.project.kind === 'unknown' || result.coverage === 'partial')) throw new Error('invalid_locate_receipt')
+        if (!result || !['located', 'clarify', 'no_match', 'blocked'].includes(result.status) || result.controlAvailable !== false || typeof result.executionReason !== 'string' || !result.executionReason || !Array.isArray(result.candidates) || result.candidates.some((row: any) => typeof row?.sessionId !== 'string' || !row.sessionId || !scopeProjectKey(row.project) || row.project.kind === 'unknown')
+          || result.status === 'located' && (typeof result.revision !== 'string' || !result.revision)
+          || result.status === 'clarify' && result.candidates.length > 0 && (typeof result.revision !== 'string' || !result.revision)
+          || result.status === 'located' && (!result.target || !result.candidates.some((row: any) => row.sessionId === result.target.sessionId) || candidate && result.target.sessionId !== candidate.sessionId || !scopeProjectKey(result.target.project) || result.target.project.kind === 'unknown' || result.coverage === 'partial')) throw new Error('invalid_locate_receipt')
         locateResultRef.current = result; setLocateResult(result)
       } catch (e: any) {
         if (alive.current && epochRef.current === epoch && systemRef.current === 'locate' && locateVersion.current === version) setLocateError(tr(e?.status === 409 ? 'LocateChanged' : 'LocateFailed'))
@@ -1506,6 +1533,61 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         else saveDelivery(key, { ...entry, busy: null, status: 'unknown', error: tr('DeliveryConfirmUnknown') })
       } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
     }
+    const validDeliveryDispatchReceipt = (receipt: any, entry: any) => {
+      const input = entry?.pending, previous = entry?.dispatch, hash = (value: any) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+      const uuid = (value: any) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+      const keys = ['version', 'epoch', 'requestId', 'confirmationId', 'dispatchId', 'messageId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'durable', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition']
+      if (!input || !receipt || typeof receipt !== 'object' || Array.isArray(receipt) || Object.getOwnPropertySymbols(receipt).length
+        || Object.keys(receipt).some(key => !keys.includes(key))
+        || receipt.version !== 1 || !['epoch', 'requestId', 'confirmationId', 'operation'].every(key => receipt[key] === input[key])
+        || !receipt.target || typeof receipt.target !== 'object' || Array.isArray(receipt.target) || Object.keys(receipt.target).length !== 4
+        || ['sessionId', 'scopeRevision', 'factRevision'].some(key => receipt.target[key] !== input.target[key])
+        || receipt.target.project?.kind !== entry.target.project.kind || receipt.target.project?.key !== entry.target.project.key
+        || !hash(receipt.digest) || receipt.digest !== entry.digest || !uuid(receipt.dispatchId) || receipt.messageId !== `go:${receipt.dispatchId}`
+        || receipt.bodyBytes !== new TextEncoder().encode(entry.text).length
+        || !Array.isArray(receipt.images) || receipt.images.length !== array(input.images).length
+        || receipt.images.some((row: any, index: number) => !row || Object.keys(row).length !== 3 || row.imageId !== input.images[index]?.imageId || row.digest !== input.images[index]?.digest || row.seq !== input.images[index]?.seq)
+        || !['accepted', 'dispatch_unknown', 'blocked'].includes(receipt.state)
+        || ![2, 3].includes(receipt.seq) || receipt.state !== 'accepted' && receipt.seq !== 2
+        || receipt.accepted !== (receipt.state === 'accepted') || receipt.delivered !== (receipt.state === 'accepted')
+        || receipt.executed !== (receipt.state === 'blocked' ? false : null) || receipt.completed !== (receipt.state === 'blocked' ? false : null)
+        || receipt.disposition !== (receipt.state === 'accepted' ? 'target-durable-receipt' : receipt.state === 'blocked' ? 'not-dispatched' : 'reconcile-only')
+        || receipt.durable !== true || receipt.humanConfirmed !== true
+        || !Number.isSafeInteger(receipt.at) || receipt.at < 0 || !Number.isSafeInteger(receipt.updatedAt) || receipt.updatedAt < receipt.at
+        || receipt.code !== undefined && (typeof receipt.code !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(receipt.code))) return false
+      // A higher sequence cannot rewrite facts; terminal dispatch outcomes cannot roll back.
+      if (previous) {
+        if (receipt.seq < previous.seq || receipt.at !== previous.at || receipt.updatedAt < previous.updatedAt) return false
+        if (receipt.seq === previous.seq && ['state', 'code', 'updatedAt', 'digest', 'dispatchId', 'messageId'].some(key => receipt[key] !== previous[key])) return false
+        if (previous.state === 'accepted' && receipt.state !== 'accepted') return false
+        if (previous.state === 'blocked' && receipt.state !== 'blocked') return false
+        if (previous.state === 'dispatch_unknown' && !['dispatch_unknown', 'accepted'].includes(receipt.state)) return false
+      }
+      return true
+    }
+    /** Dispatch the exact human-confirmed object once; later draft edits never ride along silently. */
+    const dispatchDelivery = async (key: string) => {
+      const entry = deliveriesRef.current[key], current = currentDelivery()
+      if (!alive.current || deliveryBusyRef.current || !entry?.pending || entry.busy || entry.status !== 'confirmed' || !entry.receipt || entry.receipt.state !== 'confirmed'
+        || entry.dispatch && entry.dispatch.state !== 'dispatch_unknown'
+        || !current || current.key !== key || entry.epoch !== epochRef.current) return
+      const payload = { epoch: entry.epoch, requestId: entry.pending.requestId, confirmationId: entry.pending.confirmationId, operation: entry.pending.operation,
+        text: entry.text, target: { ...entry.pending.target }, images: array(entry.pending.images).map((row: any) => ({ ...row })) }
+      const operation = {}; deliveryBusyRef.current = operation
+      saveDelivery(key, { ...entry, busy: operation, error: '' })
+      try {
+        const digest = await deliveryDigest(payload)
+        if (!alive.current || currentDelivery()?.key !== key) { saveDelivery(key, { ...entry, busy: null }); return }
+        if (digest !== entry.digest) { saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryDispatchChanged') }); return }
+        const receipt = await call('delivery', { action: 'dispatch', ...payload })
+        if (!validDeliveryDispatchReceipt(receipt, entry)) throw new Error('invalid_delivery_dispatch_receipt')
+        const error = receipt.state === 'blocked' ? tr(receipt.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked') : ''
+        saveDelivery(key, { ...entry, busy: null, dispatch: receipt, dispatchStatus: receipt.state, error })
+      } catch (e: any) {
+        if (e?.status === 409) saveDelivery(key, { ...entry, busy: null, error: tr('DeliveryDispatchChanged') })
+        else saveDelivery(key, { ...entry, busy: null, dispatchStatus: entry.dispatch?.state === 'accepted' ? 'accepted' : 'dispatch_unknown', error: tr('DeliveryDispatchUnknown') })
+      } finally { if (deliveryBusyRef.current === operation) deliveryBusyRef.current = null }
+    }
     const cancelDelivery = async (key: string) => {
       const entry = deliveriesRef.current[key]
       if (!alive.current || !entry || entry.busy) return
@@ -1574,7 +1656,27 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('p', { className: 'saw-meta' }, tr('DeliveryConfirmedHint')),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryHandoff')}: ${entry.receipt.disposition}`),
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
-            h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.receipt.updatedAt)}`)) : null,
+            h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.receipt.updatedAt)}`),
+            entry.busy ? h('p', { className: 'saw-meta', role: 'status', 'aria-live': 'polite' }, tr('DeliveryDispatching')) : null,
+            !entry.dispatch ? button(tr('DeliveryDispatch'), () => { void dispatchDelivery(current.key) }, busy, { className: 'saw-btn saw-action-primary' }) : null,
+            entry.dispatch ? h('section', { className: 'saw-delivery-summary', role: 'status', 'aria-label': tr('DeliveryDispatchState') },
+              h('strong', null, tr(entry.dispatch.state === 'accepted' ? 'DeliveryAccepted' : entry.dispatch.state === 'blocked' ? 'DeliveryDispatchBlocked' : 'DeliveryDispatchUnknown')),
+              entry.dispatch.state === 'accepted' ? h(React.Fragment, null,
+                h('p', { className: 'saw-meta' }, tr('DeliveryAcceptedHint')),
+                h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDispatchId')}: ${entry.dispatch.dispatchId}`),
+                h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.dispatch.updatedAt)}`)) : null,
+              entry.dispatch.state === 'dispatch_unknown' ? h(React.Fragment, null,
+                h('p', { className: 'saw-error' }, tr('DeliveryDispatchUnknown')),
+                button(tr('DeliveryQueryDispatch'), () => { void dispatchDelivery(current.key) }, busy)) : null,
+              entry.dispatch.state === 'blocked' ? h(React.Fragment, null,
+                h('p', { className: 'saw-error' }, tr(entry.dispatch.code === 'delivery_target_cold' ? 'DeliveryTargetCold' : 'DeliveryDispatchBlocked')),
+                h('p', { className: 'saw-meta' }, tr('DeliveryDispatchBlockedHint')),
+                entry.dispatch.code ? h('p', { className: 'saw-meta' }, `${tr('Code')}: ${entry.dispatch.code}`) : null) : null) : null,
+            !entry.dispatch && entry.dispatchStatus === 'dispatch_unknown' ? h('div', { className: 'saw-row' },
+              h('p', { className: 'saw-error' }, tr('DeliveryDispatchUnknown')),
+              button(tr('DeliveryQueryDispatch'), () => { void dispatchDelivery(current.key) }, busy)) : null,
+            !entry.dispatch && entry.dispatchStatus === 'blocked' ? h('p', { className: 'saw-error' }, entry.error || tr('DeliveryDispatchBlocked')) : null,
+            !entry.dispatch && entry.dispatchStatus !== 'dispatch_unknown' && entry.dispatchStatus !== 'blocked' ? entry.error ? h('p', { className: 'saw-error', role: 'alert' }, entry.error) : null : null) : null,
           entry?.status === 'unknown' ? h('div', { className: 'saw-row' },
             h('p', { className: 'saw-error' }, entry.error || tr('DeliveryErrorUnknown')),
             button(tr('DeliveryQueryStatus'), () => { void checkDeliveryStatus(current.key) }, busy)) : null,
@@ -1595,6 +1697,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         locateError ? h('p', { className: 'saw-error', role: 'alert' }, locateError) : null,
         result ? h('section', { className: 'saw-box' }, h('h4', { role: 'status' }, tr(({ located: 'LocateLocated', clarify: 'LocateClarify', no_match: 'LocateNoMatch', blocked: 'LocateBlocked' } as any)[result.status])),
           result.coverage === 'partial' ? h('p', { className: 'saw-error' }, tr('LocatePartial')) : null,
+          result.status === 'clarify' && /^stage_locate_(?:intent|project)_/.test(String(result.code || '')) ? h('p', { className: 'saw-error' }, tr('LocateIntentClarify')) : null,
           h('p', { className: 'saw-meta' }, `${tr('LocateSearched')}: ${text(result.searched)} · ${tr('LocateCandidateTotal')}: ${text(result.candidateTotal ?? (result.status === 'located' ? 1 : result.status === 'no_match' ? 0 : undefined))}`),
           result.code ? h('p', { className: 'saw-meta' }, `${tr('Code')}: ${result.code}`) : null,
           h('p', { className: 'saw-error' }, `${tr('LocateOnly')} · ${result.executionReason}`),

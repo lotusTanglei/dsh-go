@@ -169,6 +169,27 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
       agents.set(sessionId, agent)
       return { assignmentId, sessionId, agent }
     },
+    /** An already-live ordinary managed target with real Host operation semantics. */
+    seedLiveTarget(sessionId: string, options: { failFollowup?: boolean } = {}) {
+      logs.set(sessionId, [])
+      const received = { followup: [] as Message[], inject: [] as Message[], steer: [] as Message[] }
+      const agent: any = {
+        id: sessionId, session: { id: sessionId }, ctx: {}, status: 'idle',
+        followup(value: Message) {
+          if (options.failFollowup) throw new Error('Host followup outcome lost')
+          received.followup.push(value); append(sessionId, 'agent/inbox/spliced', { target: 'next-turn', start: received.followup.length - 1, removedCount: 0, inserted: [value] })
+        },
+        inject(value: Message) {
+          received.inject.push(value); append(sessionId, 'agent/inbox/spliced', { target: 'next-step', start: received.inject.length - 1, removedCount: 0, inserted: [value] })
+        },
+        steer(value: Message) {
+          received.steer.push(value); append(sessionId, 'agent/inbox/spliced', { target: 'next-step', start: received.steer.length - 1, removedCount: 0, inserted: [value] })
+        },
+        cancel: calls.cancel,
+      }
+      agents.set(sessionId, agent)
+      return { sessionId, agent, received }
+    },
     setDurable(value: boolean) { durable = value }, setModelVerified(value: boolean) { modelVerified = value }, setModelWait(value: (() => Promise<void>) | undefined) { modelWait = value },
     async input(text = 'same task body', patch: Partial<WorkspaceCommand> = {}): Promise<WorkspaceCommand> {
       const workspace = await runtime.panelPorts.workspace()
@@ -239,6 +260,15 @@ async function targetInput(f: ReturnType<typeof fixture>, epoch: string) {
   const located = await f.runtime.panelPorts.sessionLocate({ epoch, text: 'Repair callback' })
   if (located.status !== 'located' || !located.target?.factRevision) throw new Error('Expected exact source target')
   return { sessionId: located.target.sessionId, scopeRevision: located.revision, factRevision: located.target.factRevision }
+}
+/** Same HTTP route seam as production, backed by this fixture's real runtime and Fake Host. */
+function httpPanel(f: ReturnType<typeof fixture>) {
+  const routes = new Map<string, (request: Request) => Promise<Response>>()
+  installPanelRoutes({ connection: { fetch: { register(route) { routes.set(route.path, route.fetch); return () => { routes.delete(route.path) } } } } }, f.store, {}, f.runtime.panelPorts as any)
+  return async (path: string, value: any) => {
+    const response = await routes.get(`/api/superagent/${path}`)!(new Request(`http://localhost/api/superagent/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) }))
+    return { status: response.status, ...(await response.json()) as any }
+  }
 }
 function observation(questions?: Record<string, unknown>) {
   const id = randomUUID()
@@ -970,6 +1000,125 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     await expect(f.runtime.panelPorts.delivery({ action: 'prepare', ...input, requestId: randomUUID(), confirmationId: input.confirmationId })).rejects.toMatchObject({ code: 'delivery_request_conflict', status: 409 })
     expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-confirmation-v1')).toHaveLength(1)
     expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([]); expect(f.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+
+  it.each(['continue', 'supplement', 'steer'] as const)('dispatches one exact %s through the HTTP seam to the live managed target with no completion claim', async operation => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation, text: `Exact ${operation} body\n保留原字节 🧭`, target, images: [] }
+    const prepared = await post('delivery', { action: 'prepare', ...input })
+    expect(prepared.status).toBe(200)
+    const confirmed = await post('delivery', { action: 'confirm', ...input })
+    expect(confirmed.data).toMatchObject({ state: 'confirmed', delivered: false, accepted: false })
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.status).toBe(200)
+    expect(dispatched.data).toMatchObject({ state: 'accepted', durable: true, humanConfirmed: true, delivered: true, accepted: true, executed: null, completed: null,
+      disposition: 'target-durable-receipt', operation, digest: prepared.data.digest, target: { ...target, project: { kind: 'project', key: 'p' } } })
+    expect(dispatched.data.messageId).toBe(`go:${dispatched.data.dispatchId}`)
+    // Exactly the corresponding Host call, and no other control operation.
+    const method = ({ continue: 'followup', supplement: 'inject', steer: 'steer' } as const)[operation]
+    expect(live.received[method]).toHaveLength(1)
+    expect(live.received[method][0]).toMatchObject({ id: dispatched.data.messageId, role: 'user', content: [{ type: 'text', text: input.text }] })
+    for (const other of ['followup', 'inject', 'steer'] as const) if (other !== method) expect(live.received[other]).toEqual([])
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+    expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+    expect(f.store.repos.ticket.all()).toEqual([]); expect(f.store.repos.trigger.all()).toEqual([])
+    // Same confirmation/content replays the stored receipt without a second Host call.
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(live.received[method]).toHaveLength(1)
+    // The raw body is never persisted in confirmation or dispatch fences.
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('Exact continue body')
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('Exact supplement body')
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('Exact steer body')
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('保留原字节')
+  })
+
+  it('rejects unconfirmed, changed, forged and cross-epoch HTTP dispatches with zero Host control calls', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Exact rejected body', target, images: [] }
+    const before = httpPanel(f)
+    expect((await before('delivery', { action: 'prepare', ...input })).status).toBe(200)
+    expect((await before('delivery', { action: 'dispatch', ...input })).status).toBe(409)
+    expect((await before('delivery', { action: 'confirm', ...input })).status).toBe(200)
+    const fixed = [
+      [{ ...input, text: 'Changed body' }, 409],
+      [{ ...input, operation: 'steer' }, 409],
+      [{ ...input, target: { ...target, factRevision: 'f'.repeat(64) } }, 409],
+      [{ ...input, actor: 'owner' }, 400],
+      [{ ...input, requestId: 'not-a-uuid' }, 400],
+    ] as const
+    for (const [bad, status] of fixed) expect((await before('delivery', { action: 'dispatch', ...bad })).status, JSON.stringify(bad)).toBe(status)
+    expect(live.received.followup).toEqual([]); expect(live.received.inject).toEqual([]); expect(live.received.steer).toEqual([])
+    await f.restart({ production: true, missingRouter: true })
+    const after = httpPanel(f)
+    expect((await after('delivery', { action: 'dispatch', ...input })).status).toBe(409)
+    expect(live.received.followup).toEqual([]); expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+  it('rejects dispatch once managed scope revokes the exact target, before any Host control call', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'supplement' as const, text: 'Scoped supplement', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const excluded = await f.runtime.panelPorts.sessionWork({ action: 'set-included', epoch, sessionId: observations.id, included: false, revision: target.scopeRevision })
+    const rejected = await post('delivery', { action: 'dispatch', ...input })
+    expect(rejected.status).toBe(409); expect(rejected.code).toBe('delivery_target_changed')
+    expect(live.received.inject).toEqual([])
+    await f.runtime.panelPorts.sessionWork({ action: 'set-included', epoch, sessionId: observations.id, included: true, revision: excluded.revision! })
+    expect((await post('delivery', { action: 'dispatch', ...input })).status).toBe(409)
+    expect(live.received.inject).toEqual([])
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1')).toEqual([])
+  })
+
+  it('blocks a cold managed target without waking it or calling resume', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Cold target body', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.status).toBe(200)
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_target_cold', durable: true, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-dispatched' })
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(blocked)
+    expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+    expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([])
+  })
+
+  it('keeps a lost dispatch unknown across restart, reconciles from target evidence only and never resends', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id, { failFollowup: true }), attempts: Message[] = []
+    const original = live.agent.followup
+    live.agent.followup = (value: Message) => { attempts.push(value); return original(value) }
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Lost dispatch body', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const unknown = await post('delivery', { action: 'dispatch', ...input })
+    expect(unknown.status).toBe(200)
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', durable: true, delivered: false, accepted: false, executed: null, completed: null, disposition: 'reconcile-only', code: 'delivery_dispatch_unknown' })
+    expect(attempts).toHaveLength(1)
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1').map(row => row.state)).toEqual(['v1:2'])
+    await f.restart({ production: true })
+    const replay = await httpPanel(f)('delivery', { action: 'dispatch', ...input })
+    expect(replay.status).toBe(200)
+    expect(replay.data).toMatchObject({ state: 'dispatch_unknown', seq: 2 })
+    expect(attempts).toHaveLength(1)
+    expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.realActivation).not.toHaveBeenCalled()
+  })
+
+  it('does not treat a non-durable Host flush as acceptance, then reconciles the committed message from evidence', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'steer' as const, text: 'Non-durable steer body', target, images: [] }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    f.setDurable(false)
+    const unknown = await post('delivery', { action: 'dispatch', ...input })
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', accepted: false, delivered: false, disposition: 'reconcile-only' })
+    expect(live.received.steer).toHaveLength(1)
+    f.setDurable(true)
+    const reconciled = await post('delivery', { action: 'dispatch', ...input })
+    expect(reconciled.data).toMatchObject({ state: 'accepted', accepted: true, delivered: true, executed: null, completed: null, seq: 3 })
+    expect(live.received.steer).toHaveLength(1)
   })
 
 })

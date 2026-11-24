@@ -93,7 +93,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
             if (route === 'session-work') expect(node.parent.getText(tree)).toContain("action: 'set-included'")
             else if (route === 'images') expect(node.parent.getText(tree)).toBe('{ sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision }')
             else {
-              expect(['{ sessionId: candidate.sessionId, revision: old.revision }', '{ epoch, text: row.sessionId, sessionId: row.sessionId, revision }']).toContain(node.parent.getText(tree))
+              expect(['{ epoch, text: query, sessionId: candidate.sessionId, revision: old.revision }', '{ sessionId: candidate.sessionId, revision: old.revision }', '{ epoch, text: row.sessionId, sessionId: row.sessionId, revision }']).toContain(node.parent.getText(tree))
               if (node.parent.getText(tree).includes('row.sessionId')) contains(section('inspectSessionQuestions'), ["row.excluded !== false", "!['structured', 'missing'].includes(row.evidence)", 'result.target?.factRevision !== row.factRevision', 'result.revision !== revision'])
             }
           } else {

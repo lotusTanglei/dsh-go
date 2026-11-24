@@ -6,7 +6,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { openStore, type Store } from '../../src/store/index.js'
 import { installPanelRoutes } from '../../src/panel/routes.js'
 import { bindWorkspace, WorkspaceError } from '../../src/workspace/commands.js'
-import { createDeliveries, deliveryDigest, type DeliveryInput } from '../../src/workspace/deliveries.js'
+import { createDeliveries, deliveryDigest, type DeliveryDispatchEvidence, type DeliveryInput } from '../../src/workspace/deliveries.js'
 import type { SessionTargetBinding } from '../../src/workspace/session-actions.js'
 
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -38,6 +38,9 @@ function deliveryFixture() {
     epoch,
     generation: 0,
     binding: { sessionId: 'session-delivery-target', scopeRevision: digest(['scope', 0]), factRevision: digest(['fact', 0]), project: { kind: 'project' as const, key: 'project-one' } } as SessionTargetBinding,
+    calls: [] as Array<{ record: any; text: string }>,
+    decision: { state: 'accepted' } as { state: 'accepted' | 'dispatch_unknown' | 'blocked'; code?: string },
+    evidence: undefined as undefined | ((record: any) => DeliveryDispatchEvidence | undefined),
   }
   const service = createDeliveries(store, {
     requireEpoch(value) { if (value !== state.epoch) throw new WorkspaceError('epoch_mismatch', 409) },
@@ -45,12 +48,15 @@ function deliveryFixture() {
       const generation = state.generation, binding = state.binding
       return { binding: { ...binding, project: { ...binding.project } }, fence() { if (generation !== state.generation) throw new WorkspaceError('session_action_target_changed', 409) } }
     },
+    async dispatch(record, text) { state.calls.push({ record, text }); return { ...state.decision } },
+    async evidence(record) { return state.evidence?.(record) as DeliveryDispatchEvidence | undefined },
   })
   const post = routesFixture({
     delivery: async (input: any) => {
       const { action, ...payload } = input
       if (action === 'prepare') return service.prepare(payload)
       if (action === 'confirm') return service.confirm(payload)
+      if (action === 'dispatch') return service.dispatch(payload)
       if (action === 'cancel') return service.cancel(payload)
       return service.status(payload)
     },
@@ -149,5 +155,88 @@ describe('POST /delivery: one HTTP seam for pre-delivery confirmation', () => {
     expect(result.status).toBe(409); expect(result.code).toBe('delivery_target_changed'); expect(result.message).toBe('Workspace request could not be completed')
     expect(delivery).toHaveBeenCalledExactlyOnceWith({ action: 'prepare', ...input, images: [] })
     expect(delivery.mock.calls[0]![0]).toMatchObject({ epoch })
+  })
+})
+
+
+describe('POST /delivery action=dispatch: one confirmed live control call over the same HTTP seam', () => {
+  it('reports only accepted/dispatch_unknown/blocked target evidence, never body text or completion', async () => {
+    const f = deliveryFixture(), input = f.input({ text: 'PRIVATE DISPATCH BODY — exact' })
+    await f.post('delivery', { action: 'prepare', ...input }); await f.post('delivery', { action: 'confirm', ...input })
+    const dispatched = await f.post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.status).toBe(200)
+    expect(dispatched.data).toMatchObject({ version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'continue',
+      digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [], state: 'accepted', durable: true, humanConfirmed: true,
+      delivered: true, accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt' })
+    expect(dispatched.data.dispatchId).toMatch(/^[0-9a-f-]{36}$/i); expect(dispatched.data.messageId).toBe(`go:${dispatched.data.dispatchId}`)
+    expect(f.state.calls).toHaveLength(1); expect(f.state.calls[0]).toMatchObject({ text: input.text, record: { state: 'dispatching', operation: 'continue' } })
+    expect(JSON.stringify(dispatched.data)).not.toContain('PRIVATE DISPATCH BODY')
+    expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain('PRIVATE DISPATCH BODY')
+    expect(await f.post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(f.state.calls).toHaveLength(1)
+  })
+
+  it('returns dispatch_unknown and blocked as honest terminal states without retrying', async () => {
+    const f = deliveryFixture(), input = f.input()
+    await f.post('delivery', { action: 'prepare', ...input }); await f.post('delivery', { action: 'confirm', ...input })
+    f.state.decision = { state: 'blocked', code: 'delivery_target_cold' }
+    const blocked = await f.post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.status).toBe(200)
+    expect(blocked.data).toMatchObject({ state: 'blocked', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched', code: 'delivery_target_cold' })
+    expect(f.state.calls).toHaveLength(1)
+    const second = deliveryFixture(), other = second.input()
+    await second.post('delivery', { action: 'prepare', ...other }); await second.post('delivery', { action: 'confirm', ...other })
+    second.state.decision = { state: 'dispatch_unknown' }
+    const unknown = await second.post('delivery', { action: 'dispatch', ...other })
+    expect(unknown.status).toBe(200)
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', accepted: false, delivered: false, executed: null, completed: null, disposition: 'reconcile-only', code: 'delivery_dispatch_unknown' })
+    expect(await second.post('delivery', { action: 'dispatch', ...other })).toEqual(unknown)
+    expect(second.state.calls).toHaveLength(1)
+  })
+
+  it('rejects unconfirmed or changed dispatch content, forged shapes and foreign origins without a Host call', async () => {
+    const f = deliveryFixture(), input = f.input(), path = 'delivery'
+    await f.post('delivery', { action: 'prepare', ...input })
+    expect((await f.post(path, { action: 'dispatch', ...input })).status).toBe(409)
+    await f.post('delivery', { action: 'confirm', ...input })
+    // Shape-valid but no longer matching the confirmed digest: fixed 409, never a dispatch.
+    for (const changed of [
+      { action: 'dispatch', ...input, text: 'Changed body' }, { action: 'dispatch', ...input, target: { ...input.target, factRevision: digest(['f', 9]) } },
+      { action: 'dispatch', ...input, operation: 'steer' },
+    ]) expect((await f.post(path, changed)).status, JSON.stringify(changed)).toBe(409)
+    for (const bad of [
+      { action: 'dispatch', ...input, operation: 'resume' }, { action: 'dispatch', ...input, actor: 'owner' }, { action: 'dispatch', ...input, approved: true },
+      { action: 'dispatch', ...input, text: 'x'.repeat(16_385) }, { action: 'dispatch', epoch: input.epoch },
+    ]) expect((await f.post(path, bad)).status, JSON.stringify(bad)).toBe(400)
+    expect((await f.post(path, { action: 'dispatch', ...input }, 'https://foreign.invalid')).status).toBe(403)
+    expect(f.state.calls).toEqual([])
+    f.state.epoch = 'delivery-next-epoch'
+    expect((await f.post(path, { action: 'dispatch', ...input })).status).toBe(409)
+    expect(f.state.calls).toEqual([])
+  })
+
+  it('drops hidden fields and refuses a forged dispatch receipt from a misbehaving port', async () => {
+    const store = storeFixture(), epoch = bindWorkspace(store, 'delivery-forged-fixture').current.epoch
+    const dispatchId = randomUUID(), digestValue = digest(['d'])
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'steer', text: 'Exact', target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']) }, images: [] }
+    const base = () => ({ version: 1, epoch: input.epoch, dispatchId, messageId: `go:${dispatchId}`, confirmationId: input.confirmationId, requestId: input.requestId, operation: input.operation,
+      target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']), project: { kind: 'project', key: 'p' } },
+      digest: digestValue, bodyBytes: 3, images: [], seq: 2, at: 1, updatedAt: 2, state: 'accepted', durable: true, humanConfirmed: true,
+      delivered: true, accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt' })
+    const post = routesFixture({ delivery: async () => ({ ...base(),
+      target: { sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']), project: { kind: 'project', key: 'p', path: '/hidden' }, url: 'https://hidden.invalid' },
+      executed: true, completed: true, code: 'ok', text: 'PRIVATE TEXT', raw: 'hidden' }) })
+    const result = await post('delivery', { action: 'dispatch', ...input })
+    expect(result.status).toBe(200)
+    expect(result.data).toMatchObject({ state: 'accepted', accepted: true, executed: null, completed: null, disposition: 'target-durable-receipt', delivered: true })
+    expect(result.data.target).toEqual({ sessionId: 'session-target', scopeRevision: digest(['s']), factRevision: digest(['f']), project: { kind: 'project', key: 'p' } })
+    expect(JSON.stringify(result.data)).not.toContain('PRIVATE TEXT'); expect(JSON.stringify(result.data)).not.toContain('hidden')
+    for (const forged of [
+      { state: 'dispatching' }, { state: 'accepted', accepted: false }, { state: 'accepted', dispatchId: 'https://evil' }, { state: 'accepted', messageId: 'go:not-the-id' },
+      { state: 'accepted', confirmationId: randomUUID() }, { state: 'accepted', requestId: randomUUID() }, { state: 'accepted', epoch: 'other-epoch' }, { state: 'accepted', delivered: false },
+    ]) {
+      const port = routesFixture({ delivery: async () => Object.assign({}, base(), forged) })
+      expect((await port('delivery', { action: 'dispatch', ...input })).status, JSON.stringify(forged)).toBe(503)
+    }
   })
 })

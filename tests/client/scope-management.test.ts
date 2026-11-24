@@ -44,18 +44,30 @@ function locateHarness() {
   const { g, calls, events } = harness()
   Object.assign(g, { TextEncoder, systemRef: { current: 'locate' }, locateTextRef: { current: 'shipping' }, locateResultRef: { current: null }, locateVersion: { current: 0 }, locateBusyRef: { current: null } })
   for (const key of ['LocateText', 'LocateResult', 'LocateBusy', 'LocateError']) g[`set${key}`] = (value: any) => { g[key[0]!.toLowerCase() + key.slice(1)] = value; events.push([key, value]) }
-  for (const name of ['resetLocate', 'editLocateText', 'readLocate']) g[name] = closure(name, g)
+  for (const name of ['resetLocate', 'editLocateText', 'stageLocateEvidence', 'readLocate']) g[name] = closure(name, g)
   return { g, calls, events }
 }
 const lookup = (status: string, candidates: any[] = [], extra: any = {}) => ({ status, candidates, revision: 'r1', controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED', ...extra })
 
 describe('bounded scope target lookup UI closures', () => {
-  it('searches across included scope without a project filter, send, execution, or composer changes', async () => {
+  it('asks the locate stage across included scope without a project filter, send, execution, or composer changes', async () => {
     const { g, calls } = locateHarness(), draft = { draft: 'Keep me', target: { id: 'do-not-change' } }, row = session()
     g.composerRef = { current: draft }; g.updateComposer = () => { throw new Error('must not alter composer') }
-    g.call = async (path: string, input: any) => { calls.push({ path, input }); return lookup('located', [row], { target: row, coverage: 'complete' }) }
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); return { version: 1, status: 'located', stage: null, intent: { action: 'continue', confidence: 0.9 }, receipt: null, locate: lookup('located', [row], { target: row, coverage: 'complete' }) } }
     await g.readLocate()
-    expect(calls).toEqual([{ path: 'session-locate', input: { epoch: 'epoch', text: 'shipping' } }]); expect(g.locateResult.status).toBe('located'); expect(g.composerRef.current).toBe(draft)
+    expect(calls).toEqual([{ path: 'stage-locate', input: { epoch: 'epoch', text: 'shipping' } }]); expect(g.locateResult.status).toBe('located'); expect(g.composerRef.current).toBe(draft)
+  })
+
+  it('falls back to the literal bounded chain only when the locate stage capability is unavailable', async () => {
+    const { g, calls } = locateHarness(), row = session()
+    g.call = async (path: string, input: any) => {
+      calls.push({ path, input })
+      if (path === 'stage-locate') throw Object.assign(new Error('stage unavailable'), { status: 503 })
+      return lookup('located', [row], { target: row, coverage: 'complete' })
+    }
+    await g.readLocate()
+    expect(calls).toEqual([{ path: 'stage-locate', input: { epoch: 'epoch', text: 'shipping' } }, { path: 'session-locate', input: { epoch: 'epoch', text: 'shipping' } }])
+    expect(g.locateResult.status).toBe('located')
   })
 
   it('rechecks only explicit candidates from a current clarification, binding the original revision', async () => {
@@ -70,7 +82,7 @@ describe('bounded scope target lookup UI closures', () => {
     const { g, calls } = locateHarness(); let resolve: any
     g.call = (path: string, input: any) => { calls.push({ path, input }); return new Promise(r => { resolve = r }) }
     const pending = g.readLocate(); g.editLocateText('different'); g.systemRef.current = 'settings'; g.epochRef.current = 'new-epoch'
-    resolve(lookup('no_match', [], { coverage: 'complete' })); await pending
+    resolve({ version: 1, status: 'no_match', stage: null, intent: null, receipt: null, locate: lookup('no_match', [], { coverage: 'complete' }) }); await pending
     expect(calls).toHaveLength(1); expect(g.locateResultRef.current).toBeNull(); expect(g.locateTextRef.current).toBe('different')
   })
 

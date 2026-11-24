@@ -36,6 +36,16 @@ function receipt(input: any, state = 'prepared', extra: any = {}) {
     humanConfirmed: state === 'confirmed', delivered: false, accepted: false, executed: false, completed: false,
     disposition: state === 'confirmed' ? 'confirmed-pending-delivery' : state === 'canceled' ? 'canceled' : 'not-confirmed', durable: true, ...extra }
 }
+function dispatchReceipt(input: any, state = 'accepted', extra: any = {}) {
+  const dispatchId = `00000000-0000-4000-8000-${'9'.repeat(12)}`
+  return { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, dispatchId, messageId: `go:${dispatchId}`,
+    operation: input.operation, target: { ...input.target, project: { kind: 'project', key: 'project-one' } }, digest: deliveryDigest(input),
+    bodyBytes: new TextEncoder().encode(input.text).length, images: input.images.map((item: any) => ({ ...item })),
+    seq: state === 'accepted' ? 2 : 2, at: 200, updatedAt: 201, state, durable: true, humanConfirmed: true,
+    delivered: state === 'accepted', accepted: state === 'accepted', executed: state === 'blocked' ? false : null, completed: state === 'blocked' ? false : null,
+    disposition: state === 'accepted' ? 'target-durable-receipt' : state === 'blocked' ? 'not-dispatched' : 'reconcile-only', ...extra }
+}
+const stageLocated = (target = row(), revision = scope, code?: string) => ({ version: 1, status: 'located', ...(code ? { code } : {}), stage: null, intent: { action: 'continue', confidence: 0.9 }, receipt: null, locate: located(target, revision) })
 function harness() {
   const calls: any[] = [], events: any[] = [], draft = { draft: 'Main draft must not change', target: { id: 'main-target' }, pending: { requestId: 'main-request' } }
   let id = 0
@@ -44,26 +54,28 @@ function harness() {
     array, TextEncoder, crypto: webcrypto, h, button, React: { Fragment: 'fragment' }, text, time: String,
     tr: (key: string) => key, mintId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
     alive: { current: true }, epochRef: { current: 'epoch-one' }, systemRef: { current: 'locate' },
-    locateResultRef: { current: located(target) }, locateVersion: { current: 0 }, locateBusyRef: { current: null },
+    locateResultRef: { current: located(target) }, locateTextRef: { current: '' }, locateVersion: { current: 0 }, locateBusyRef: { current: null },
     sessionActionsRef: { current: {} }, deliveries: {}, deliveriesRef: { current: {} }, deliveryBusyRef: { current: null },
     imageDraftsRef: { current: {} },
     scopeProjectKey: (p: any) => p?.kind === 'project' && p.key ? `project:${p.key}` : p?.kind === 'unassigned' ? 'unassigned' : '',
     scopeProjectName: (p: any) => p?.name || p?.key, sessionSourceTitle: (value: any) => value.title,
     composerRef: { current: draft }, updateComposer: () => { throw new Error('Delivery must not change main composer') },
     setDeliveries: (value: any) => { g.deliveries = value; events.push(value) },
-    setLocateResult: (value: any) => { g.locateResultRef.current = value; events.push(value) }, setLocateBusy: () => {}, setLocateError: () => {},
+    setLocateResult: (value: any) => { g.locateResultRef.current = value; events.push(value) }, setLocateBusy: (value: any) => { g.locateBusy = value }, setLocateError: (value: any) => { g.locateError = value; events.push(value) },
     call: async (path: string, input: any) => {
       calls.push({ path, input })
       if (path !== 'delivery') throw new Error(`delivery UI must not call ${path}`)
       if (input.action === 'confirm') return receipt(input, 'confirmed')
       if (input.action === 'cancel') return receipt(input, 'canceled')
       if (input.action === 'status') return receipt(input, 'prepared')
+      if (input.action === 'dispatch') return dispatchReceipt(input, 'accepted')
       return receipt(input, 'prepared')
     },
   }
   for (const name of ['sessionActionKey', 'currentSessionAction', 'deliveryKey', 'currentDelivery', 'deliveryDraftText', 'deliveryOperation', 'deliveryImageRefs',
     'deliveryPayload', 'deliveryDigest', 'saveDelivery', 'validDeliveryReceipt', 'deliveryStatusName', 'deliveryOperationName', 'deliverySummary',
-    'prepareDelivery', 'confirmDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'deliveryConfirmationView', 'resetLocate']) g[name] = closure(name, g)
+    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'deliveryConfirmationView', 'resetLocate',
+    'stageLocateEvidence', 'readLocate']) g[name] = closure(name, g)
   const edit = (textValue = '  本次人类文字\r\nKeep Unicode 🧭 exactly  ', operation = 'continue') => {
     const current = g.currentDelivery()
     g.sessionActionsRef.current = { ...g.sessionActionsRef.current, [current.key]: { ...current, text: textValue, operation, status: 'draft' } }
@@ -235,3 +247,140 @@ describe('pre-delivery confirmation card UI contracts', () => {
     expect(languages[0].wDeliveryHint).toContain('确认前不发送'); expect(languages[1].wDeliveryHint).toContain('Nothing is sent')
   })
 })
+
+describe('colloquial locate consumes the stage endpoint before the existing confirmation card', () => {
+  it.each(['继续修复回调这个项目的工作', '问一下修复回调的进展'])('routes %s through stage-locate into the exact confirmation card', async text => {
+    const { g, calls } = harness()
+    g.locateTextRef.current = text
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); if (path === 'stage-locate') return stageLocated(); throw new Error(`unexpected ${path}`) }
+    await g.readLocate()
+    expect(calls).toEqual([{ path: 'stage-locate', input: { epoch: 'epoch-one', text } }])
+    expect(g.locateResultRef.current).toMatchObject({ status: 'located', target: { sessionId: 'session-one', project: { kind: 'project', key: 'project-one' } },
+      revision: scope, coverage: 'complete', controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' })
+    expect(g.currentDelivery()).toMatchObject({ epoch: 'epoch-one', target: { sessionId: 'session-one', scopeRevision: scope, factRevision: fact, project: { kind: 'project', key: 'project-one' } } })
+    const content = JSON.stringify(g.deliveryConfirmationView())
+    expect(content).toContain('DeliveryPrepare'); expect(content).toContain('session-one'); expect(content).not.toContain('DeliveryNoTarget')
+    expect(calls.some(value => value.path === 'session-locate')).toBe(false)
+  })
+
+  it.each(['stage_locate_intent_invalid', 'stage_locate_intent_low_confidence'])('asks a follow-up question on %s and never silently falls back to literal search', async code => {
+    const { g, calls } = harness()
+    g.locateTextRef.current = '那个东西接着弄一下'
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); return { version: 1, status: 'clarify', code, stage: null, intent: null, receipt: null, locate: null } }
+    await g.readLocate()
+    expect(calls.map(value => value.path)).toEqual(['stage-locate'])
+    expect(g.locateResultRef.current).toMatchObject({ status: 'clarify', code, candidates: [], candidateTotal: 0, controlAvailable: false })
+    expect(g.currentDelivery()).toBeNull()
+    expect(JSON.stringify(g.deliveryConfirmationView())).toContain('DeliveryNoTarget')
+    expect(g.locateError).toBe('')
+    expect(initializer('locateView')).toContain('LocateIntentClarify')
+  })
+
+  it('falls back to the bounded literal chain only when the stage capability is unavailable', async () => {
+    const { g, calls } = harness()
+    g.locateTextRef.current = '继续修复回调'
+    g.call = async (path: string, input: any) => {
+      calls.push({ path, input })
+      if (path === 'stage-locate') throw Object.assign(new Error('stage unavailable'), { status: 503, code: 'stage_models_call_unavailable' })
+      if (path === 'session-locate') return located()
+      throw new Error(`unexpected ${path}`)
+    }
+    await g.readLocate()
+    expect(calls.map(value => value.path)).toEqual(['stage-locate', 'session-locate'])
+    expect(calls[1].input).toEqual({ epoch: 'epoch-one', text: '继续修复回调' })
+    expect(g.currentDelivery()).not.toBeNull()
+    expect(JSON.stringify(g.deliveryConfirmationView())).toContain('DeliveryPrepare')
+  })
+
+  it('keeps clarify candidate rechecks on the exact literal chain without another stage call', async () => {
+    const { g, calls } = harness(), candidate = row()
+    g.locateTextRef.current = '修复回调'
+    g.locateResultRef.current = { status: 'clarify', revision: scope, candidates: [candidate], controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); if (path === 'session-locate') return located(candidate); throw new Error(`unexpected ${path}`) }
+    await g.readLocate(candidate)
+    expect(calls).toEqual([{ path: 'session-locate', input: { epoch: 'epoch-one', text: '修复回调', sessionId: 'session-one', revision: scope } }])
+    expect(g.currentDelivery()).not.toBeNull()
+  })
+})
+
+describe('confirmed delivery dispatch UI contracts', () => {
+  it('offers dispatch only after confirmation, sends the exact confirmed object once and renders accepted without completion', async () => {
+    const { g, calls, edit } = harness()
+    const key = edit('Exact confirmed body\n保留原字节 🧭', 'supplement')
+    await g.prepareDelivery(); await g.confirmDelivery(key)
+    expect(calls.map(value => value.input.action)).toEqual(['prepare', 'confirm'])
+    const before = nodes(g.deliveryConfirmationView()).filter(node => node.tag === 'button').map(node => node.children[0])
+    expect(before).toEqual(['DeliveryDispatch'])
+    expect(JSON.stringify(g.deliveryConfirmationView())).not.toContain('DeliveryCompleted')
+    await g.dispatchDelivery(key)
+    expect(calls.map(value => value.input.action)).toEqual(['prepare', 'confirm', 'dispatch'])
+    expect(calls[2].input).toEqual({ action: 'dispatch', epoch: 'epoch-one', requestId: calls[1].input.requestId, confirmationId: calls[1].input.confirmationId,
+      operation: 'supplement', text: 'Exact confirmed body\n保留原字节 🧭', target: calls[1].input.target, images: [] })
+    expect(g.deliveries[key]).toMatchObject({ dispatchStatus: 'accepted', dispatch: { state: 'accepted', accepted: true, delivered: true, executed: null, completed: null, disposition: 'target-durable-receipt' } })
+    const accepted = JSON.stringify(g.deliveryConfirmationView())
+    expect(accepted).toContain('DeliveryAccepted'); expect(accepted).toContain('DeliveryAcceptedHint'); expect(accepted).not.toContain('DeliveryCompleted')
+    await g.dispatchDelivery(key)
+    expect(calls).toHaveLength(3)
+  })
+
+  it('renders a cold/blocked dispatch as blocked without completion and never retries it', async () => {
+    const { g, calls, edit, bindImage } = harness()
+    const key = edit('Blocked cold body'); bindImage(); await g.prepareDelivery(); await g.confirmDelivery(key)
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); if (input.action === 'dispatch') return dispatchReceipt(input, 'blocked', { code: 'delivery_target_cold' }); return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared') }
+    await g.dispatchDelivery(key)
+    const entry = g.deliveries[key]
+    expect(entry).toMatchObject({ dispatchStatus: 'blocked', error: 'DeliveryTargetCold', dispatch: { state: 'blocked', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched', code: 'delivery_target_cold' } })
+    const content = JSON.stringify(g.deliveryConfirmationView())
+    expect(content).toContain('DeliveryTargetCold'); expect(content).toContain('DeliveryDispatchBlocked'); expect(content).not.toContain('DeliveryAccepted')
+    await g.dispatchDelivery(key)
+    expect(calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(1)
+  })
+
+  it('keeps an uncertain dispatch unknown, offers reconciliation by the same dispatch, and never rewrites the draft', async () => {
+    const { g, calls, edit, bindImage, draft } = harness()
+    const key = edit('Unknown dispatch body', 'steer'); bindImage(); await g.prepareDelivery(); await g.confirmDelivery(key)
+    const confirmedText = g.sessionActionsRef.current[key].text
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); if (input.action === 'dispatch') throw new Error('lost dispatch reply'); return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared') }
+    await g.dispatchDelivery(key)
+    expect(g.deliveries[key]).toMatchObject({ status: 'confirmed', dispatchStatus: 'dispatch_unknown', error: 'DeliveryDispatchUnknown' })
+    expect(g.deliveries[key].dispatch).toBeUndefined()
+    const unknown = JSON.stringify(g.deliveryConfirmationView())
+    expect(unknown).toContain('DeliveryDispatchUnknown'); expect(unknown).toContain('DeliveryQueryDispatch'); expect(unknown).not.toContain('DeliveryAccepted')
+    expect(g.sessionActionsRef.current[key].text).toBe(confirmedText)
+    expect(g.imageDraftsRef.current['epoch-one'].items).toHaveLength(1)
+    expect(g.composerRef.current).toBe(draft); expect(draft.draft).toBe('Main draft must not change')
+    expect(calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(1)
+    // Reconciling the same dispatch can surface target evidence; it mints no new confirmation.
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); return dispatchReceipt(input, 'accepted', { seq: 3, at: 200, updatedAt: 210 }) }
+    await g.dispatchDelivery(key)
+    expect(g.deliveries[key]).toMatchObject({ dispatchStatus: 'accepted', dispatch: { state: 'accepted', accepted: true, seq: 3 } })
+    expect(calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(2)
+    expect(g.deliveries[key].dispatch.requestId).toBe(calls[1].input.requestId)
+    expect(g.sessionActionsRef.current[key].text).toBe(confirmedText)
+  })
+
+  it('keeps a changed-content rejection local to the confirmation card without dispatching or touching drafts', async () => {
+    const { g, calls, edit } = harness()
+    const key = edit('Rejected changed body'); await g.prepareDelivery(); await g.confirmDelivery(key)
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); if (input.action === 'dispatch') throw Object.assign(new Error('changed'), { status: 409 }); return receipt(input, input.action === 'confirm' ? 'confirmed' : 'prepared') }
+    await g.dispatchDelivery(key)
+    expect(g.deliveries[key]).toMatchObject({ status: 'confirmed', error: 'DeliveryDispatchChanged' }); expect(g.deliveries[key].dispatch).toBeUndefined()
+    expect(g.sessionActionsRef.current[key].text).toBe('Rejected changed body')
+    expect(calls.filter(value => value.input?.action === 'dispatch')).toHaveLength(1)
+    const content = JSON.stringify(g.deliveryConfirmationView())
+    expect(content).toContain('DeliveryDispatch'); expect(content).not.toContain('DeliveryAccepted')
+  })
+
+  it('dispatches through only the delivery route with no Agent, send or composer side effect, and ships localized states', () => {
+    for (const name of ['dispatchDelivery', 'deliveryConfirmationView']) {
+      const value = initializer(name)
+      expect(value, name).not.toMatch(/followup|steer\(|inject\(|agent\.cancel|call\('command'|call\('session-action'|updateComposer|composerRef/)
+    }
+    expect(initializer('dispatchDelivery')).toContain("call('delivery'")
+    const languages = ['zh', 'en'].map(language => JSON.parse(readFileSync(`locale/${language}.json`, 'utf8')).panel)
+    for (const key of ['wDeliveryDispatch', 'wDeliveryAccepted', 'wDeliveryAcceptedHint', 'wDeliveryDispatchUnknown', 'wDeliveryDispatchBlocked', 'wDeliveryDispatchBlockedHint',
+      'wDeliveryDispatchChanged', 'wDeliveryTargetCold', 'wDeliveryQueryDispatch', 'wLocateIntentClarify']) for (const locale of languages) expect(locale[key], key).toBeTruthy()
+    expect(languages[0].wDeliveryAcceptedHint).toContain('不等于'); expect(languages[1].wDeliveryAcceptedHint).toContain('does not mean')
+  })
+})
+
