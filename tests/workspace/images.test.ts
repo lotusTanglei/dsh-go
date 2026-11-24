@@ -145,7 +145,7 @@ describe('workspace images: real SQLite, exact PNG originals and revocable lifec
     const listed = await f.images.list({ epoch: EPOCH, draftId: input.draftId })
     expect(listed.items).toHaveLength(1)
     expect(listed.items[0]).toMatchObject({ imageId: uploaded.imageId, stale: false, uploadedNotSent: true })
-    expect(listed.capability).toMatchObject({ originalUnderstanding: false, targetDelivery: false })
+    expect(listed.capability).toMatchObject({ originalUnderstanding: false, targetDelivery: true, code: 'SA_IMAGE_UNDERSTANDING_UNVERIFIED' })
     const preview = await f.images.original({ epoch: EPOCH, reference: ref(uploaded) })
     expect(Buffer.isBuffer(preview.bytes)).toBe(true)
     expect(preview.bytes.equals(original)).toBe(true)

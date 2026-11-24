@@ -34,6 +34,7 @@ function receipt(input: any, state = 'prepared', extra: any = {}) {
     target: { ...input.target, project: { kind: 'project', key: 'project-one' } }, digest: deliveryDigest(input), bodyBytes: new TextEncoder().encode(input.text).length,
     images: input.images.map((item: any) => ({ ...item })), seq: state === 'prepared' ? 1 : 2, at: 100, updatedAt: state === 'prepared' ? 100 : 101, state,
     humanConfirmed: state === 'confirmed', delivered: false, accepted: false, executed: false, completed: false, targetState: 'unknown',
+    imageCapability: input.images.length ? 'supported' : 'not-required',
     disposition: state === 'confirmed' ? 'confirmed-pending-delivery' : state === 'canceled' ? 'canceled' : 'not-confirmed', durable: true, ...extra }
 }
 function dispatchReceipt(input: any, state = 'accepted', extra: any = {}) {
@@ -78,9 +79,9 @@ function harness() {
     },
   }
   for (const name of ['sessionActionKey', 'currentSessionAction', 'deliveryKey', 'currentDelivery', 'deliveryDraftText', 'deliveryStopReason', 'deliveryOperation',
-    'selectDeliveryOperation', 'editDeliveryStopReason', 'deliveryImageRefs',
+    'selectDeliveryOperation', 'editDeliveryStopReason', 'deliveryImageRefs', 'deliveryImagePreviews',
     'deliveryPayload', 'deliveryDigest', 'saveDelivery', 'validDeliveryReceipt', 'deliveryStatusName', 'deliveryOperationName', 'deliverySummary',
-    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'deliveryWakeCode', 'deliveryBlockedName', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'prepareAgainDelivery',
+    'prepareDelivery', 'confirmDelivery', 'validDeliveryDispatchReceipt', 'deliveryWakeCode', 'deliveryImageCode', 'deliveryBlockedName', 'deliveryBlockedHint', 'dispatchDelivery', 'cancelDelivery', 'checkDeliveryStatus', 'prepareAgainDelivery',
     'recreateFromStoppedDelivery', 'deliveryConfirmationView', 'resetLocate',
     'stageLocateEvidence', 'readLocate']) g[name] = closure(name, g)
   const edit = (textValue = '  本次人类文字\r\nKeep Unicode 🧭 exactly  ', operation = 'continue') => {
@@ -90,6 +91,7 @@ function harness() {
   }
   const bindImage = (overrides: any = {}) => {
     const current = g.currentDelivery(), epoch = current.epoch, item = { id: overrides.imageId || 'img-one', digest: overrides.digest || imageDigest, status: 'bound', stale: false,
+      ...(overrides.src ? { src: overrides.src } : {}),
       receipt: { imageId: overrides.imageId || 'img-one', digest: overrides.digest || imageDigest, seq: overrides.seq || 1, state: 'bound' } }
     g.imageDraftsRef.current = { ...g.imageDraftsRef.current, [epoch]: { epoch, draftId: 'draft-one', selected: '', target: { ...current.target, project: { ...current.target.project } }, items: overrides.items || [item] } }
     return item
@@ -177,6 +179,52 @@ describe('pre-delivery confirmation card UI contracts', () => {
     expect(g.deliveries[key]).toMatchObject({ status: 'draft', pending: null, error: 'DeliveryContentChanged' })
     expect(g.sessionActionsRef.current[key].text).toBe('Body with one image')
     expect(g.imageDraftsRef.current['epoch-one'].items).toHaveLength(2)
+  })
+
+  it('shows verified local thumbnails, original-byte hints and the blocked visual-capability warning on the card', async () => {
+    const { g, calls, edit, bindImage } = harness()
+    const key = edit('Body with one image')
+    bindImage({ src: 'blob:verified-original' })
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); return input.action === 'confirm' ? receipt(input, 'confirmed', { imageCapability: 'unsupported' }) : receipt(input, 'prepared', { imageCapability: 'unsupported' }) }
+    await g.prepareDelivery()
+    const view = g.deliveryConfirmationView(), elements = nodes(view), content = JSON.stringify(view)
+    expect(content).toContain('DeliveryImagesHint'); expect(content).toContain('DeliveryImagesOriginal')
+    expect(elements.filter(node => node.tag === 'img').map(node => node.props.src)).toEqual(['blob:verified-original'])
+    expect(content).toContain('DeliveryVisionUnsupported'); expect(content).not.toContain('DeliveryVisionUnknown')
+    // Confirm keeps the same visible block: the warning is on the confirmation card, not after a failure.
+    await g.confirmDelivery(key)
+    const confirmed = JSON.stringify(g.deliveryConfirmationView())
+    expect(confirmed).toContain('DeliveryConfirmed'); expect(confirmed).toContain('DeliveryVisionUnsupported')
+    expect(calls.map(value => value.input.action)).toEqual(['prepare', 'confirm'])
+    expect(calls[1].input.images).toEqual([{ imageId: 'img-one', digest: imageDigest, seq: 1 }])
+  })
+
+  it('treats unknown visual capability as blocked copy and never drops images to keep text sending', async () => {
+    const { g, calls, edit, bindImage } = harness()
+    compileUnknown: {
+      const key = edit('Unknown capability body'); bindImage()
+      g.call = async (path: string, input: any) => { calls.push({ path, input }); return receipt(input, 'prepared', { imageCapability: 'unknown' }) }
+      await g.prepareDelivery()
+      const content = JSON.stringify(g.deliveryConfirmationView())
+      expect(content).toContain('DeliveryVisionUnknown'); expect(content).not.toContain('DeliveryVisionUnsupported')
+      expect(g.deliveries[key].receipt.images).toHaveLength(1)
+    }
+  })
+
+  it('keeps the image draft, body and target after a blocked image dispatch and offers only a fresh confirmation', async () => {
+    const { g, calls, edit, bindImage } = harness()
+    const image = bindImage(), key = edit('Blocked image delivery body')
+    await g.prepareDelivery(); await g.confirmDelivery(key)
+    g.call = async (path: string, input: any) => { calls.push({ path, input }); return dispatchReceipt(input, 'blocked', { code: 'delivery_image_model_unsupported' }) }
+    await g.dispatchDelivery(key)
+    expect(g.deliveries[key]).toMatchObject({ dispatchStatus: 'blocked', dispatch: { state: 'blocked', code: 'delivery_image_model_unsupported' } })
+    const content = JSON.stringify(g.deliveryConfirmationView())
+    expect(content).toContain('DeliveryVisionBlocked'); expect(content).toContain('DeliveryVisionBlockedHint'); expect(content).toContain('Code: delivery_image_model_unsupported')
+    expect(content).not.toContain('DeliveryAccepted')
+    // The draft body and the exact bound image are retained; nothing is silently removed.
+    expect(g.sessionActionsRef.current[key].text).toBe('Blocked image delivery body')
+    expect(g.imageDraftsRef.current['epoch-one'].items).toEqual([image])
+    expect(calls.map(value => value.input.action)).toEqual(['prepare', 'confirm', 'dispatch'])
   })
 
   it('never confirms a prepared object after the located target changes, and preserves evidence by target', async () => {

@@ -99,7 +99,7 @@ export function createWorkspaceImages(store: Store, root: string, ports: ImagePo
       ports.requireEpoch(input.epoch)
       const scope = await scopeCut(); scope.fence(); ports.requireEpoch(input.epoch)
       const rows = (store.db.prepare('SELECT k FROM kv WHERE substr(k,1,?)=?').all(prefix.length, prefix) as { k: string }[]).map(item => read(item.k.slice(prefix.length))).filter(row => row.epoch === input.epoch && row.draftId === input.draftId && row.state !== 'released')
-      return { scopeRevision: scope.revision, items: rows.map(row => ({ ...dto(row), stale: row.scopeRevision !== scope.revision })), capability: { upload: 'png-8bit-noninterlaced', originalUnderstanding: false, targetDelivery: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' } }
+      return { scopeRevision: scope.revision, items: rows.map(row => ({ ...dto(row), stale: row.scopeRevision !== scope.revision })), capability: { upload: 'png-8bit-noninterlaced', originalUnderstanding: false, targetDelivery: true, code: 'SA_IMAGE_UNDERSTANDING_UNVERIFIED' } }
     },
     async original(input: { epoch: string; reference: ImageReference }) {
       if (!plain(input) || !only(input, ['epoch', 'reference']) || !id(input.epoch) || !reference(input.reference)) return fail('image_reference_invalid', 400)
@@ -152,7 +152,39 @@ export function createWorkspaceImages(store: Store, root: string, ports: ImagePo
         }
       }
       check()
+      // The retained original must still hash to the confirmed digest before any delivery gate.
+      for (const reference of snapshot.references) { const row = read(reference.imageId); ports.requireEpoch(snapshot.epoch); scope.fence(); bytes.read(row.digest) }
       return { references: snapshot.references.map(reference => ({ imageId: reference.imageId, digest: reference.digest, seq: reference.seq })), fence: check }
+    },
+    /** Host-internal delivery bytes for already bound references: exact digest-checked originals.
+     * Never exposed as an HTTP action; the delivery adapter is the only caller and still rechecks.
+     */
+    async materialize(input: { epoch: string; references: readonly ImageReference[]; target: { sessionId: string; scopeRevision: string; factRevision: string } }) {
+      if (!plain(input) || !only(input, ['epoch', 'references', 'target']) || !id(input.epoch) || !requestedTarget(input.target)
+        || !Array.isArray(input.references) || input.references.length < 1 || input.references.length > 5
+        || !input.references.every(reference) || new Set(input.references.map(value => value.imageId)).size !== input.references.length) return fail('image_reference_invalid', 400)
+      const snapshot = structuredClone({ epoch: input.epoch, references: input.references as ImageReference[], target: { ...input.target } })
+      ports.requireEpoch(snapshot.epoch)
+      const scope = await scopeCut(); ports.requireEpoch(snapshot.epoch); scope.fence()
+      const check = () => {
+        ports.requireEpoch(snapshot.epoch)
+        scope.fence()
+        for (const reference of snapshot.references) {
+          const row = read(reference.imageId)
+          if (row.epoch !== snapshot.epoch || row.digest !== reference.digest || row.seq !== reference.seq || row.state !== 'bound' || !row.target
+            || row.scopeRevision !== snapshot.target.scopeRevision || row.target.sessionId !== snapshot.target.sessionId
+            || row.target.scopeRevision !== snapshot.target.scopeRevision || row.target.factRevision !== snapshot.target.factRevision) throw new WorkspaceError('image_reference_changed', 409)
+        }
+      }
+      check()
+      const originals = snapshot.references.map(reference => {
+        ports.requireEpoch(snapshot.epoch); scope.fence()
+        const row = read(reference.imageId), original = bytes.read(row.digest)
+        if (createHash('sha256').update(original).digest('hex') !== reference.digest) throw new WorkspaceError('image_original_corrupt', 503)
+        return { imageId: reference.imageId, digest: reference.digest, seq: reference.seq, mediaType: row.mediaType as 'image/png', bytes: original }
+      })
+      check()
+      return { references: snapshot.references.map(reference => ({ imageId: reference.imageId, digest: reference.digest, seq: reference.seq })), originals, fence: check }
     },
     /** Host-internal byte lease; no HTTP caller may manufacture vision/authorization. */
     async acquire(input: { epoch: string; reference: ImageReference; purpose: 'understand' | 'target' }) {

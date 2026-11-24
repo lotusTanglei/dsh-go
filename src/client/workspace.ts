@@ -1461,6 +1461,15 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         && Number.isSafeInteger(row.receipt.seq) && row.receipt.seq > 0 && row.receipt.digest === row.digest).slice(0, 5)
         .map((row: any) => ({ imageId: row.receipt.imageId, digest: row.receipt.digest, seq: row.receipt.seq }))
     }
+    /** Bound exact images of the current draft that also carry a verified local preview. */
+    const deliveryImagePreviews = () => {
+      const current = currentDelivery(), draft = current ? imageDraftsRef.current?.[current.epoch] : null, target = draft?.target
+      if (!current || !draft || !target || target.sessionId !== current.target.sessionId || target.scopeRevision !== current.target.scopeRevision
+        || target.factRevision !== current.target.factRevision || target.project?.kind !== current.target.project.kind || target.project?.key !== current.target.project.key) return []
+      return array(draft.items).filter((row: any) => row?.status === 'bound' && row.stale !== true && row.receipt && row.receipt.state === 'bound'
+        && typeof row.receipt.imageId === 'string' && typeof row.receipt.digest === 'string' && row.receipt.digest === row.digest
+        && typeof row.src === 'string' && row.src).slice(0, 5)
+    }
     const deliveryPayload = (entry: any, requestId: string, confirmationId: string) => {
       const target = entry.target, operation = deliveryOperation(entry.key)
       const payload = { epoch: entry.epoch, requestId, confirmationId, operation,
@@ -1482,7 +1491,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const validDeliveryReceipt = (receipt: any, entry: any) => {
       const input = entry?.pending, previous = entry?.receipt, hash = (value: any) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
       if (!input || !receipt || typeof receipt !== 'object' || Array.isArray(receipt) || Object.getOwnPropertySymbols(receipt).length
-        || Object.keys(receipt).some(key => !['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition', 'durable', 'code', 'targetState'].includes(key))
+        || Object.keys(receipt).some(key => !['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'humanConfirmed', 'delivered', 'accepted', 'executed', 'completed', 'disposition', 'durable', 'code', 'targetState', 'imageCapability'].includes(key))
         || receipt.version !== 1 || !['epoch', 'requestId', 'confirmationId', 'operation'].every(key => receipt[key] === input[key])
         || !receipt.target || typeof receipt.target !== 'object' || Array.isArray(receipt.target) || Object.keys(receipt.target).length !== 4
         || ['sessionId', 'scopeRevision', 'factRevision'].some(key => receipt.target[key] !== input.target[key])
@@ -1494,6 +1503,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
         || receipt.humanConfirmed !== (receipt.state === 'confirmed') || receipt.delivered !== false || receipt.accepted !== false || receipt.executed !== false || receipt.completed !== false
         || receipt.disposition !== (receipt.state === 'confirmed' ? 'confirmed-pending-delivery' : receipt.state === 'canceled' ? 'canceled' : 'not-confirmed')
         || !['live', 'cold', 'unknown'].includes(receipt.targetState)
+        || receipt.imageCapability !== undefined && !['not-required', 'supported', 'unsupported', 'unknown'].includes(receipt.imageCapability)
         || receipt.durable !== true || !Number.isSafeInteger(receipt.at) || receipt.at < 0 || !Number.isSafeInteger(receipt.updatedAt) || receipt.updatedAt < receipt.at
         || receipt.code !== undefined && (typeof receipt.code !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(receipt.code))) return false
       // A higher sequence cannot rewrite facts; terminal confirmations cannot roll back.
@@ -1505,9 +1515,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
     const deliveryStatusName = (entry: any) => tr(({ draft: 'DeliveryDraft', pending: 'DeliveryPreparing', prepared: 'DeliveryPrepared', unknown: 'DeliveryUnknown', confirmed: 'DeliveryConfirmed', canceled: 'DeliveryDraft' } as any)[entry?.busy ? 'pending' : entry?.status] || 'DeliveryDraft')
     // Cold wake failures keep their fixed code visible and are never retried under the same IDs.
     const deliveryWakeCode = (code: any) => typeof code === 'string' && /^delivery_wake_/.test(code)
+    // Image capability/attachment blocks are their own visible category: never "text sent anyway".
+    const deliveryImageCode = (code: any) => typeof code === 'string' && /^delivery_image_/.test(code)
     const deliveryBlockedName = (code: any, stop: boolean) => stop
       ? (code === 'delivery_target_cold' ? 'DeliveryStopTargetCold' : 'DeliveryStopBlocked')
-      : code === 'delivery_target_cold' ? 'DeliveryTargetCold' : deliveryWakeCode(code) ? 'DeliveryWakeBlocked' : 'DeliveryDispatchBlocked'
+      : code === 'delivery_target_cold' ? 'DeliveryTargetCold' : deliveryWakeCode(code) ? 'DeliveryWakeBlocked' : deliveryImageCode(code) ? 'DeliveryVisionBlocked' : 'DeliveryDispatchBlocked'
+    const deliveryBlockedHint = (code: any, stop: boolean) => stop ? 'DeliveryStopBlockedHint' : deliveryWakeCode(code) ? 'DeliveryWakeBlockedHint' : deliveryImageCode(code) ? 'DeliveryVisionBlockedHint' : 'DeliveryDispatchBlockedHint'
     const deliveryOperationName = (value: string) => tr(({ continue: 'SessionActionContinue', supplement: 'SessionActionSupplement', steer: 'SessionActionSteer', stop: 'SessionActionStop' } as any)[value] || 'SessionActionContinue')
     const deliverySummary = (value: string) => {
       const line = value.split(/[\r\n]/, 1)[0]!.trim(), points = Array.from(line)
@@ -1699,6 +1712,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
       const operation = current ? deliveryOperation(current.key) : 'continue', stop = operation === 'stop'
       const bodyText = current ? (stop ? deliveryStopReason(current.key) : deliveryDraftText(current.key)) : ''
       const images = current && !stop ? deliveryImageRefs() : []
+      const previews = current && !stop ? deliveryImagePreviews() : []
       const busy = !!entry?.busy, dispatch = entry?.dispatch
       const body = bodyText.trim() ? new TextEncoder().encode(bodyText).length : 0
       return h('section', { className: 'saw-box saw-delivery', 'aria-label': tr('DeliveryTitle') },
@@ -1727,6 +1741,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('p', { className: 'saw-meta' }, `${tr('SessionWorkReference')}: …${String(current.target.sessionId).slice(-8)} · ${tr('Operation')}: ${deliveryOperationName(entry.receipt.operation)}`),
             h('p', { className: 'saw-meta' }, tr('DeliveryBodySummary')), h('p', { className: 'saw-pre' }, deliverySummary(entry.text)),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryBodyBytes')}: ${entry.receipt.bodyBytes} · ${tr('DeliveryImages')}: ${array(entry.receipt.images).length}`),
+            array(entry.receipt.images).length ? h('p', { className: 'saw-meta' }, tr('DeliveryImagesHint')) : null,
+            array(entry.receipt.images).length ? h('p', { className: 'saw-meta' }, tr('DeliveryImagesOriginal')) : null,
+            ...(array(entry.receipt.images).length && previews.length ? [h('div', { className: 'saw-row saw-delivery-images', 'aria-label': tr('DeliveryImageThumbnails') },
+              ...previews.map((row: any, index: number) => h('img', { key: row.id, src: row.src, alt: `${tr('DeliveryImagePreview')} ${index + 1}`, style: { width: '56px', height: '56px', objectFit: 'contain' } })))] : []),
+            !stop && array(entry.receipt.images).length && entry.receipt.imageCapability !== 'supported'
+              ? h('p', { className: 'saw-error', role: 'status' }, tr(entry.receipt.imageCapability === 'unsupported' ? 'DeliveryVisionUnsupported' : 'DeliveryVisionUnknown')) : null,
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('SessionActionScopeRevision')}: ${entry.receipt.target.scopeRevision}`),
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('LocateFactRevision')}: ${entry.receipt.target.factRevision}`),
@@ -1739,6 +1759,12 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('strong', null, tr('DeliveryConfirmed')),
             h('p', { className: 'saw-meta' }, tr('DeliveryConfirmedHint')),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryHandoff')}: ${entry.receipt.disposition}`),
+            !stop && array(entry.receipt.images).length ? h('p', { className: 'saw-meta' }, `${tr('DeliveryImages')}: ${array(entry.receipt.images).length} · ${tr('DeliveryImagesOriginal')}`) : null,
+            !stop && array(entry.receipt.images).length ? h('p', { className: 'saw-meta' }, tr('DeliveryImagesHint')) : null,
+            ...(array(entry.receipt.images).length && previews.length ? [h('div', { className: 'saw-row saw-delivery-images', 'aria-label': tr('DeliveryImageThumbnails') },
+              ...previews.map((row: any, index: number) => h('img', { key: row.id, src: row.src, alt: `${tr('DeliveryImagePreview')} ${index + 1}`, style: { width: '56px', height: '56px', objectFit: 'contain' } })))] : []),
+            !stop && array(entry.receipt.images).length && entry.receipt.imageCapability !== 'supported'
+              ? h('p', { className: 'saw-error', role: 'status' }, tr(entry.receipt.imageCapability === 'unsupported' ? 'DeliveryVisionUnsupported' : 'DeliveryVisionUnknown')) : null,
             !stop && entry.receipt.targetState === 'cold' ? h('p', { className: 'saw-error', role: 'status' }, tr('DeliveryColdWake')) : null,
             h('p', { className: 'saw-meta saw-fingerprint' }, `${tr('DeliveryDigest')}: ${entry.receipt.digest}`),
             h('p', { className: 'saw-meta' }, `${tr('Time')}: ${time(entry.receipt.updatedAt)}`),
@@ -1768,7 +1794,7 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
               dispatch.state === 'blocked' ? h(React.Fragment, null,
                 dispatch.woke && dispatch.wake ? h('p', { className: 'saw-meta' }, tr('DeliveryWoke')) : null,
                 h('p', { className: 'saw-error' }, tr(deliveryBlockedName(dispatch.code, stop))),
-                h('p', { className: 'saw-meta' }, tr(stop ? 'DeliveryStopBlockedHint' : deliveryWakeCode(dispatch.code) ? 'DeliveryWakeBlockedHint' : 'DeliveryDispatchBlockedHint')),
+                h('p', { className: 'saw-meta' }, tr(deliveryBlockedHint(dispatch.code, stop))),
                 dispatch.code ? h('p', { className: 'saw-meta' }, `${tr('Code')}: ${dispatch.code}`) : null,
                 button(tr('DeliveryPrepareAgain'), () => prepareAgainDelivery(current.key), busy)) : null) : null,
             !dispatch && entry.dispatchStatus === 'dispatch_unknown' ? h('div', { className: 'saw-row' },
@@ -1788,6 +1814,8 @@ export function createWorkspacePage(React: any, request: (path: string, body?: a
             h('p', { className: 'saw-meta' }, tr('DeliveryBodySummary')),
             bodyText.trim() ? h('p', { className: 'saw-pre' }, deliverySummary(bodyText)) : h('p', { className: 'saw-meta' }, tr('DeliveryTextRequired')),
             h('p', { className: 'saw-meta' }, `${tr('DeliveryBodyBytes')}: ${body} · ${tr('DeliveryImages')}: ${images.length}`),
+            images.length ? h('p', { className: 'saw-meta' }, tr('DeliveryImagesHint')) : null,
+            images.length ? h('p', { className: 'saw-meta' }, tr('DeliveryImagesOriginal')) : null,
             h('p', { className: 'saw-meta' }, entry?.error || deliveryStatusName(entry)),
             button(tr('DeliveryPrepare'), () => { void prepareDelivery() }, busy || !bodyText.trim(), { className: 'saw-btn saw-action-primary' }))) : null))
     }

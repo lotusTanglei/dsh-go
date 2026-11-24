@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Config } from './config.js'
@@ -22,7 +22,7 @@ import { createWorkspaceRuntime } from './workspace/runtime.js'
 import { createScopePreferences } from './workspace/scope-preferences.js'
 import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
-import { createDeliveries, type DeliveryDispatchRecord, type DeliveryModelSelection, type DeliveryTargetState, type DeliveryWakeDecision } from './workspace/deliveries.js'
+import { createDeliveries, type DeliveryDispatchRecord, type DeliveryImageCapability, type DeliveryImageReference, type DeliveryModelSelection, type DeliveryTargetState, type DeliveryWakeDecision } from './workspace/deliveries.js'
 import { createStageModels, type StageCallConfig, type StageCatalogPort, type StageModelInfo } from './workspace/stage-models.js'
 import { createStageCallHost, createStageLocateService, type StageCallHost, type StageLlmHost, type StageLocateService } from './workspace/stage-call.js'
 import { WorkspaceError } from './workspace/commands.js'
@@ -42,6 +42,8 @@ export interface RuntimeContext {
   readonly workspaceRegistry?: { list(): readonly { id: string; title: string; sessionIds: readonly string[] }[] }
   readonly get?: (name: string) => any
   readonly sessions?: { flush(session: any): Promise<boolean> }
+  /** Durable Host attachment store; `saveImage` validates and commits immutable image bytes. */
+  readonly attachments?: { saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<any> }
   readonly agentDefaultModel?: { currentSelection(): any }
   readonly llm?: { resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<any>; listProviders?(): readonly { id: string; name: string }[]; listModels?(provider: string): Promise<readonly { provider: string; id: string; name: string }[]>; prepareCall?(config: StageCallConfig, signal: AbortSignal | undefined, configure: (controls: Omit<StageCallConfig, 'provider' | 'model'>, info: StageModelInfo) => Omit<StageCallConfig, 'provider' | 'model'>): Promise<{ readonly config: StageCallConfig; stream(options: Readonly<Record<string, unknown>>): AsyncIterable<unknown> }>; stream?(options: Readonly<Record<string, unknown>>): AsyncIterable<unknown> }
   readonly effect: (factory: () => (() => void | Promise<void>)) => unknown
@@ -582,13 +584,43 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
           ...(composition.selection.reasoningEffort === undefined ? {} : { reasoningEffort: composition.selection.reasoningEffort }) }) })
       return { state: 'awake', agentPreset: preset, model: composition.selection }
     }
+    /**
+     * Read-only exact current model route of the target: a live Agent's own selection, otherwise the
+     * persisted Session projection. It never selects, changes or falls back to another model.
+     */
+    async function targetModelRoute(sessionId: string): Promise<DeliveryModelSelection | undefined> {
+      const agent = ctx.agents.get(sessionId)
+      if (agent) {
+        try {
+          const selection = agent.model?.current?.()
+          return selection && typeof selection === 'object' && typeof selection.provider === 'string' && selection.provider
+            && typeof selection.model === 'string' && selection.model
+            ? { provider: selection.provider, model: selection.model, ...(typeof selection.reasoningEffort === 'string' && selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}) }
+            : undefined
+        } catch { return undefined }
+      }
+      try { return (await readWakeComposition(sessionId)).selection ?? undefined } catch { return undefined }
+    }
+    /** Exact visual capability of the current route. Missing info, an exception or a non-array is unknown. */
+    async function targetImageCapability(sessionId: string): Promise<DeliveryImageCapability> {
+      const selection = await targetModelRoute(sessionId)
+      if (!selection) return 'unknown'
+      const hostLlm = ctx.llm ?? (ctx.get ? ctx.get('llm') : undefined)
+      if (!hostLlm || typeof hostLlm.resolveModelInfo !== 'function') return 'unknown'
+      let info: any
+      try { info = await hostLlm.resolveModelInfo(selection.provider, selection.model) } catch { return 'unknown' }
+      const modalities = info?.inputModalities
+      if (!Array.isArray(modalities)) return 'unknown'
+      return modalities.includes('image') ? 'supported' : 'unsupported'
+    }
     deliveryConfirmations = createDeliveries(store, {
       requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('delivery_unavailable', 503); workspace.requireEpoch(epoch) },
       target: input => sessionWork!.actionTarget(input),
       images: input => images!.verify(input),
+      imageCapability: input => targetImageCapability(input.target.sessionId),
       liveness: deliveryTargetState,
       wake: wakeColdTarget,
-      async dispatch(record, text) {
+      async dispatch(record, text, imageRefs = []) {
         if (disposed) return { state: 'blocked', code: 'delivery_unavailable' }
         // Text targets are woken by the service before this call; a still-cold target is a lost race.
         const agent = ctx.agents.get(record.target.sessionId)
@@ -625,7 +657,45 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
           }
         }
         // Exact DSH operation semantics: continue wakes, supplement rides the next step, steer corrects.
-        const value = { ...message(text), id: record.messageId, source: { kind: 'superagent', form: 'notice', summary: 'Superagent delivery' } }
+        // A confirmed image delivery materializes only exact digest-checked originals, then commits one
+        // Host attachment per image and sends them as image content blocks. A blocked capability or an
+        // uncertain upload/message outcome never degrades to a text-only resend.
+        let content: any[] = [{ type: 'text', text }]
+        if (imageRefs.length) {
+          if (!Array.isArray(imageRefs) || !imageRefs.every((image: DeliveryImageReference) => image && typeof image.imageId === 'string' && typeof image.digest === 'string' && /^[a-f0-9]{64}$/.test(image.digest))) return { state: 'blocked', code: 'delivery_image_original_changed' }
+          const capability = await targetImageCapability(record.target.sessionId)
+          if (capability !== 'supported') return { state: 'blocked', code: 'delivery_image_model_unsupported' }
+          const attachments = ctx.attachments ?? (ctx.get ? ctx.get('attachments') : undefined)
+          if (!attachments || typeof attachments.saveImage !== 'function') return { state: 'blocked', code: 'delivery_image_attachment_unavailable' }
+          let material: Awaited<ReturnType<NonNullable<typeof images>['materialize']>>
+          try {
+            material = await images!.materialize({ epoch: record.epoch, references: imageRefs, target: { sessionId: record.target.sessionId, scopeRevision: record.target.scopeRevision, factRevision: record.target.factRevision } })
+          } catch (error) {
+            // A raced release/rebind is a changed binding; any other read failure is a byte-integrity block.
+            return { state: 'blocked', code: error instanceof WorkspaceError && error.code === 'image_reference_changed' ? 'delivery_image_changed' : 'delivery_image_original_changed' }
+          }
+          try {
+            for (let index = 0; index < imageRefs.length; index++) {
+              const reference = imageRefs[index]!, original = material.originals[index]
+              if (!original || original.imageId !== reference.imageId || original.digest !== reference.digest || original.seq !== reference.seq
+                || original.mediaType !== 'image/png' || !(original.bytes instanceof Uint8Array) || createHash('sha256').update(original.bytes).digest('hex') !== reference.digest) return { state: 'blocked', code: 'delivery_image_original_changed' }
+            }
+            // Durable Host attachment creation happens only after the dispatch fence exists; the
+            // service calls this adapter exactly once per confirmed dispatch.
+            const created: any[] = []
+            for (const original of material.originals) created.push(await attachments.saveImage({ data: original.bytes, mediaType: 'image/png', name: `${original.digest}.png` }))
+            const blocks = created.map(ref => ({ type: 'image' as const, attachment: ref }))
+            // The Host owns the stored encoding (normalization may re-encode); the submitted bytes were
+            // already digest-checked above. Only the durable reference shape is required here.
+            if (blocks.some(block => !block.attachment || typeof block.attachment !== 'object' || typeof block.attachment.attachmentId !== 'string'
+              || !block.attachment.attachmentId || typeof block.attachment.mediaType !== 'string' || !/^image\//.test(block.attachment.mediaType)
+              || !Number.isSafeInteger(block.attachment.bytes) || !Number.isSafeInteger(block.attachment.width) || !Number.isSafeInteger(block.attachment.height))) {
+              return { state: 'dispatch_unknown', code: 'delivery_image_upload_unknown' }
+            }
+            content = [{ type: 'text', text }, ...blocks]
+          } catch { return { state: 'dispatch_unknown', code: 'delivery_image_upload_unknown' } }
+        }
+        const value = { ...message(text), content, id: record.messageId, source: { kind: 'superagent', form: 'notice', summary: 'Superagent delivery' } }
         try {
           if (record.operation === 'continue') await agent.followup(value)
           else if (record.operation === 'supplement') await agent.inject(value)

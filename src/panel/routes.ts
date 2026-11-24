@@ -700,7 +700,7 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       if (isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
       return output
     }
-    return json({ ok: true, data: input.action === 'list' ? { ...(validHash(result?.scopeRevision) ? { scopeRevision: result.scopeRevision } : {}), items: Array.isArray(result?.items) ? result.items.slice(0, 5).map(image) : [], capability: { upload: 'png-8bit-noninterlaced', originalUnderstanding: false, targetDelivery: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' } } : image(result) })
+    return json({ ok: true, data: input.action === 'list' ? { ...(validHash(result?.scopeRevision) ? { scopeRevision: result.scopeRevision } : {}), items: Array.isArray(result?.items) ? result.items.slice(0, 5).map(image) : [], capability: { upload: 'png-8bit-noninterlaced', originalUnderstanding: false, targetDelivery: true, code: 'SA_IMAGE_UNDERSTANDING_UNVERIFIED' } } : image(result) })
   })
   route('/session-action', async request => {
     const parsed = await body(request, ['action', 'epoch', 'requestId', 'actionId', 'operation', 'text', 'target']); if (parsed.error) return parsed.error
@@ -828,6 +828,8 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     output.completed = false
     // A read-only liveness hint only: it enables "this dispatch will wake" copy, not a wake guarantee.
     output.targetState = ['live', 'cold', 'unknown'].includes(String(data?.targetState)) ? data.targetState : 'unknown'
+    // A read-only visual-capability hint for the card; dispatch re-verifies and may still block.
+    if (['not-required', 'supported', 'unsupported', 'unknown'].includes(String(data?.imageCapability))) output.imageCapability = data.imageCapability
     if (['not-confirmed', 'confirmed-pending-delivery', 'canceled'].includes(data?.disposition)) output.disposition = data.disposition
     if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
     output.durable = data?.durable === true

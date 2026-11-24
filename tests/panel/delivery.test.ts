@@ -73,7 +73,7 @@ describe('POST /delivery: one HTTP seam for pre-delivery confirmation', () => {
     expect(prepared.data).toEqual({
       version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'continue',
       target: { ...f.state.binding, project: { kind: 'project', key: 'project-one' } }, digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [],
-      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared', targetState: 'unknown',
+      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared', targetState: 'unknown', imageCapability: 'not-required',
       humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', durable: true,
     })
     expect(JSON.stringify(prepared.data)).not.toContain('PRIVATE ROUTE BODY')
@@ -144,6 +144,18 @@ describe('POST /delivery: one HTTP seam for pre-delivery confirmation', () => {
     expect(JSON.stringify(result.data)).not.toContain('hidden')
     expect(JSON.stringify(result.data)).not.toContain('PRIVATE TEXT')
     expect(JSON.stringify(result.data)).not.toContain('raw')
+  })
+
+  it('passes only an exact visual-capability hint through the confirmation route', async () => {
+    const base = { version: 1, epoch: 'epoch-one', requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue',
+      target: { sessionId: 'session-target', scopeRevision: digest(['scope']), factRevision: digest(['fact']), project: { kind: 'project', key: 'project-one' } },
+      digest: digest(['digest']), bodyBytes: 4, images: [{ imageId: randomUUID(), digest: digest(['image']), seq: 1 }], seq: 1, at: 1, updatedAt: 1,
+      state: 'prepared', humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed', durable: true, targetState: 'cold' }
+    for (const [value, expected] of [['supported', 'supported'], ['unsupported', 'unsupported'], ['unknown', 'unknown'], ['forged', undefined]] as const) {
+      const post = routesFixture({ delivery: async () => ({ ...base, imageCapability: value }) })
+      const result = await post('delivery', { action: 'status', epoch: 'epoch-one', confirmationId: randomUUID() })
+      expect(result.status).toBe(200); expect(result.data.imageCapability).toBe(expected); expect(result.data.targetState).toBe('cold')
+    }
   })
 
   it('delegates exact epoch and binding checks without retry, keeping errors fixed', async () => {

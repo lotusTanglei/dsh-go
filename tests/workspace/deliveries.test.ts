@@ -34,7 +34,7 @@ function database() {
 
 interface ImageRow extends DeliveryImageReference { epoch: string; state: 'staged' | 'bound' | 'released'; target?: SessionTargetBinding }
 
-function fixture(options: { images?: boolean; dispatch?: boolean; wake?: boolean } = {}) {
+function fixture(options: { images?: boolean; dispatch?: boolean; wake?: boolean; capability?: boolean } = {}) {
   const db = database()
   const state = {
     epoch: EPOCH,
@@ -43,8 +43,10 @@ function fixture(options: { images?: boolean; dispatch?: boolean; wake?: boolean
     denied: false,
     failFenceOnce: false,
     images: new Map<string, ImageRow>(),
-    counts: { target: 0, image: 0, fence: 0, dispatch: 0, liveness: 0, wake: 0 },
-    calls: [] as Array<{ record: DeliveryDispatchRecord; text: string; fencePersisted: boolean }>,
+    counts: { target: 0, image: 0, fence: 0, dispatch: 0, liveness: 0, wake: 0, capability: 0 },
+    calls: [] as Array<{ record: DeliveryDispatchRecord; text: string; images: DeliveryImageReference[]; fencePersisted: boolean }>,
+    capability: 'supported' as 'supported' | 'unsupported' | 'unknown',
+    throwCapability: false,
     decision: { state: 'accepted', code: undefined } as { state: 'accepted' | 'interrupted' | 'dispatch_unknown' | 'blocked'; code?: string; stopEvidence?: 'turn-aborted' | 'cancel-accepted' },
     throwDispatch: false,
     evidence: undefined as undefined | ((record: DeliveryDispatchRecord) => DeliveryDispatchEvidence | undefined),
@@ -81,6 +83,13 @@ function fixture(options: { images?: boolean; dispatch?: boolean; wake?: boolean
         return { references, fence() { for (const reference of references) { const row = state.images.get(reference.imageId); if (!row || row.state !== 'bound' || row.digest !== reference.digest || row.seq !== reference.seq) throw new WorkspaceError('image_reference_changed', 409) } } }
       },
     }),
+    ...(options.capability === false ? {} : {
+      async imageCapability(input: { epoch: string; references: readonly DeliveryImageReference[]; target: DeliveryInput['target'] }) {
+        state.counts.capability++
+        if (state.throwCapability) throw new Error('Host capability probe unavailable')
+        return input.references.length ? state.capability : 'not-required' as const
+      },
+    }),
     ...(options.wake === false ? {} : {
       async liveness(_sessionId: string) { state.counts.liveness++; if (state.throwLiveness) throw new Error('Host liveness unavailable'); return state.liveness },
       async wake(record: Readonly<DeliveryDispatchRecord>, wakeId: string): Promise<DeliveryWakeDecision> {
@@ -94,10 +103,10 @@ function fixture(options: { images?: boolean; dispatch?: boolean; wake?: boolean
       },
     }),
     ...(options.dispatch === false ? {} : {
-      async dispatch(record: Readonly<DeliveryDispatchRecord>, text: string) {
+      async dispatch(record: Readonly<DeliveryDispatchRecord>, text: string, images: readonly DeliveryImageReference[] = []) {
         state.counts.dispatch++
         const persisted: any = db.store.repos.side_effect.get(`delivery-dispatch:v1:${record.confirmationId}`)
-        state.calls.push({ record: { ...record, target: { ...record.target, project: { ...record.target.project } } } as DeliveryDispatchRecord, text, fencePersisted: persisted?.state === `v1:${record.seq}` })
+        state.calls.push({ record: { ...record, target: { ...record.target, project: { ...record.target.project } } } as DeliveryDispatchRecord, text, images: images.map(image => ({ ...image })), fencePersisted: persisted?.state === `v1:${record.seq}` })
         if (state.throwDispatch) throw new Error('Host call outcome lost')
         return { state: state.decision.state, ...(state.decision.code === undefined ? {} : { code: state.decision.code }), ...(state.decision.stopEvidence === undefined ? {} : { stopEvidence: state.decision.stopEvidence }) }
       },
@@ -160,7 +169,7 @@ describe('pre-delivery confirmation: prepared is not delivered', () => {
     expect(receipt).toEqual({
       version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId, operation: 'continue',
       target: { ...f.state.binding, project: { ...PROJECT } }, digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'), images: [],
-      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared', targetState: 'unknown',
+      seq: 1, at: expect.any(Number), updatedAt: expect.any(Number), state: 'prepared', targetState: 'unknown', imageCapability: 'not-required',
       durable: true, humanConfirmed: false, delivered: false, accepted: false, executed: false, completed: false, disposition: 'not-confirmed',
     })
     expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'dispatch', 'prepare', 'reconcile', 'status'])
@@ -260,6 +269,32 @@ describe('binding invalidation: any target/content/image change requires a fresh
   })
 })
 
+describe('visual capability: the card is told before dispatch and dispatch is rechecked', () => {
+  it('reports the exact Host capability hint on prepare and confirm for bound images only', async () => {
+    const f = fixture(), image = f.bindImage(), input = f.input({ operation: 'supplement', images: [imageRef(image)] })
+    f.state.capability = 'unsupported'
+    const prepared = await f.service.prepare(input)
+    expect(prepared).toMatchObject({ state: 'prepared', imageCapability: 'unsupported', images: [imageRef(image)] })
+    f.state.capability = 'supported'
+    expect(await f.service.confirm(input)).toMatchObject({ state: 'confirmed', imageCapability: 'supported' })
+    expect(f.state.counts.capability).toBe(2)
+    const plain = f.input()
+    expect(await f.service.prepare(plain)).toMatchObject({ imageCapability: 'not-required' })
+    expect(f.state.counts.capability).toBe(2)
+  })
+
+  it('keeps a missing port, an exception or an unknown answer as unknown without failing the card', async () => {
+    const noPort = fixture({ capability: false }), image = noPort.bindImage(), input = noPort.input({ images: [imageRef(image)] })
+    expect(await noPort.service.prepare(input)).toMatchObject({ imageCapability: 'unknown' })
+    const failing = fixture(), bound = failing.bindImage(), failingInput = failing.input({ images: [imageRef(bound)] })
+    failing.state.throwCapability = true
+    expect(await failing.service.prepare(failingInput)).toMatchObject({ imageCapability: 'unknown' })
+    const weird = fixture(), other = weird.bindImage(), weirdInput = weird.input({ images: [imageRef(other)] })
+    weird.state.capability = 'unknown'
+    expect(await weird.service.prepare(weirdInput)).toMatchObject({ imageCapability: 'unknown' })
+  })
+})
+
 describe('idempotency, epoch and persistence', () => {
   it('keeps same request/confirmation content idempotent and rejects changed content or reused ids', async () => {
     const f = fixture(), input = f.input()
@@ -321,12 +356,12 @@ describe('input shape gates', () => {
       await rejectsWith(f.service.prepare(value as DeliveryInput), 'delivery_invalid', 400)
     }
     expect(f.db.store.repos.side_effect.all()).toEqual([])
-    expect(f.state.counts).toEqual({ target: 0, image: 0, fence: 0, dispatch: 0, liveness: 0, wake: 0 })
+    expect(f.state.counts).toEqual({ target: 0, image: 0, fence: 0, dispatch: 0, liveness: 0, wake: 0, capability: 0 })
   })
 
   it('exposes only the exact confirmation/dispatch service surface, with no Agent or body export', async () => {
     const f = fixture()
-    expect(Object.keys(f.ports).sort()).toEqual(['dispatch', 'evidence', 'images', 'liveness', 'requireEpoch', 'target', 'wake'])
+    expect(Object.keys(f.ports).sort()).toEqual(['dispatch', 'evidence', 'imageCapability', 'images', 'liveness', 'requireEpoch', 'target', 'wake'])
     expect(Object.keys(f.service).sort()).toEqual(['cancel', 'confirm', 'dispatch', 'prepare', 'reconcile', 'status'])
   })
 })
@@ -351,6 +386,29 @@ describe('dispatch: one durable control call for the exact confirmed payload', (
     // Neither the confirmation nor the dispatch fence may contain the raw body.
     expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('exact continue body')
     expect(JSON.stringify(f.db.store.repos.side_effect.all())).not.toContain('保留原字节')
+  })
+
+  it('passes the exact confirmed image references to the Host adapter after the dispatch fence', async () => {
+    const f = fixture(), one = f.bindImage(), five = Array.from({ length: 4 }, () => f.bindImage())
+    const images = [imageRef(one), ...five.map(imageRef)], input = f.input({ operation: 'steer', images })
+    await f.service.prepare(input); await f.service.confirm(input)
+    const receipt = await f.service.dispatch(input)
+    expect(receipt).toMatchObject({ state: 'accepted', accepted: true, images })
+    expect(f.state.calls).toHaveLength(1)
+    expect(f.state.calls[0]).toMatchObject({ fencePersisted: true, text: input.text, images })
+    expect(f.state.calls[0]!.record.operation).toBe('steer')
+    // Exact replay never calls the adapter again, so no attachment can be uploaded twice.
+    expect(await f.service.dispatch(input)).toEqual(receipt)
+    expect(f.state.calls).toHaveLength(1)
+  })
+
+  it('rejects a dispatch whose image digest no longer matches the confirmation before any fence or Host call', async () => {
+    const f = fixture(), image = f.bindImage(), input = f.input({ images: [imageRef(image)] })
+    await f.service.prepare(input); await f.service.confirm(input)
+    const changed = { ...input, images: [{ imageId: image.imageId, digest: digest(['other-image']), seq: image.seq }] }
+    await rejectsWith(f.service.dispatch(changed), 'delivery_confirmation_changed', 409)
+    await rejectsWith(f.service.dispatch({ ...input, images: [] }), 'delivery_confirmation_changed', 409)
+    expect(f.state.calls).toEqual([]); expect(f.dispatchRows()).toEqual([])
   })
 
   it('rejects unconfirmed, changed, canceled, forged, replayed and cross-epoch dispatches without any Host call', async () => {

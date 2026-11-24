@@ -23,6 +23,10 @@ export interface DeliveryWakeRecord {
   evidence?: DeliveryWakeEvidence; code?: string
 }
 export interface DeliveryImageReference { imageId: string; digest: string; seq: number }
+/** Host-only exact visual capability of the confirmed target's current model.
+ * `unknown` always blocks an image delivery: absence of proof is never approval.
+ */
+export type DeliveryImageCapability = 'not-required' | 'supported' | 'unsupported' | 'unknown'
 export interface DeliveryTargetInput { sessionId: string; scopeRevision: string; factRevision: string }
 export interface DeliveryInput {
   epoch: string; requestId: string; confirmationId: string; operation: DeliveryOperation; text: string
@@ -34,6 +38,8 @@ export interface DeliveryConfirmationRecord {
   seq: number; at: number; updatedAt: number; state: 'prepared' | 'confirmed' | 'canceled'; code?: string
   /** Last Host-read liveness hint; optional so records written before this slice stay valid. */
   targetState?: DeliveryTargetState
+  /** Read-only capability hint for the confirmation card; dispatch re-verifies before any upload. */
+  imageCapability?: DeliveryImageCapability
 }
 export type DeliveryConfirmationState = DeliveryConfirmationRecord['state']
 export interface DeliveryConfirmationReceipt {
@@ -43,6 +49,8 @@ export interface DeliveryConfirmationReceipt {
   durable: true; humanConfirmed: boolean; delivered: false; accepted: false; executed: false; completed: false
   /** The hint drives the "this dispatch will wake the conversation" copy; it is not a wake guarantee. */
   targetState: DeliveryTargetState
+  /** Exact pre-dispatch visual capability hint. Never an execution grant; dispatch rechecks. */
+  imageCapability: DeliveryImageCapability
   disposition: 'not-confirmed' | 'confirmed-pending-delivery' | 'canceled'; code?: string
 }
 /** One durable dispatch fence per confirmed confirmation. Raw text is never stored. */
@@ -101,6 +109,12 @@ export interface DeliveryPorts {
   /** Host-only exact reference check for already bound images; no bytes, no new binding. */
   images?(input: { epoch: string; references: readonly DeliveryImageReference[]; target: DeliveryTargetInput }): Promise<{ references: readonly DeliveryImageReference[]; fence(): void }>
   /**
+   * Read-only Host capability probe for the card: the target's current model route resolved through
+   * `resolveModelInfo`. `supported` requires exact `inputModalities` containing `image`; anything
+   * missing, exceptional or unknown stays `unknown`. It has no side effect and grants nothing.
+   */
+  imageCapability?(input: { epoch: string; references: readonly DeliveryImageReference[]; target: DeliveryTargetInput }): Promise<DeliveryImageCapability>
+  /**
    * Read-only Host liveness of the exact bound target. It must not wake, create or persist anything;
    * an unavailable probe stays `unknown` and never fabricates `cold`.
    */
@@ -117,7 +131,7 @@ export interface DeliveryPorts {
    * evidence; a stop is `interrupted` only with observed interruption evidence; a still-cold target
    * is `blocked` without any resume; an ambiguous Host call is `dispatch_unknown`, never retried.
    */
-  dispatch?(record: Readonly<DeliveryDispatchRecord>, text: string): Promise<DeliveryDispatchDecision>
+  dispatch?(record: Readonly<DeliveryDispatchRecord>, text: string, images: readonly DeliveryImageReference[]): Promise<DeliveryDispatchDecision>
   /** Read-only durable target evidence lookup by exact dispatch identity; never resends or wakes. */
   evidence?(record: Readonly<DeliveryDispatchRecord>): Promise<DeliveryDispatchEvidence | undefined>
 }
@@ -140,6 +154,8 @@ const digestValid = (value: unknown): value is string => typeof value === 'strin
 const codeValid = (value: unknown): value is string => typeof value === 'string' && CODE.test(value)
 const stopEvidenceValid = (value: unknown): value is DeliveryStopEvidenceKind => typeof value === 'string' && (STOP_EVIDENCE_KINDS as readonly string[]).includes(value)
 const targetStateValid = (value: unknown): value is DeliveryTargetState => typeof value === 'string' && (TARGET_STATES as readonly string[]).includes(value)
+const IMAGE_CAPABILITIES: readonly DeliveryImageCapability[] = ['not-required', 'supported', 'unsupported', 'unknown']
+const imageCapabilityValid = (value: unknown): value is DeliveryImageCapability => typeof value === 'string' && (IMAGE_CAPABILITIES as readonly string[]).includes(value)
 /** Bounded provider/model/preset identity text; never a URL or control character. */
 const label = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= MAX_LABEL && !/[\u0000-\u001f\u007f]/.test(value) && !value.includes('://')
 const selectionValid = (value: unknown): value is DeliveryModelSelection => plain(value) && only(value, ['provider', 'model', 'reasoningEffort'])
@@ -191,13 +207,14 @@ export function deliveryDigest(value: DeliveryInput): string {
     value.images.map(item => [item.imageId, item.digest, item.seq])])
 }
 function recordValid(value: unknown): value is DeliveryConfirmationRecord {
-  if (!plain(value) || !only(value, ['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'targetState'])
+  if (!plain(value) || !only(value, ['version', 'epoch', 'requestId', 'confirmationId', 'operation', 'target', 'digest', 'bodyBytes', 'images', 'seq', 'at', 'updatedAt', 'state', 'code', 'targetState', 'imageCapability'])
     || value.version !== 1 || !id(value.epoch) || !uuid(value.requestId) || !uuid(value.confirmationId) || !ops.includes(value.operation)
     || !bindingValid(value.target) || !digestValid(value.digest) || !integer(value.bodyBytes) || value.bodyBytes > MAX_TEXT
     || value.operation !== 'stop' && value.bodyBytes < 1 || value.operation === 'stop' && value.bodyBytes > MAX_STOP_REASON
     || !imagesValid(value.images) || value.operation === 'stop' && value.images.length > 0
     || !integer(value.at) || !integer(value.updatedAt) || value.updatedAt < value.at
-    || (value.targetState !== undefined && !targetStateValid(value.targetState))) return false
+    || (value.targetState !== undefined && !targetStateValid(value.targetState))
+    || (value.imageCapability !== undefined && !imageCapabilityValid(value.imageCapability))) return false
   const sequence = { prepared: 1, confirmed: 2, canceled: 2 } as Record<string, number>
   if (!(value.state in sequence) || value.seq !== sequence[value.state]) return false
   return (value.code === undefined || codeValid(value.code))
@@ -256,6 +273,7 @@ function receipt(record: DeliveryConfirmationRecord): DeliveryConfirmationReceip
     images: copyImages(record.images), seq: record.seq, at: record.at, updatedAt: record.updatedAt, state: record.state,
     durable: true as const, humanConfirmed: record.state === 'confirmed', delivered: false as const, accepted: false as const,
     executed: false as const, completed: false as const, targetState: record.targetState ?? 'unknown' as const,
+    imageCapability: record.imageCapability ?? (record.images.length ? 'unknown' as const : 'not-required' as const),
     disposition: record.state === 'confirmed' ? 'confirmed-pending-delivery' as const : record.state === 'canceled' ? 'canceled' as const : 'not-confirmed' as const,
     ...(record.code ? { code: record.code } : {}) })
 }
@@ -280,7 +298,8 @@ function metadata(record: DeliveryConfirmationRecord): DeliveryConfirmationRecor
   return { version: 1, epoch: record.epoch, requestId: record.requestId, confirmationId: record.confirmationId, operation: record.operation,
     target: copyBinding(record.target), digest: record.digest, bodyBytes: record.bodyBytes, images: copyImages(record.images),
     seq: record.seq, at: record.at, updatedAt: record.updatedAt, state: record.state, ...(record.code ? { code: record.code } : {}),
-    ...(record.targetState === undefined ? {} : { targetState: record.targetState }) }
+    ...(record.targetState === undefined ? {} : { targetState: record.targetState }),
+    ...(record.imageCapability === undefined ? {} : { imageCapability: record.imageCapability }) }
 }
 function dispatchMetadata(record: DeliveryDispatchRecord): DeliveryDispatchRecord {
   // Strict allowlist contains no body text and no raw caller payload.
@@ -330,9 +349,10 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
     if (Boolean(pointer) !== Boolean(current)) fail('delivery_confirmation_record_invalid', 503)
     return current
   }
-  function update(record: DeliveryConfirmationRecord, state: 'confirmed' | 'canceled', patch: { targetState?: DeliveryTargetState } = {}): DeliveryConfirmationRecord {
+  function update(record: DeliveryConfirmationRecord, state: 'confirmed' | 'canceled', patch: { targetState?: DeliveryTargetState; imageCapability?: DeliveryImageCapability } = {}): DeliveryConfirmationRecord {
     const next: DeliveryConfirmationRecord = { ...metadata(record), state, seq: record.seq + 1, updatedAt: Math.max(Date.now(), record.updatedAt),
-      ...(patch.targetState === undefined ? {} : { targetState: patch.targetState }) }
+      ...(patch.targetState === undefined ? {} : { targetState: patch.targetState }),
+      ...(patch.imageCapability === undefined ? {} : { imageCapability: patch.imageCapability }) }
     if (!recordValid(next)) fail('delivery_confirmation_record_invalid', 503)
     const changed = store.db.prepare('UPDATE side_effect SET state=?, detail=? WHERE key=? AND state=?')
       .run(`v1:${next.seq}`, encodeJson(next, false), key(record.confirmationId), `v1:${record.seq}`)
@@ -450,11 +470,20 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
     try { fence() } catch { return fail('delivery_image_changed') }
     return { references: canonical, fence }
   }
-  function insert(input: DeliveryInput, binding: SessionTargetBinding, images: readonly DeliveryImageReference[], targetState: DeliveryTargetState): DeliveryConfirmationRecord {
+  /** Read-only capability hint; a missing port or any failure is honest `unknown`, never support. */
+  async function probeImageCapability(epoch: string, references: readonly DeliveryImageReference[], target: DeliveryTargetInput): Promise<DeliveryImageCapability> {
+    if (!references.length) return 'not-required'
+    if (!ports.imageCapability) return 'unknown'
+    try {
+      const value = await ports.imageCapability({ epoch, references: copyImages(references), target: copyTarget(target) })
+      return value === 'supported' || value === 'unsupported' ? value : 'unknown'
+    } catch { return 'unknown' }
+  }
+  function insert(input: DeliveryInput, binding: SessionTargetBinding, images: readonly DeliveryImageReference[], targetState: DeliveryTargetState, imageCapability: DeliveryImageCapability): DeliveryConfirmationRecord {
     const at = Date.now()
     const value: DeliveryConfirmationRecord = { version: 1, epoch: input.epoch, requestId: input.requestId, confirmationId: input.confirmationId,
       operation: input.operation, target: copyBinding(binding), digest: deliveryDigest(input), bodyBytes: Buffer.byteLength(input.text, 'utf8'),
-      images: copyImages(images), seq: 1, at, updatedAt: at, state: 'prepared', targetState }
+      images: copyImages(images), seq: 1, at, updatedAt: at, state: 'prepared', targetState, imageCapability }
     if (!recordValid(value)) return fail('delivery_confirmation_record_invalid', 503)
     store.repos.kv.insert({ k: requestKey(input.epoch, input.requestId), v: { version: 1, confirmationId: input.confirmationId } })
     store.db.prepare('INSERT INTO side_effect(key,kind,ticket_id,at,state,detail) VALUES (?,?,NULL,?,?,?)').run(key(input.confirmationId), KIND, at, 'v1:1', encodeJson(value, false))
@@ -512,14 +541,16 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
         ports.requireEpoch(input.epoch)
         const images = await imageCut(input.epoch, input.images, cut.binding)
         ports.requireEpoch(input.epoch)
-        // Read-only liveness hint for the confirmation card. It is never persisted as a wake decision.
+        // Read-only liveness and visual-capability hints for the confirmation card. Neither is a wake
+        // decision or an execution grant; dispatch re-reads both before any upload or message.
         const targetState = await probeTarget(input.target.sessionId)
+        const imageCapability = await probeImageCapability(input.epoch, images.references, cut.binding)
         cut.fence(); images.fence()
         const record = store.transaction(() => {
           ports.requireEpoch(input.epoch)
           const replay = existing(input)
           if (replay) return replay
-          return insert(input, cut.binding, images.references, targetState)
+          return insert(input, cut.binding, images.references, targetState, imageCapability)
         })
         return receipt(record)
       })
@@ -540,6 +571,7 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
         const images = await imageCut(input.epoch, input.images, cut.binding)
         ports.requireEpoch(input.epoch)
         const targetState = await probeTarget(input.target.sessionId)
+        const imageCapability = await probeImageCapability(input.epoch, images.references, cut.binding)
         const record = store.transaction(() => {
           ports.requireEpoch(input.epoch)
           const latest = read(input.confirmationId)
@@ -549,7 +581,7 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
           if (latest.digest !== deliveryDigest(input) || latest.requestId !== input.requestId) return fail('delivery_request_conflict')
           try { cut.fence() } catch { return fail('delivery_target_changed') }
           try { images.fence() } catch { return fail('delivery_image_changed') }
-          return update(latest, 'confirmed', { targetState })
+          return update(latest, 'confirmed', { targetState, imageCapability })
         })
         return receipt(record)
       })
@@ -666,7 +698,7 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
         }
         // Each external side effect has its own durable fence; the delivery call is still exactly one.
         let decision: DeliveryDispatchDecision | undefined
-        try { decision = await ports.dispatch(freeze(record), input.text) } catch { /* possibly accepted: reconcile only */ }
+        try { decision = await ports.dispatch(freeze(record), input.text, images.references) } catch { /* possibly accepted: reconcile only */ }
         const stop = input.operation === 'stop'
         let state: DeliveryDispatchTerminalState
         let code: string | undefined
@@ -678,8 +710,9 @@ export function createDeliveries(store: Store, ports: DeliveryPorts) {
           else { state = 'dispatch_unknown'; code = codeValid(decision?.code) ? decision!.code : 'delivery_dispatch_unknown' }
         } else {
           state = decision?.state === 'accepted' ? 'accepted' : decision?.state === 'blocked' ? 'blocked' : 'dispatch_unknown'
+          // A Host adapter may attach a more exact fixed reason to an uncertain outcome; it is metadata only.
           code = state === 'blocked' ? (codeValid(decision?.code) ? decision!.code : 'delivery_dispatch_blocked')
-            : state === 'dispatch_unknown' ? 'delivery_dispatch_unknown' : undefined
+            : state === 'dispatch_unknown' ? (codeValid(decision?.code) ? decision!.code : 'delivery_dispatch_unknown') : undefined
         }
         const updated = store.transaction(() => {
           const current = readDispatch(input.confirmationId)

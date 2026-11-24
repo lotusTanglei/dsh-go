@@ -15,7 +15,7 @@ import type { ActivationResult, Spawner, SpawnActivationInput } from '../../src/
 import { installPanelRoutes } from '../../src/panel/routes.js'
 import { deliveryDigest } from '../../src/workspace/deliveries.js'
 
-type Message = { id: string; role: string; content: Array<{ type: string; text: string }>; source: { kind: string; form?: string } }
+type Message = { id: string; role: string; content: Array<{ type: string; text?: string; attachment?: any }>; source: { kind: string; form?: string } }
 type Event = { type: string; seq: number; time: number; data: any }
 type Deferred<T> = { promise: Promise<T>; resolve(value: T): void }
 function deferred<T>(): Deferred<T> {
@@ -44,7 +44,7 @@ const approve = (plan: AdmissionPlanDTO) => ({ epoch: plan.epoch, requestId: pla
 async function drainTasks() { for (let i = 0; i < 4; i++) await new Promise<void>(done => setImmediate(done)) }
 
 /** Real on-disk SQLite + explicit fake Host. No provider/service is reachable. */
-function fixture(options: { production?: boolean; config?: Partial<Config>; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string>; projects?: Array<{id:string;title:string;sessionIds:string[]}> } } = {}) {
+function fixture(options: { production?: boolean; config?: Partial<Config>; attachments?: boolean; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string>; projects?: Array<{id:string;title:string;sessionIds:string[]}> } } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'workspace-runtime-')))
   const config = resolveConfig({ ...defaults, stateDir: dir, dbPath: '', lockPath: '', workRoot: '', sources: [],
     confirm: 'always', watchdogIntervalMs: 60_000, ...options.config } as Config)
@@ -54,8 +54,11 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
   const listeners = new Map<string, Set<(...args: any[]) => unknown>>()
   const missingSessions = new Set<string>()
   const interruptions: Array<{ id: string; ticketState?: unknown; currentAssignment?: unknown; assignmentState?: unknown; endedReason?: unknown }> = []
-  const calls = { followup: [] as Message[], inject: [] as Message[], realActivation: vi.fn(), model: vi.fn(), modelCall: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(), resume: vi.fn(), cancel: vi.fn(), history: vi.fn(), snapshots: [] as Array<{ id: string; keys: string[] }> }
+  const calls = { followup: [] as Message[], inject: [] as Message[], realActivation: vi.fn(), model: vi.fn(), modelCall: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(), resume: vi.fn(), cancel: vi.fn(), history: vi.fn(), snapshots: [] as Array<{ id: string; keys: string[] }>, saveImage: [] as Array<{ data: Uint8Array; mediaType: string; name?: string; ref: any }> }
+  // Exact Fake Host visual capability: null/undefined modalities are an honest unknown.
+  let imageModalities: readonly string[] | null = ['text', 'image']
   let durable = true, modelVerified = true, turns = 0, modelWait: (() => Promise<void>) | undefined
+  let saveImageFailure: Error | undefined = undefined
   // Explicit fake Host state for cold wake: persisted headers, projected model selection, mount outcome.
   const headers = new Map<string, any>(), wakeSelections = new Map<string, any>(), wakeReceived = new Map<string, { followup: Message[]; inject: Message[]; steer: Message[] }>()
   const mountedPresets: string[] = [], disposedHandles: string[] = [], createdSessions: string[] = []
@@ -101,7 +104,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
       calls.model(provider, model)
       if (modelWait) await modelWait()
       if (!modelVerified) throw new Error('fake model is unavailable')
-      return { provider, id: model, name: 'Verified fake model', reasoning: { efforts: [{ id: 'medium', name: 'Medium' }] } }
+      return { provider, id: model, name: 'Verified fake model', reasoning: { efforts: [{ id: 'medium', name: 'Medium' }] }, ...(imageModalities === null ? {} : { inputModalities: [...imageModalities] }) }
     } }
   const services: Record<string, any> = { agentPresets, agentDefaultModel, sessionPersistence, llm }
   const ctx: RuntimeContext = {
@@ -129,6 +132,14 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
     agentDefaultModel,
     llm,
     sessions: { async flush() { return durable } },
+    ...(options.attachments === false ? {} : { attachments: {
+      async saveImage(input: { data: Uint8Array; mediaType: string; name?: string }) {
+        if (saveImageFailure) throw saveImageFailure
+        const ref = { attachmentId: randomUUID(), mediaType: input.mediaType, bytes: input.data.byteLength, width: 1, height: 1, ...(input.name ? { name: input.name } : {}) }
+        calls.saveImage.push({ data: new Uint8Array(input.data), mediaType: input.mediaType, ...(input.name ? { name: input.name } : {}), ref })
+        return ref
+      },
+    } }),
     agents: {
       get(id) { return agents.get(id) },
       /**
@@ -212,6 +223,8 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
   })
   return {
     get store() { return store }, get runtime() { return runtime }, calls, workers: workerHandles, interruptions,
+    stateDir: () => dir, setImageModalities(value: readonly string[] | null) { imageModalities = value }, setSaveImageFailure(value: Error | undefined) { saveImageFailure = value },
+    imageOriginalPath: (digestHex: string) => join(dir, 'image-originals', digestHex + '.png'),
     mountedPresets, disposedHandles, createdSessions, modelSet, wakeReceived, headers, wakeSelections,
     seedExternal(id: string) { const agent = { id, status: 'idle', model: { current: vi.fn(() => ({ provider: 'original-provider', model: 'original-model' })), set: vi.fn() }, answer: vi.fn(), steer: vi.fn(), followup: vi.fn() }; agents.set(id, agent); return agent },
     router: () => router, events: () => logs.get(router.id)!,
@@ -231,6 +244,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; sess
       const received = { followup: [] as Message[], inject: [] as Message[], steer: [] as Message[] }
       const agent: any = {
         id: sessionId, session: { id: sessionId }, ctx: {}, status: 'idle',
+        model: { current() { return { provider: 'fake-provider', model: 'fake-model', reasoningEffort: 'medium' } }, set: modelSet },
         followup(value: Message) {
           if (options.failFollowup) throw new Error('Host followup outcome lost')
           received.followup.push(value); append(sessionId, 'agent/inbox/spliced', { target: 'next-turn', start: received.followup.length - 1, removedCount: 0, inserted: [value] })
@@ -342,6 +356,17 @@ async function targetInput(f: ReturnType<typeof fixture>, epoch: string) {
   const located = await f.runtime.panelPorts.sessionLocate({ epoch, text: 'Repair callback' })
   if (located.status !== 'located' || !located.target?.factRevision) throw new Error('Expected exact source target')
   return { sessionId: located.target.sessionId, scopeRevision: located.revision, factRevision: located.target.factRevision }
+}
+/** Upload N exact PNG originals and bind every one to the exact located target. */
+async function boundImages(f: ReturnType<typeof fixture>, epoch: string, target: { sessionId: string; scopeRevision: string; factRevision: string }, count: number) {
+  const draftId = randomUUID(), images: Array<{ imageId: string; digest: string; seq: number }> = [], originals: Buffer[] = []
+  for (let index = 0; index < count; index++) {
+    const original = rasterPNG(), uploadId = randomUUID()
+    const uploaded: any = await f.runtime.panelPorts.images({ action: 'upload', epoch, draftId, uploadId, digest: sha(original), mediaType: 'image/png', encoded: original.toString('base64') })
+    const bound: any = await f.runtime.panelPorts.images({ action: 'bind', epoch, reference: { imageId: uploaded.imageId, digest: uploaded.digest, seq: uploaded.seq }, target })
+    images.push({ imageId: bound.imageId, digest: bound.digest, seq: bound.seq }); originals.push(original)
+  }
+  return { images, originals }
 }
 /** Same HTTP route seam as production, backed by this fixture's real runtime and Fake Host. */
 function httpPanel(f: ReturnType<typeof fixture>) {
@@ -1084,6 +1109,175 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect(f.calls.followup).toEqual([]); expect(f.calls.inject).toEqual([]); expect(f.calls.realActivation).not.toHaveBeenCalled()
   })
 
+
+  it.each(['continue', 'supplement', 'steer'] as const)('delivers one confirmed original as a Host image block for %s, digest-exact and without duplicate upload', async operation => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images, originals } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation, text: `Image ${operation} body`, target, images }
+    const prepared = await post('delivery', { action: 'prepare', ...input })
+    expect(prepared.data).toMatchObject({ state: 'prepared', images, imageCapability: 'supported' })
+    expect(f.calls.saveImage).toEqual([])
+    const confirmed = await post('delivery', { action: 'confirm', ...input })
+    expect(confirmed.data).toMatchObject({ state: 'confirmed', imageCapability: 'supported' })
+    expect(f.calls.saveImage).toEqual([])
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.status).toBe(200)
+    expect(dispatched.data).toMatchObject({ state: 'accepted', accepted: true, delivered: true, images, disposition: 'target-durable-receipt' })
+    // One Host attachment per exact confirmed original; the adapter saw the confirmed bytes only.
+    expect(f.calls.saveImage).toHaveLength(1)
+    expect(f.calls.saveImage[0]!.mediaType).toBe('image/png')
+    expect(sha(Buffer.from(f.calls.saveImage[0]!.data))).toBe(images[0]!.digest)
+    expect(Buffer.from(f.calls.saveImage[0]!.data)).toEqual(originals[0])
+    const method = ({ continue: 'followup', supplement: 'inject', steer: 'steer' } as const)[operation]
+    const received = live.received[method]
+    expect(received).toHaveLength(1)
+    expect(received[0]!.content[0]).toEqual({ type: 'text', text: input.text })
+    expect(received[0]!.content.slice(1)).toEqual([{ type: 'image', attachment: f.calls.saveImage[0]!.ref }])
+    for (const other of ['followup', 'inject', 'steer'] as const) if (other !== method) expect(live.received[other]).toEqual([])
+    // Exact confirmed replay neither uploads nor sends a second image message.
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(f.calls.saveImage).toHaveLength(1); expect(received).toHaveLength(1)
+  })
+
+  it('delivers five confirmed images in one message with one saveImage per original and the same order', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images, originals } = await boundImages(f, epoch, target, 5)
+    expect(new Set(images.map(image => image.imageId)).size).toBe(5)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Five exact originals', target, images }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.data).toMatchObject({ state: 'accepted', accepted: true, images })
+    expect(f.calls.saveImage).toHaveLength(5)
+    expect(f.calls.saveImage.map(call => sha(Buffer.from(call.data)))).toEqual(images.map(image => image.digest))
+    expect(f.calls.saveImage.map(call => Buffer.from(call.data))).toEqual(originals)
+    const content = live.received.followup[0]!.content
+    expect(content).toHaveLength(6)
+    expect(content[0]).toEqual({ type: 'text', text: input.text })
+    expect(content.slice(1)).toEqual(f.calls.saveImage.map(call => ({ type: 'image', attachment: call.ref })))
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(dispatched)
+    expect(f.calls.saveImage).toHaveLength(5); expect(live.received.followup).toHaveLength(1)
+    // Reference metadata is durable; the raw base64 original bytes never enter the fences.
+    for (const original of originals) expect(JSON.stringify(f.store.repos.side_effect.all())).not.toContain(original.toString('base64'))
+  })
+
+  it('blocks image dispatch before saveImage and the message when the target model lacks image input', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    f.setImageModalities(['text'])
+    const { images } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'supplement' as const, text: 'Vision must block this', target, images }
+    // The confirmation card is told before dispatch; no image or message side effect exists yet.
+    expect((await post('delivery', { action: 'prepare', ...input })).data).toMatchObject({ state: 'prepared', imageCapability: 'unsupported' })
+    expect((await post('delivery', { action: 'confirm', ...input })).data).toMatchObject({ state: 'confirmed', imageCapability: 'unsupported' })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.status).toBe(200)
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_image_model_unsupported', accepted: false, delivered: false, executed: false, completed: false, disposition: 'not-dispatched' })
+    expect(f.calls.saveImage).toEqual([])
+    expect(live.received.inject).toEqual([]); expect(live.received.followup).toEqual([]); expect(live.received.steer).toEqual([])
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1').map(row => row.state)).toEqual(['v1:2'])
+    // The blocked fence is terminal for its exact IDs: never a text-only or new-ID resend.
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(blocked)
+    expect(f.calls.saveImage).toEqual([]); expect(live.received.inject).toEqual([])
+    expect(f.modelSet).not.toHaveBeenCalled()
+  })
+
+  it('treats unknown visual capability as unsupported and blocks with zero uploads and zero messages', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    f.setImageModalities(null)
+    const { images } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'steer' as const, text: 'Unknown vision must block this', target, images }
+    expect((await post('delivery', { action: 'prepare', ...input })).data).toMatchObject({ state: 'prepared', imageCapability: 'unknown' })
+    await post('delivery', { action: 'confirm', ...input })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_image_model_unsupported', disposition: 'not-dispatched' })
+    expect(f.calls.saveImage).toEqual([]); expect(live.received.steer).toEqual([])
+    expect(f.modelSet).not.toHaveBeenCalled()
+  })
+
+  it('rejects dispatch when the retained original bytes no longer match the confirmed digest, before any attachment or message', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images, originals } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Tampered original body', target, images }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    // A changed confirmation payload is rejected by the exact confirmation digest first.
+    const changed = await post('delivery', { action: 'dispatch', ...input, images: [{ ...images[0]!, digest: sha(Buffer.from('other-image')) }] })
+    expect(changed.status).toBe(409); expect(changed.code).toBe('delivery_confirmation_changed')
+    // Retained originals that no longer hash to the confirmed digest are rejected fail-closed.
+    writeFileSync(f.imageOriginalPath(images[0]!.digest), Buffer.concat([originals[0]!.subarray(0, 9), Buffer.from([0])]))
+    const rejected = await post('delivery', { action: 'dispatch', ...input })
+    expect(rejected.status).toBe(503); expect(rejected.code).toBe('image_original_corrupt')
+    expect(f.calls.saveImage).toEqual([]); expect(live.received.followup).toEqual([])
+    expect(f.store.repos.side_effect.all().filter(row => row.kind === 'delivery-dispatch-v1')).toEqual([])
+    expect((await post('delivery', { action: 'status', epoch, confirmationId: input.confirmationId })).data).toMatchObject({ state: 'confirmed' })
+  })
+
+  it('keeps a possible attachment upload as dispatch_unknown and never re-uploads or sends on replay', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id, { failFollowup: true }), attempts: Message[] = []
+    const originalFollowup = live.agent.followup
+    live.agent.followup = (value: Message) => { attempts.push(value); return originalFollowup(value) }
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Uploaded then lost body', target, images }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const unknown = await post('delivery', { action: 'dispatch', ...input })
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', accepted: false, delivered: false, disposition: 'reconcile-only', code: 'delivery_dispatch_unknown' })
+    expect(f.calls.saveImage).toHaveLength(1); expect(attempts).toHaveLength(1)
+    // The dispatch fence remembers the possible upload; exact replay never creates a second one.
+    expect((await post('delivery', { action: 'dispatch', ...input })).data).toMatchObject({ state: 'dispatch_unknown' })
+    expect(f.calls.saveImage).toHaveLength(1); expect(attempts).toHaveLength(1)
+    // A restart only reconciles the durable fence: no second upload and no second message attempt.
+    await f.restart({ production: true })
+    expect((await httpPanel(f)('delivery', { action: 'dispatch', ...input })).data).toMatchObject({ state: 'dispatch_unknown', code: 'delivery_dispatch_unknown' })
+    expect(f.calls.saveImage).toHaveLength(1); expect(attempts).toHaveLength(1)
+  })
+
+  it('keeps a failed Host attachment upload unknown without sending a text-only fallback', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images } = await boundImages(f, epoch, target, 1)
+    f.setSaveImageFailure(new Error('attachment store failed'))
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Attachment failure body', target, images }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const unknown = await post('delivery', { action: 'dispatch', ...input })
+    expect(unknown.data).toMatchObject({ state: 'dispatch_unknown', accepted: false, disposition: 'reconcile-only', code: 'delivery_image_upload_unknown' })
+    expect(live.received.followup).toEqual([])
+    expect((await post('delivery', { action: 'dispatch', ...input })).data).toMatchObject({ state: 'dispatch_unknown', code: 'delivery_image_upload_unknown' })
+    expect(live.received.followup).toEqual([])
+  })
+
+  it('blocks a confirmed image delivery when the Host exposes no attachment store, sending nothing', async () => {
+    const observations = observation(), f = fixture({ production: true, attachments: false, sessionWork: observations }); await f.runtime.ready
+    const live = f.seedLiveTarget(observations.id), epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'supplement' as const, text: 'No attachment store body', target, images }
+    await post('delivery', { action: 'prepare', ...input }); await post('delivery', { action: 'confirm', ...input })
+    const blocked = await post('delivery', { action: 'dispatch', ...input })
+    expect(blocked.data).toMatchObject({ state: 'blocked', code: 'delivery_image_attachment_unavailable', accepted: false, disposition: 'not-dispatched' })
+    expect(f.calls.saveImage).toEqual([]); expect(live.received.inject).toEqual([])
+    expect(await post('delivery', { action: 'dispatch', ...input })).toEqual(blocked)
+    expect(live.received.inject).toEqual([])
+  })
+
+  it('wakes a cold target once, then rechecks the woken current model and delivers the image blocks', async () => {
+    const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedColdTarget(observations.id), f.setImageModalities(['text', 'image'])
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch), post = httpPanel(f)
+    const { images } = await boundImages(f, epoch, target, 1)
+    const input = { epoch, requestId: randomUUID(), confirmationId: randomUUID(), operation: 'continue' as const, text: 'Cold image body', target, images }
+    expect((await post('delivery', { action: 'prepare', ...input })).data).toMatchObject({ targetState: 'cold', imageCapability: 'supported' })
+    await post('delivery', { action: 'confirm', ...input })
+    const dispatched = await post('delivery', { action: 'dispatch', ...input })
+    expect(dispatched.data).toMatchObject({ state: 'accepted', accepted: true, woke: true, images })
+    expect(f.calls.resume).toHaveBeenCalledTimes(1); expect(f.calls.saveImage).toHaveLength(1)
+    const received = f.wakeReceived.get(observations.id)!.followup
+    expect(received).toHaveLength(1)
+    expect(received[0]!.content.slice(1)).toEqual([{ type: 'image', attachment: f.calls.saveImage[0]!.ref }])
+  })
 
   it.each(['continue', 'supplement', 'steer'] as const)('dispatches one exact %s through the HTTP seam to the live managed target with no completion claim', async operation => {
     const observations = observation(), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
