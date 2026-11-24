@@ -193,7 +193,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(section('sessionCoverage')).toContain("sessionWork?.scope === 'current-host'")
     expect(section('briefingView')).not.toContain('sessionWorkPreview()') // source coverage belongs to main work, not chat
     expect(section('briefingView')).not.toContain('text(desk.recordTotal)') // plans are not Ticket counts
-    expect(zh.wAllCounts).toBe('超管已登记任务')
+    expect(zh.wAllCounts).toBe('Go 已登记任务')
     expect(zh.wFilteredCounts).toContain('已登记任务')
     expect(zh.wOtherSessionsNotIncluded).toBe('未汇总其他会话')
     expect(zh.wDescribeOutcome).toContain('其他会话尚未汇总')
