@@ -1,0 +1,59 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/session-action.test.ts (90 tests) 10456ms
+   ✓ G2 independent blocked text action UI contracts > accepts an omitted optional version but rejects arbitrary, partial, missing-flag, or forged payloads  1198ms
+   ✓ G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent  1550ms
+   ✓ G2 independent blocked text action UI contracts > rejects status rollback, same-sequence contradiction, changing original time, and false certainty for unknown delivery  407ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 314ms
+ ✓ tests/client/session-work.test.ts (8 tests) 110ms
+ ❯ tests/client/artifact.test.ts (3 tests | 1 failed) 31ms
+   ✓ KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > evaluates the real loader factory and registers three host slots without rendering 19ms
+   ✓ KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > never owns the host root or mounts a second application 2ms
+   × KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > uses only verified theme tokens in index, workspace styles, and the actual artifact 9ms
+     → ;border-bottom:2px solid transparent: expected false to be true // Object.is equality
+ ✓ tests/workspace/session-decisions.test.ts (141 tests) 8576ms
+ ✓ tests/client/go-decisions.test.ts (76 tests) 3395ms
+ ✓ tests/client/scope-management.test.ts (35 tests) 2485ms
+ ✓ tests/client/image-draft.test.ts (15 tests) 1620ms
+ ✓ tests/client/pages.test.ts (20 tests) 630ms
+ ✓ tests/panel/go-slices.test.ts (5 tests) 278ms
+ ✓ tests/client/workspace-layout.test.ts (9 tests) 201ms
+ ✓ tests/client/go-shell-flows.test.ts (7 tests) 106ms
+ ✓ tests/client/primary-navigation.test.ts (4 tests) 60ms
+ ✓ tests/client/go-settings.test.ts (36 tests) 49ms
+ ✓ tests/client/go-projects.test.ts (36 tests) 35ms
+ ✓ tests/client/go-tencent.test.ts (18 tests) 20ms
+ ✓ tests/client/detail-readability.test.ts (84 tests) 16ms
+ ✓ tests/client/bundle.test.ts (2 tests) 28ms
+ ✓ tests/panel/session-work.test.ts (8 tests) 13ms
+ ✓ tests/client/desk-model.test.ts (46 tests) 8ms
+ ✓ tests/client/channel.test.ts (3 tests) 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/client/artifact.test.ts > KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > uses only verified theme tokens in index, workspace styles, and the actual artifact
+AssertionError: ;border-bottom:2px solid transparent: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/client/artifact.test.ts:108:137
+    106|     expect(colorDeclarations.length).toBeGreaterThan(0)
+    107|     for (const declaration of colorDeclarations) {
+    108|       expect(['0', 'transparent', 'inherit'].includes(declaration[1]!)…
+       |                                                                                                                                         ^
+    109|     }
+    110|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 20 passed (21)
+      Tests  1 failed | 657 passed (658)
+   Start at  11:07:24
+   Duration  43.12s (transform 536ms, setup 0ms, collect 3.85s, tests 28.43s, environment 2ms, prepare 2.62s)
+

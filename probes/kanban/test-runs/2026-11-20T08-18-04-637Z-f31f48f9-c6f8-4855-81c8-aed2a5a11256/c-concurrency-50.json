@@ -1,0 +1,575 @@
+{
+  "case": "50",
+  "recordedAt": "2026-11-20T08:18:04.773Z",
+  "mode": "offline-real-product-sqlite-explicit-test-doubles",
+  "submittedUnique": 50,
+  "replayed": 50,
+  "queueLimit": 200,
+  "accepted": 50,
+  "duplicates": 50,
+  "triggerCount": 50,
+  "dispositionCount": 50,
+  "ticketCount": 50,
+  "uniqueTicketCount": 50,
+  "consumedCount": 50,
+  "maxPending": 50,
+  "durationMs": 49.72312499999998,
+  "rssStart": 103497728,
+  "rssPeak": 110067712,
+  "rssDeltaBytes": 6569984,
+  "peakScope": "sampled after each ingest and settlement, not continuous OS peak",
+  "intake": [
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-0",
+      "threadKey": "thread-0",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-1",
+      "threadKey": "thread-1",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-2",
+      "threadKey": "thread-2",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-3",
+      "threadKey": "thread-3",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-4",
+      "threadKey": "thread-4",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-5",
+      "threadKey": "thread-5",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-6",
+      "threadKey": "thread-6",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-7",
+      "threadKey": "thread-7",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-8",
+      "threadKey": "thread-8",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-9",
+      "threadKey": "thread-9",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-10",
+      "threadKey": "thread-10",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-11",
+      "threadKey": "thread-11",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-12",
+      "threadKey": "thread-12",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-13",
+      "threadKey": "thread-13",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-14",
+      "threadKey": "thread-14",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-15",
+      "threadKey": "thread-15",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-16",
+      "threadKey": "thread-16",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-17",
+      "threadKey": "thread-17",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-18",
+      "threadKey": "thread-18",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-19",
+      "threadKey": "thread-19",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-20",
+      "threadKey": "thread-20",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-21",
+      "threadKey": "thread-21",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-22",
+      "threadKey": "thread-22",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-23",
+      "threadKey": "thread-23",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-24",
+      "threadKey": "thread-24",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-25",
+      "threadKey": "thread-25",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-26",
+      "threadKey": "thread-26",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-27",
+      "threadKey": "thread-27",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-28",
+      "threadKey": "thread-28",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-29",
+      "threadKey": "thread-29",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-30",
+      "threadKey": "thread-30",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-31",
+      "threadKey": "thread-31",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-32",
+      "threadKey": "thread-32",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-33",
+      "threadKey": "thread-33",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-34",
+      "threadKey": "thread-34",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-35",
+      "threadKey": "thread-35",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-36",
+      "threadKey": "thread-36",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-37",
+      "threadKey": "thread-37",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-38",
+      "threadKey": "thread-38",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-39",
+      "threadKey": "thread-39",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-40",
+      "threadKey": "thread-40",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-41",
+      "threadKey": "thread-41",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-42",
+      "threadKey": "thread-42",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-43",
+      "threadKey": "thread-43",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-44",
+      "threadKey": "thread-44",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-45",
+      "threadKey": "thread-45",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-46",
+      "threadKey": "thread-46",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-47",
+      "threadKey": "thread-47",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-48",
+      "threadKey": "thread-48",
+      "seq": 1
+    },
+    {
+      "status": "accepted",
+      "triggerId": "inbox:closeout:message-49",
+      "threadKey": "thread-49",
+      "seq": 1
+    }
+  ],
+  "replay": [
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-0",
+      "threadKey": "thread-0"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-1",
+      "threadKey": "thread-1"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-2",
+      "threadKey": "thread-2"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-3",
+      "threadKey": "thread-3"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-4",
+      "threadKey": "thread-4"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-5",
+      "threadKey": "thread-5"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-6",
+      "threadKey": "thread-6"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-7",
+      "threadKey": "thread-7"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-8",
+      "threadKey": "thread-8"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-9",
+      "threadKey": "thread-9"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-10",
+      "threadKey": "thread-10"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-11",
+      "threadKey": "thread-11"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-12",
+      "threadKey": "thread-12"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-13",
+      "threadKey": "thread-13"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-14",
+      "threadKey": "thread-14"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-15",
+      "threadKey": "thread-15"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-16",
+      "threadKey": "thread-16"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-17",
+      "threadKey": "thread-17"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-18",
+      "threadKey": "thread-18"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-19",
+      "threadKey": "thread-19"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-20",
+      "threadKey": "thread-20"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-21",
+      "threadKey": "thread-21"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-22",
+      "threadKey": "thread-22"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-23",
+      "threadKey": "thread-23"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-24",
+      "threadKey": "thread-24"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-25",
+      "threadKey": "thread-25"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-26",
+      "threadKey": "thread-26"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-27",
+      "threadKey": "thread-27"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-28",
+      "threadKey": "thread-28"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-29",
+      "threadKey": "thread-29"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-30",
+      "threadKey": "thread-30"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-31",
+      "threadKey": "thread-31"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-32",
+      "threadKey": "thread-32"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-33",
+      "threadKey": "thread-33"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-34",
+      "threadKey": "thread-34"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-35",
+      "threadKey": "thread-35"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-36",
+      "threadKey": "thread-36"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-37",
+      "threadKey": "thread-37"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-38",
+      "threadKey": "thread-38"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-39",
+      "threadKey": "thread-39"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-40",
+      "threadKey": "thread-40"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-41",
+      "threadKey": "thread-41"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-42",
+      "threadKey": "thread-42"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-43",
+      "threadKey": "thread-43"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-44",
+      "threadKey": "thread-44"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-45",
+      "threadKey": "thread-45"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-46",
+      "threadKey": "thread-46"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-47",
+      "threadKey": "thread-47"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-48",
+      "threadKey": "thread-48"
+    },
+    {
+      "status": "duplicate",
+      "triggerId": "inbox:closeout:message-49",
+      "threadKey": "thread-49"
+    }
+  ]
+}

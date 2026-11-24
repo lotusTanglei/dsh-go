@@ -1,0 +1,32 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ❯ tests/client/primary-navigation.test.ts (4 tests | 1 failed) 51ms
+   × peer primary-view navigation without hidden sends or draft retargeting > does not consume history anchors or move a hidden dialogue, then restores on explicit re-entry 24ms
+     → expected -880 to be 320 // Object.is equality
+   ✓ peer primary-view navigation without hidden sends or draft retargeting > changes only navigation and preserves independent draft, pending request, image target and source material 8ms
+   ✓ peer primary-view navigation without hidden sends or draft retargeting > keeps global dialogue discoverable and its unread mark without acknowledging or sending on navigation 7ms
+   ✓ peer primary-view navigation without hidden sends or draft retargeting > opens only an explicitly selected setting category and keeps all substantive forms out of the home 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/client/primary-navigation.test.ts > peer primary-view navigation without hidden sends or draft retargeting > does not consume history anchors or move a hidden dialogue, then restores on explicit re-entry
+AssertionError: expected -880 to be 320 // Object.is equality
+
+- Expected
++ Received
+
+- 320
++ -880
+
+ ❯ tests/client/primary-navigation.test.ts:35:38
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  09:04:11
+   Duration  621ms (transform 29ms, setup 0ms, collect 233ms, tests 51ms, environment 0ms, prepare 73ms)
+

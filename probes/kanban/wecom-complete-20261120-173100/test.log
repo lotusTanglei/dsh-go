@@ -1,0 +1,180 @@
+
+$ pnpm run test
+
+> dsh-superagent@0.1.0 test /Users/dundundebaba/sync/dsh-s-p
+> vitest run
+
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/workspace/runtime.test.ts (23 tests) 2018ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1347ms
+ ✓ tests/workspace/documents.test.ts (10 tests) 1615ms
+   ✓ manual document Source coordinator with real SQLite and explicit fake connector > pages more than 100 local candidates without another connector read or loss  1308ms
+ ✓ tests/panel/kanban.test.ts (14 tests) 445ms
+ ✓ tests/workspace/admission.test.ts (21 tests) 456ms
+ ✓ tests/store/hardening.test.ts (9 tests) 412ms
+ ✓ tests/workspace/adversarial.test.ts (30 tests) 352ms
+ ✓ tests/workspace/commands.test.ts (28 tests) 358ms
+ ✓ tests/closeout/faults.test.ts (4 tests) 352ms
+   ✓ CLOSE-OUT C3 real offline fault injection > rejects a second real process while the first process remains alive with the store lock  303ms
+ ✓ tests/client/pages.test.ts (20 tests) 213ms
+ ✓ tests/runtime-integration.test.ts (13 tests) 221ms
+ ✓ tests/engine/crash-recovery.test.ts (1 test) 164ms
+ ✓ tests/workspace/document-origin.test.ts (16 tests) 246ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 153ms
+ ✓ tests/panel/routes.test.ts (8 tests) 145ms
+ ✓ tests/closeout/concurrency.test.ts (3 tests) 178ms
+ ✓ tests/sources/wecom-document.test.ts (60 tests) 164ms
+ ✓ tests/store/closeout-security.test.ts (11 tests) 152ms
+ ✓ tests/config.test.ts (5 tests) 152ms
+ ✓ tests/workspace/briefing.test.ts (9 tests) 149ms
+ ✓ tests/engine/p3-engine.test.ts (11 tests) 159ms
+ ✓ tests/runtime-recovery.test.ts (7 tests) 155ms
+ ✓ tests/runtime-safety.test.ts (6 tests) 99ms
+ ✓ tests/store/store.test.ts (6 tests) 105ms
+ ✓ tests/panel/closeout.test.ts (5 tests) 88ms
+ ✓ tests/closeout/injection.test.ts (6 tests) 68ms
+ ✓ tests/sources/document-evidence.test.ts (4 tests) 50ms
+ ✓ tests/plugin.test.ts (2 tests) 39ms
+ ✓ tests/runtime.test.ts (2 tests) 38ms
+ ✓ tests/panel/wecom-documents.test.ts (9 tests) 15ms
+ ✓ tests/client/detail-readability.test.ts (84 tests) 13ms
+ ❯ tests/client/artifact.test.ts (3 tests | 1 failed) 25ms
+   × KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > evaluates the real loader factory and registers three host slots without rendering 22ms
+     → expected { en: { …(493) }, zh: { …(493) } } to deeply equal { en: { …(500) }, zh: { …(500) } }
+   ✓ KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > never owns the host root or mounts a second application 1ms
+   ✓ KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > uses only verified theme tokens in index, workspace styles, and the actual artifact 2ms
+ ✓ tests/workspace/conversation.test.ts (25 tests) 8ms
+ ✓ tests/client/desk-model.test.ts (46 tests) 7ms
+ ✓ tests/boundaries.test.ts (3 tests) 9ms
+ ✓ tests/client/bundle.test.ts (2 tests) 5ms
+ ✓ tests/engine/dispatch.test.ts (8 tests) 4ms
+ ✓ tests/sessions/watchdog.test.ts (3 tests) 4ms
+ ✓ tests/domain/domain.test.ts (13 tests) 4ms
+ ✓ tests/sources/sources.test.ts (3 tests) 3ms
+ ✓ tests/engine/watchdog.test.ts (7 tests) 3ms
+ ✓ tests/sessions/worker.test.ts (2 tests) 2ms
+ ✓ tests/engine/brief-report.test.ts (4 tests) 2ms
+ ✓ tests/tools/tools.test.ts (4 tests) 2ms
+ ✓ tests/domain/immutable.test.ts (2 tests) 2ms
+ ✓ tests/client/channel.test.ts (3 tests) 2ms
+ ✓ tests/sessions/main.test.ts (2 tests) 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/client/artifact.test.ts > KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof) > evaluates the real loader factory and registers three host slots without rendering
+AssertionError: expected { en: { …(493) }, zh: { …(493) } } to deeply equal { en: { …(500) }, zh: { …(500) } }
+
+- Expected
++ Received
+
+@@ -203,11 +203,10 @@
+      "wDocumentBlocked": "Blocked",
+      "wDocumentCandidate": "Candidate",
+      "wDocumentCell": "Cell",
+      "wDocumentCloseOriginal": "Close source evidence",
+      "wDocumentConfigHint": "Configure sources in plugin settings. Reads are manual; this view does not edit configuration or monitor documents.",
+-     "wDocumentConfirmNotStruck": "Confirm original is not struck; review plan only",
+      "wDocumentDraftOrigin": "Selected untrusted document snapshot · plan only",
+      "wDocumentEligible": "Eligible",
+      "wDocumentGeneratePlan": "Prepare review-plan draft",
+      "wDocumentImageNotLoaded": "Screenshot has not been loaded or viewed.",
+      "wDocumentImagesFailed": "Evidence screenshot could not be loaded. Plan generation remains blocked.",
+@@ -217,30 +216,24 @@
+      "wDocumentLocalList": "View local snapshots",
+      "wDocumentMoreCandidates": "More local candidates",
+      "wDocumentNoCandidates": "No locally observed document items.",
+      "wDocumentNoImages": "This snapshot has no screenshots. Review the source text.",
+      "wDocumentNotStruck": "Not struck through",
+-     "wDocumentOfficialUnavailable": "The official sheet link is unavailable; manual verification cannot be submitted.",
+-     "wDocumentOpenOfficial": "Open original sheet to verify",
+      "wDocumentOpenOriginal": "View source text and screenshots",
+      "wDocumentOriginal": "Untrusted source text",
+      "wDocumentPlanDraft": "Review-plan instruction prepared. Nothing was sent or authorized.",
+      "wDocumentPlanOnly": "Generate a plan only, not execution. Send the draft explicitly, then review the complete plan before confirming.",
+      "wDocumentRead": "Rows read",
+      "wDocumentReadEntry": "Read from WeCom document",
+      "wDocumentReadOnce": "Read once",
+      "wDocumentReadUncertain": "Read outcome is uncertain. It may still be running. View local snapshots to check; no automatic retry was made.",
+-     "wDocumentReviewHint": "This checkbox records your acknowledgement, not machine proof that evidence was understood. Known struck task-bearing cells stay blocked. Unknown formatting needs the explicit original-sheet verification above when the source permits it.",
+-     "wDocumentReviewSaved": "Manual attestation recorded. Choose Prepare review-plan draft next. Nothing was sent or authorized for execution.",
+-     "wDocumentReviewUncertain": "Manual verification outcome is uncertain. Check local snapshots; no automatic retry or instruction send occurred.",
++     "wDocumentReviewHint": "This checkbox records your acknowledgement, not machine proof that evidence was understood. Struck or unknown task-bearing cells remain blocked by the source.",
+      "wDocumentReviewed": "I have reviewed the source text and displayed screenshots.",
+      "wDocumentSnapshotWarning": "A recorded snapshot does not prove the document is unchanged now.",
+      "wDocumentSources": "WeCom document snapshots",
+-     "wDocumentStrikeUnknown": "Strike status unknown — verify original sheet",
++     "wDocumentStrikeUnknown": "Strike status unknown — cannot import",
+      "wDocumentStruck": "Struck through — cannot import",
+-     "wDocumentUnknownReviewWarning": "The source cannot determine strike formatting. Open the configured official sheet to verify this item and review all screenshots here. Attest only if the task text is not struck through. This is your attestation, not a machine determination or execution authorization.",
+-     "wDocumentVerifyOriginalNotStruck": "I opened the original sheet, confirmed this task text is not struck through, and reviewed all available screenshots here.",
+      "wDone": "Done",
+      "wDraftGroup": "Draft group",
+      "wDraftRetained": "Draft retained. Review the request status before sending it as a new request.",
+      "wDropped": "Dropped",
+      "wDuration": "Duration (ms)",
+@@ -705,11 +698,10 @@
+      "wDocumentBlocked": "已阻止",
+      "wDocumentCandidate": "候选",
+      "wDocumentCell": "单元格",
+      "wDocumentCloseOriginal": "收起来源证据",
+      "wDocumentConfigHint": "来源仍在插件设置中配置；这里只手动读取，不编辑配置，也不监控文档。",
+-     "wDocumentConfirmNotStruck": "确认原文未划掉，仅生成待审计划",
+      "wDocumentDraftOrigin": "已选不可信文档快照 · 仅生成计划",
+      "wDocumentEligible": "符合条件",
+      "wDocumentGeneratePlan": "生成待审阅计划",
+      "wDocumentImageNotLoaded": "截图尚未加载或查看。",
+      "wDocumentImagesFailed": "证据截图加载失败，仍不能生成计划。",
+@@ -719,30 +711,24 @@
+      "wDocumentLocalList": "查看本地快照",
+      "wDocumentMoreCandidates": "更多本地候选",
+      "wDocumentNoCandidates": "本地尚无已观测文档条目。",
+      "wDocumentNoImages": "此快照不含截图，请查看原文。",
+      "wDocumentNotStruck": "未划掉",
+-     "wDocumentOfficialUnavailable": "官方原表链接不可用，不能提交人工核对。",
+-     "wDocumentOpenOfficial": "打开原表核对",
+      "wDocumentOpenOriginal": "查看原文与截图",
+      "wDocumentOriginal": "不可信来源原文",
+      "wDocumentPlanDraft": "已填入待审阅计划指令，尚未发送或授权。",
+      "wDocumentPlanOnly": "仅生成计划，不执行。请明确发送草稿，再审阅完整计划并另行确认。",
+      "wDocumentRead": "读取行数",
+      "wDocumentReadEntry": "从企微文档读取",
+      "wDocumentReadOnce": "读取一次",
+      "wDocumentReadUncertain": "读取结果未定，后台可能仍在读取。可点击查看本地快照确认；没有自动重试。",
+-     "wDocumentReviewHint": "此勾选仅为人工确认，不是机器已理解证据的证明；已知任务原文划掉时仍禁止导入；来源允许人工核对的格式未知项，须另行明确核对原表。",
+-     "wDocumentReviewSaved": "已记录人工核对声明；请点击生成待审阅计划填入草稿，尚未发送或授权执行。",
+-     "wDocumentReviewUncertain": "人工核对结果未定。请查看本地快照确认；没有自动重试或发送指令。",
++     "wDocumentReviewHint": "此勾选仅为人工确认，不是机器已理解证据的证明；任务相关单元格划掉或状态未知时仍由来源阻止导入。",
+      "wDocumentReviewed": "我已查看原文与显示的截图。",
+      "wDocumentSnapshotWarning": "这是读取时的快照，不代表文档实时未变。",
+      "wDocumentSources": "企微文档快照",
+-     "wDocumentStrikeUnknown": "划线状态未知，须核对原表",
++     "wDocumentStrikeUnknown": "划线状态未知，不可导入",
+      "wDocumentStruck": "已划掉，不可导入",
+-     "wDocumentUnknownReviewWarning": "来源无法判断划线格式。请打开配置的企微原表核对当前条目，并查看此处全部截图；只有确认任务原文未划掉后才可声明人工核对。此操作不代表机器已判断，也不是执行授权。",
+-     "wDocumentVerifyOriginalNotStruck": "我已打开原表核对，确认此条任务原文未划掉，并查看了此处全部截图（如有）。",
+      "wDone": "完成情况",
+      "wDraftGroup": "草稿分组",
+      "wDraftRetained": "草稿已保留。作为新请求发送前，请先核实原请求状态。",
+      "wDropped": "已丢弃",
+      "wDuration": "运行时长（毫秒）",
+
+ ❯ tests/client/artifact.test.ts:84:64
+     82|     // Detect a stale build, including locale changes, rather than ass…
+     83|     // replaced seven-page implementation details remain in the bundle.
+     84|     expect(JSON.parse(JSON.stringify(registeredDictionaries))).toEqual…
+       |                                                                ^
+     85|     for (const seam of ['command-status', 'timelineCursor', 'RetrySame…
+     86|     effects.forEach(dispose => dispose())
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 45 passed (46)
+      Tests  1 failed | 568 passed (569)
+   Start at  17:30:39
+   Duration  24.08s (transform 501ms, setup 0ms, collect 1.95s, tests 8.86s, environment 3ms, prepare 2.55s)
+
+ ELIFECYCLE  Test failed. See above for more details.
+[exit code: 1] [tee exit code: 0]

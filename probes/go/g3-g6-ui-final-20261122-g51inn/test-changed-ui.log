@@ -1,0 +1,16 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/pages.test.ts (20 tests) 1233ms
+   ✓ KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof) > makes the missing cross-conversation coverage visible without fabricating tasks or hiding it in diagnostics  816ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 270ms
+ ✓ tests/client/go-settings.test.ts (36 tests) 36ms
+ ✓ tests/client/workspace-layout.test.ts (7 tests) 49ms
+ ✓ tests/client/primary-navigation.test.ts (4 tests) 49ms
+ ✓ tests/client/bundle.test.ts (2 tests) 8ms
+
+ Test Files  6 passed (6)
+      Tests  81 passed (81)
+   Start at  10:09:33
+   Duration  5.24s (transform 177ms, setup 0ms, collect 1.17s, tests 1.65s, environment 0ms, prepare 923ms)
+

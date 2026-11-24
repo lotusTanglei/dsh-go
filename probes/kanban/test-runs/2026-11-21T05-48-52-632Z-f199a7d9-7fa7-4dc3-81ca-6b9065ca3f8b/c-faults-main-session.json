@@ -1,0 +1,13 @@
+{
+  "case": "deleted-persisted-main",
+  "recordedAt": "2026-11-21T05:48:52.750Z",
+  "boundary": "Runtime startup with real SQLite and explicit fake Host SESSION_QUERY_SESSION_NOT_FOUND; no real session deletion or running-main failover claimed",
+  "priorBinding": "gone-router",
+  "newBinding": "3c956ea7-f6b7-4fd5-ac47-d3fb7a493be9",
+  "created": [
+    "3c956ea7-f6b7-4fd5-ac47-d3fb7a493be9"
+  ],
+  "resumed": [],
+  "liveAgents": 0,
+  "realModelCalls": 0
+}

@@ -4,7 +4,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-router
-        name: Superagent Router
+        name: Go Router
         description: Read-only task routing and human-facing coordination.
         plugins:
           - id: router-fs
@@ -14,12 +14,12 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config: { sampleOverCapGlobResults: false }
           - id: router-business
-            name: dsh-superagent/router
+            name: dsh-go/router
     - id: superagent-preset-worker
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-worker
-        name: Superagent Worker
+        name: Go Worker
         description: Ticket-scoped execution and structured reporting.
         plugins:
           - id: worker-fs
@@ -33,12 +33,12 @@
           - id: worker-jobs
             name: '@deepseek-ai/dsh-tool-jobs'
           - id: worker-business
-            name: dsh-superagent/worker
+            name: dsh-go/worker
     - id: superagent-preset-watchdog
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-watchdog
-        name: Superagent Watchdog
+        name: Go Watchdog
         description: Read-only assignment observation seam.
         plugins:
           - id: watchdog-fs
@@ -48,9 +48,9 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config: { sampleOverCapGlobResults: false }
           - id: watchdog-business
-            name: dsh-superagent/watchdog
+            name: dsh-go/watchdog
     - id: superagent-foundation
-      name: dsh-superagent
+      name: dsh-go
       config:
         stateDir: /Users/dundundebaba/sync/dsh-s-p/.superagent-state
         dbPath: /Users/dundundebaba/sync/dsh-s-p/.superagent-state/superagent.sqlite

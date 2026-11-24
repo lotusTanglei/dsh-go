@@ -1,0 +1,18 @@
+{
+  "case": "live-lock",
+  "recordedAt": "2026-11-24T07:54:47.989Z",
+  "mode": "offline-real-sqlite-fake-host",
+  "firstAliveDuringSecondOpen": true,
+  "lockOwnerMatched": true,
+  "secondExitCode": 2,
+  "response": {
+    "opened": false,
+    "message": "Store is locked by pid 52103"
+  },
+  "ownerUnchanged": true,
+  "firstExit": {
+    "code": 0,
+    "signal": null
+  },
+  "lockCleaned": true
+}

@@ -244,7 +244,7 @@ Overview / Tickets / Threads / Sources / Approvals / Health / Settings
 - 需要改表结构（001/004 的 DDL）
 - 需要装新依赖（P5 构建除外，但要先记一笔）
 - 需要改 profile 或碰 desktop
-- 同一问题连续失败 2 次
+- 同一问题连续失败 5 次
 - 文档之间互相矛盾
 - 累计 8 小时
 

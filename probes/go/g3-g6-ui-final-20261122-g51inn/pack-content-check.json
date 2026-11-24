@@ -1,0 +1,12 @@
+{
+  "state": "passed",
+  "entries": 191,
+  "allPackageBytesMatchWorkspace": true,
+  "dryRunMatchesActualManifest": true,
+  "requiredHostClientLocaleDocs": true,
+  "noStateCredentialsDependenciesOrProbes": true,
+  "sha256": "3e6eefbcc9bc6cb12a58b0d9353a85fd36bd6a56c3234299800f632c8d29f5f1",
+  "installationPerformed": false,
+  "fullRegression": "not-passed-see-VERIFICATION.md",
+  "changedUiContractTests": 81
+}

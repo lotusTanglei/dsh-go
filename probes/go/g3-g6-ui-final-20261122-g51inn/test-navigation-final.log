@@ -1,0 +1,66 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/primary-navigation.test.ts (4 tests) 72ms
+ ✓ tests/client/scope-management.test.ts (35 tests) 3372ms
+   ✓ bounded scope target lookup UI closures > searches across included scope without a project filter, send, execution, or composer changes  430ms
+   ✓ bounded scope target lookup UI closures > rechecks only explicit candidates from a current clarification, binding the original revision  412ms
+   ✓ bounded scope target lookup UI closures > ignores late results after navigation, editing, or epoch changes and never retries  363ms
+ ✓ tests/client/pages.test.ts (20 tests) 395ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 232ms
+ ❯ tests/client/go-settings.test.ts (36 tests | 1 failed) 41ms
+   ✓ serialized GO settings factory and local evidence UI > has no imports/free helpers and only consumes injected React/request/t 3ms
+   ✓ serialized GO settings factory and local evidence UI > requires Host-authorized roots and never accepts an arbitrary root path 1ms
+   ✓ serialized GO settings factory and local evidence UI > saves exact CSV CAS config before a separate explicit scan and detail 2ms
+   ✓ serialized GO settings factory and local evidence UI > locks uncertain configure payload and reconciles only from exact original-ID journal receipt 1ms
+   ✓ serialized GO settings factory and local evidence UI > retains exact older configure/scan/remove receipts without replacing a newer refreshed source 2ms
+   ✓ serialized GO settings factory and local evidence UI > does not borrow a new source revision for a stale edited form after refresh 1ms
+   ✓ serialized GO settings factory and local evidence UI > renders raw text only, selects one item, and claims only after explicit human review into a separate draft 1ms
+   ✓ serialized GO settings factory and local evidence UI > uses the identical requestId for explicit unknown-claim reconciliation, never auto retries 1ms
+   ✓ serialized GO settings factory and local evidence UI > rejects forged claim origin/authorization and preserves the original request 1ms
+   ✓ serialized GO settings factory and local evidence UI > does not navigate over a newer view on a late claim reply, but retains its independent receipt 1ms
+   ✓ serialized GO settings factory and local evidence UI > fences hidden/epoch handlers and retains drafts without reusing an old save authorization 1ms
+   ✓ serialized GO settings factory and local evidence UI > requires digest/MIME/size verified original bytes and successful image load before review 1ms
+   ✓ serialized GO settings factory and local evidence UI > does not create a Blob for a tampered digest and never marks a failed image as seen 0ms
+   ✓ configuration mutation journal recovery contracts > accepts exact rejected configure 415 evidence, retains history and permits editing without changing the original CAS 1ms
+   ✓ configuration mutation journal recovery contracts > recovers a lost remove only from settled status and never resends the remove 1ms
+   ✓ configuration mutation journal recovery contracts > does not release on status404 or matching list; closeclosed seals the exact ID and requires explicit latest-form reload 1ms
+   ✓ configuration mutation journal recovery contracts > keeps recorded mutations locked and disables close without exposing a new-ID retry 1ms
+   ✓ configuration mutation journal recovery contracts > rejects contradictory mutation digest before applying value 0ms
+   ✓ configuration mutation journal recovery contracts > rejects contradictory mutation requestId before applying value 0ms
+   ✓ configuration mutation journal recovery contracts > rejects contradictory mutation epoch before applying value 0ms
+   ✓ configuration mutation journal recovery contracts > rejects contradictory mutation kind before applying value 0ms
+   ✓ configuration mutation journal recovery contracts > rejects contradictory mutation version before applying value 0ms
+   ✓ configuration mutation journal recovery contracts > rejects contradictory mutation updatedAt before applying value 0ms
+   ✓ stage models actual configuration handlers > returns Escape to the current list without bubbling into the shell or dropping edited drafts 2ms
+   × stage models actual configuration handlers > starts with seven route summaries and edits only one item, retaining draft and request count on back/navigation 6ms
+     → e.stopPropagation is not a function
+   ✓ stage models actual configuration handlers > shows effective Host routes, explicit known/unknown capabilities and preserve policy without a test call 1ms
+   ✓ stage models actual configuration handlers > edits provider/model/effort and one override, sending exact CAS configuration only on save 2ms
+   ✓ stage models actual configuration handlers > does not optimistically update a version or resubmit an uncertain save, and refreshes to verify 1ms
+   ✓ stage models actual configuration handlers > records an older canonical saved-version receipt without rolling back newer settings after refresh 1ms
+   ✓ stage models actual configuration handlers > unlocks editing after journal-rejected save409 while retaining the old CAS until explicit reload 1ms
+   ✓ stage models actual configuration handlers > rejects receipt revision/selection mismatch as unknown 1ms
+   ✓ stage models actual configuration handlers > keeps edits across refresh without borrowing the new CAS revision; reset is explicit 1ms
+   ✓ stage models actual configuration handlers > fences an old save on epoch changes, retaining evidence without adopting late success 1ms
+   ✓ stage models actual configuration handlers > loads real reasoning metadata for the selected model and blocks saving while inspect is pending 1ms
+   ✓ stage models actual configuration handlers > ignores late reasoning metadata after model/epoch changes, including uncancelable replies 1ms
+   ✓ stage models actual configuration handlers > does not load data while inactive and does not lose edited form across hide/reactivate 1ms
+ ✓ tests/client/workspace-layout.test.ts (7 tests) 54ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/client/go-settings.test.ts > stage models actual configuration handlers > starts with seven route summaries and edits only one item, retaining draft and request count on back/navigation
+TypeError: e.stopPropagation is not a function
+ ❯ Object.onKeyDown evalmachine.<anonymous>:490:19
+ ❯ tests/client/go-settings.test.ts:214:24
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 5 passed (6)
+      Tests  1 failed | 113 passed (114)
+   Start at  09:26:50
+   Duration  7.67s (transform 97ms, setup 0ms, collect 1.46s, tests 4.17s, environment 0ms, prepare 404ms)
+

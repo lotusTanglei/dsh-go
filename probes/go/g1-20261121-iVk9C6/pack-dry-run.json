@@ -1,0 +1,826 @@
+[
+  {
+    "id": "dsh-superagent@0.1.0",
+    "name": "dsh-superagent",
+    "version": "0.1.0",
+    "size": 299647,
+    "unpackedSize": 1200070,
+    "shasum": "502cdec68cfd7fb27df25a71dbbcd3b54ddd386b",
+    "integrity": "sha512-xYtziSGIuU/5maGecq50f9Zka+Q5g3rJvWXjZZFIJ2D2uygDs2rOsJJHC8cF323yf1oRhaXHnG/vtgllOoQ/tw==",
+    "filename": "dsh-superagent-0.1.0.tgz",
+    "files": [
+      {
+        "path": "README.md",
+        "size": 7121,
+        "mode": 384
+      },
+      {
+        "path": "cordis.patch.yml",
+        "size": 2517,
+        "mode": 384
+      },
+      {
+        "path": "docs/GO-IMPLEMENTATION-20261121.md",
+        "size": 8904,
+        "mode": 384
+      },
+      {
+        "path": "docs/KANBAN-SESSION-COVERAGE.md",
+        "size": 17404,
+        "mode": 384
+      },
+      {
+        "path": "docs/KANBAN-TASK-FIRST.md",
+        "size": 5377,
+        "mode": 384
+      },
+      {
+        "path": "docs/WECOM-DOCUMENT-SOURCE.md",
+        "size": 9480,
+        "mode": 384
+      },
+      {
+        "path": "host-runtime.json",
+        "size": 213,
+        "mode": 384
+      },
+      {
+        "path": "host.cjs",
+        "size": 881,
+        "mode": 384
+      },
+      {
+        "path": "icon.svg",
+        "size": 442,
+        "mode": 384
+      },
+      {
+        "path": "integrations/wecom-readonly/build_artifacts.py",
+        "size": 7059,
+        "mode": 384
+      },
+      {
+        "path": "integrations/wecom-readonly/connector.patch",
+        "size": 29554,
+        "mode": 420
+      },
+      {
+        "path": "integrations/wecom-readonly/patch-receipt.json",
+        "size": 1830,
+        "mode": 420
+      },
+      {
+        "path": "integrations/wecom-readonly/PROTOCOL.md",
+        "size": 10845,
+        "mode": 384
+      },
+      {
+        "path": "integrations/wecom-readonly/task_snapshot.py",
+        "size": 9622,
+        "mode": 420
+      },
+      {
+        "path": "integrations/wecom-readonly/tests/test_task_snapshot_protocol.py",
+        "size": 4770,
+        "mode": 420
+      },
+      {
+        "path": "integrations/wecom-readonly/tests/test_task_snapshot.py",
+        "size": 8574,
+        "mode": 420
+      },
+      {
+        "path": "lib/client.js",
+        "size": 252107,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/channel.d.ts",
+        "size": 769,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/channel.js",
+        "size": 1767,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/desk-model.d.ts",
+        "size": 372,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/desk-model.js",
+        "size": 2885,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/index.d.ts",
+        "size": 577,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/index.js",
+        "size": 4491,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/workspace-style.d.ts",
+        "size": 134,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/workspace-style.js",
+        "size": 23683,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/workspace.d.ts",
+        "size": 338,
+        "mode": 420
+      },
+      {
+        "path": "lib/client/workspace.js",
+        "size": 154374,
+        "mode": 420
+      },
+      {
+        "path": "lib/config.d.ts",
+        "size": 4935,
+        "mode": 420
+      },
+      {
+        "path": "lib/config.js",
+        "size": 11691,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/approval.d.ts",
+        "size": 1122,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/approval.js",
+        "size": 747,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/assignment.d.ts",
+        "size": 1763,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/assignment.js",
+        "size": 1856,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/eval.d.ts",
+        "size": 1580,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/eval.js",
+        "size": 2438,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/ids.d.ts",
+        "size": 1278,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/ids.js",
+        "size": 576,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/immutable.d.ts",
+        "size": 144,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/immutable.js",
+        "size": 1035,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/index.d.ts",
+        "size": 360,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/index.js",
+        "size": 360,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/invariants.d.ts",
+        "size": 3811,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/invariants.js",
+        "size": 4687,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/mandate.d.ts",
+        "size": 1631,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/mandate.js",
+        "size": 1344,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/outbound.d.ts",
+        "size": 1130,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/outbound.js",
+        "size": 1096,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/policy.d.ts",
+        "size": 1216,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/policy.js",
+        "size": 1039,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/thread.d.ts",
+        "size": 1390,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/thread.js",
+        "size": 2021,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/ticket.d.ts",
+        "size": 4242,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/ticket.js",
+        "size": 5335,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/trigger.d.ts",
+        "size": 1850,
+        "mode": 420
+      },
+      {
+        "path": "lib/domain/trigger.js",
+        "size": 1131,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/approval-impact.d.ts",
+        "size": 170,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/approval-impact.js",
+        "size": 2038,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/brief.d.ts",
+        "size": 1762,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/brief.js",
+        "size": 2501,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/capacity.d.ts",
+        "size": 221,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/capacity.js",
+        "size": 915,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/dispatch.d.ts",
+        "size": 1580,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/dispatch.js",
+        "size": 2985,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/eval.d.ts",
+        "size": 2953,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/eval.js",
+        "size": 13168,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/index.d.ts",
+        "size": 1883,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/index.js",
+        "size": 2108,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/intake.d.ts",
+        "size": 1447,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/intake.js",
+        "size": 8707,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/outbox.d.ts",
+        "size": 1743,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/outbox.js",
+        "size": 5877,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/pause.d.ts",
+        "size": 1208,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/pause.js",
+        "size": 2706,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/recovery.d.ts",
+        "size": 1554,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/recovery.js",
+        "size": 3298,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/report.d.ts",
+        "size": 1815,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/report.js",
+        "size": 5114,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/watchdog.d.ts",
+        "size": 2628,
+        "mode": 420
+      },
+      {
+        "path": "lib/engine/watchdog.js",
+        "size": 7131,
+        "mode": 420
+      },
+      {
+        "path": "lib/index.d.ts",
+        "size": 1992,
+        "mode": 420
+      },
+      {
+        "path": "lib/index.js",
+        "size": 3787,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/role-plugin.d.ts",
+        "size": 788,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/role-plugin.js",
+        "size": 3217,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/router.d.ts",
+        "size": 163,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/router.js",
+        "size": 236,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/watchdog.d.ts",
+        "size": 164,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/watchdog.js",
+        "size": 174,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/worker.d.ts",
+        "size": 163,
+        "mode": 420
+      },
+      {
+        "path": "lib/p2/worker.js",
+        "size": 236,
+        "mode": 420
+      },
+      {
+        "path": "lib/panel/board.d.ts",
+        "size": 2611,
+        "mode": 420
+      },
+      {
+        "path": "lib/panel/board.js",
+        "size": 6038,
+        "mode": 420
+      },
+      {
+        "path": "lib/panel/routes.d.ts",
+        "size": 3940,
+        "mode": 420
+      },
+      {
+        "path": "lib/panel/routes.js",
+        "size": 50574,
+        "mode": 420
+      },
+      {
+        "path": "lib/panel/settings.d.ts",
+        "size": 718,
+        "mode": 420
+      },
+      {
+        "path": "lib/panel/settings.js",
+        "size": 2901,
+        "mode": 420
+      },
+      {
+        "path": "lib/presets.d.ts",
+        "size": 91,
+        "mode": 420
+      },
+      {
+        "path": "lib/presets.js",
+        "size": 84,
+        "mode": 420
+      },
+      {
+        "path": "lib/runtime.d.ts",
+        "size": 16173,
+        "mode": 420
+      },
+      {
+        "path": "lib/runtime.js",
+        "size": 52950,
+        "mode": 420
+      },
+      {
+        "path": "lib/sessions/main.d.ts",
+        "size": 3005,
+        "mode": 420
+      },
+      {
+        "path": "lib/sessions/main.js",
+        "size": 4321,
+        "mode": 420
+      },
+      {
+        "path": "lib/sessions/watchdog.d.ts",
+        "size": 1908,
+        "mode": 420
+      },
+      {
+        "path": "lib/sessions/watchdog.js",
+        "size": 2199,
+        "mode": 420
+      },
+      {
+        "path": "lib/sessions/worker.d.ts",
+        "size": 3951,
+        "mode": 420
+      },
+      {
+        "path": "lib/sessions/worker.js",
+        "size": 5618,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/document-evidence.d.ts",
+        "size": 225,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/document-evidence.js",
+        "size": 4405,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/registry.d.ts",
+        "size": 536,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/registry.js",
+        "size": 1401,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/session-work.d.ts",
+        "size": 7571,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/session-work.js",
+        "size": 31703,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/session.d.ts",
+        "size": 1809,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/session.js",
+        "size": 4044,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/types.d.ts",
+        "size": 1170,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/types.js",
+        "size": 11,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/wecom-connector.d.ts",
+        "size": 719,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/wecom-connector.js",
+        "size": 1180,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/wecom-document.d.ts",
+        "size": 4992,
+        "mode": 420
+      },
+      {
+        "path": "lib/sources/wecom-document.js",
+        "size": 23312,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/codec.d.ts",
+        "size": 518,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/codec.js",
+        "size": 4326,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/db.d.ts",
+        "size": 645,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/db.js",
+        "size": 8354,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/index.d.ts",
+        "size": 308,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/index.js",
+        "size": 171,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/migrations.d.ts",
+        "size": 222,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/migrations.js",
+        "size": 132,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/migrations/001_init.d.ts",
+        "size": 254,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/migrations/001_init.js",
+        "size": 4163,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/repos/index.d.ts",
+        "size": 997,
+        "mode": 420
+      },
+      {
+        "path": "lib/store/repos/index.js",
+        "size": 6671,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/descriptor.d.ts",
+        "size": 1436,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/descriptor.js",
+        "size": 3902,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/guard.d.ts",
+        "size": 1755,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/guard.js",
+        "size": 2400,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/router.d.ts",
+        "size": 3442,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/router.js",
+        "size": 3647,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/runtime.d.ts",
+        "size": 2099,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/runtime.js",
+        "size": 4010,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/worker.d.ts",
+        "size": 1795,
+        "mode": 420
+      },
+      {
+        "path": "lib/tools/worker.js",
+        "size": 1785,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/admission.d.ts",
+        "size": 2151,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/admission.js",
+        "size": 23550,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/briefing.d.ts",
+        "size": 1239,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/briefing.js",
+        "size": 4823,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/commands.d.ts",
+        "size": 1943,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/commands.js",
+        "size": 6273,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/conversation.d.ts",
+        "size": 1756,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/conversation.js",
+        "size": 14311,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/document-origin.d.ts",
+        "size": 874,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/document-origin.js",
+        "size": 753,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/documents.d.ts",
+        "size": 3413,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/documents.js",
+        "size": 15042,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/ingress.d.ts",
+        "size": 3328,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/ingress.js",
+        "size": 12641,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/runtime.d.ts",
+        "size": 7366,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/runtime.js",
+        "size": 16076,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/scope-preferences.d.ts",
+        "size": 512,
+        "mode": 420
+      },
+      {
+        "path": "lib/workspace/scope-preferences.js",
+        "size": 2019,
+        "mode": 420
+      },
+      {
+        "path": "locale/en.json",
+        "size": 37356,
+        "mode": 384
+      },
+      {
+        "path": "locale/zh.json",
+        "size": 35085,
+        "mode": 384
+      },
+      {
+        "path": "package.json",
+        "size": 2037,
+        "mode": 384
+      }
+    ],
+    "entryCount": 162,
+    "bundled": []
+  }
+]

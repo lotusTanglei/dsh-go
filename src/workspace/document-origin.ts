@@ -1,6 +1,6 @@
 /** Opaque provenance is Host-resolved; document text is never a human command. */
 export interface DocumentOrigin {
-  readonly kind: 'wecom-document'
+  readonly kind: 'wecom-document' | 'local-document'
   readonly itemKey: string
   readonly revision: string
   readonly evidenceDigest: string
@@ -12,7 +12,7 @@ export function validDocumentOrigin(value: unknown): value is DocumentOrigin {
   if (![Object.prototype, null].includes(Object.getPrototypeOf(row)) || Object.getOwnPropertySymbols(row).length || Object.getOwnPropertyNames(row).length !== 5) return false
   const fields = ['kind', 'itemKey', 'revision', 'evidenceDigest', 'configVersion']
   if (!fields.every(key => { const property = Object.getOwnPropertyDescriptor(row, key); return property && 'value' in property && property.enumerable })) return false
-  return row.kind === 'wecom-document' && fields.slice(1).every(key => typeof row[key] === 'string' && /^[a-f0-9]{64}$/.test(row[key] as string))
+  return typeof row.kind === 'string' && ['wecom-document', 'local-document'].includes(row.kind) && fields.slice(1).every(key => typeof row[key] === 'string' && /^[a-f0-9]{64}$/.test(row[key] as string))
 }
 /** Synchronous fresh authority checks bracket every admission transaction/settlement. */
 export interface DocumentOriginAuthority {

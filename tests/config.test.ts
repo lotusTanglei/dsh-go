@@ -23,6 +23,15 @@ describe('Config boundary', () => {
     expect(() => resolveConfig({ ...config(), budgetWarningRatio: 1 })).toThrow('between')
     expect(() => resolveConfig({ ...config(), outboxBackoffMaxMs: 1 })).toThrow('maximum')
   })
+  it('authorizes local roots explicitly and never exposes their paths in settings', () => {
+    const root = resolve('.fixture-local-source-root'), c = resolveConfig({ ...config(), localSourceRoots: [{ id: 'reference', path: root, name: 'Reference files' }] })
+    expect(c.localSourceRoots).toEqual([{ id: 'reference', path: root, name: 'Reference files' }])
+    const settings = effectiveSettings(c)
+    expect(settings.find(row => row.key === 'localSourceRoots')?.value).toEqual([{ id: 'reference', name: 'Reference files' }])
+    expect(JSON.stringify(settings)).not.toContain(root)
+    for (const roots of [[{ id: 'reference', path: 'relative' }], [{ id: 'reference', path: root }, { id: 'reference', path: root }], [{ id: 'reference', path: root, name: '/private/path' }], [{ id: 'reference', path: root, approved: true }]]) expect(() => resolveConfig({ ...config(), localSourceRoots: roots as any })).toThrow('local source roots')
+    expect(resolveConfig(config()).localSourceRoots).toBeUndefined()
+  })
   it('configuration cannot grant prohibited role tools', () => {
     const c = config()
     expect(() => resolveConfig({ ...c, roleTools: { ...c.roleTools, router: ['bash'] } })).toThrow('Router')

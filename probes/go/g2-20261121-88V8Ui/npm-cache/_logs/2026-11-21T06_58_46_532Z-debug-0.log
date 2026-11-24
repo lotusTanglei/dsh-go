@@ -1,0 +1,19 @@
+0 verbose cli /Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness /Users/dundundebaba/.hermes/node/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@10.9.8
+2 info using node@v24.21.0
+3 silly config load:file:/Users/dundundebaba/.hermes/node/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/dundundebaba/sync/dsh-s-p/.npmrc
+5 silly config load:file:/Users/dundundebaba/.npmrc
+6 silly config load:file:/Applications/DeepSeek Harness.app/Contents/etc/npmrc
+7 verbose title npm pack
+8 verbose argv "pack" "--ignore-scripts" "--json" "--cache" "/Users/dundundebaba/sync/dsh-s-p/probes/go/g2-20261121-88V8Ui/npm-cache" "--pack-destination" "/Users/dundundebaba/sync/dsh-s-p/probes/go/g2-20261121-88V8Ui"
+9 verbose logfile logs-max:10 dir:/Users/dundundebaba/sync/dsh-s-p/probes/go/g2-20261121-88V8Ui/npm-cache/_logs/2026-11-21T06_58_46_532Z-
+10 verbose logfile /Users/dundundebaba/sync/dsh-s-p/probes/go/g2-20261121-88V8Ui/npm-cache/_logs/2026-11-21T06_58_46_532Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4395630592 maxSize:1098907648 maxEntrySize:549453824
+13 verbose cwd /Users/dundundebaba/sync/dsh-s-p
+14 verbose os Darwin 27.0.0
+15 verbose node v24.21.0
+16 verbose npm  v10.9.8
+17 verbose exit 0
+18 info ok

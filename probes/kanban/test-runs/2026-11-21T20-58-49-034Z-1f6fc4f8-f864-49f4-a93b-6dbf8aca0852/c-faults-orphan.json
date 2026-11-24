@@ -1,0 +1,64 @@
+{
+  "case": "orphan",
+  "recordedAt": "2026-11-21T20:59:14.750Z",
+  "mode": "offline-real-sqlite-fake-host",
+  "report": {
+    "assignments": {
+      "scanned": 2,
+      "orphaned": 1
+    },
+    "outbox": {
+      "requeued": 0
+    },
+    "evals": {
+      "scanned": 0,
+      "expired": 0,
+      "requeued": 0,
+      "unavailable": 0
+    },
+    "queue": {
+      "scanned": 0,
+      "requeued": 0
+    }
+  },
+  "assignments": [
+    {
+      "id": "assignment-missing",
+      "state": "ended",
+      "endedAt": 20,
+      "endedReason": "orphaned"
+    },
+    {
+      "id": "assignment-alive",
+      "state": "running",
+      "endedAt": null,
+      "endedReason": null
+    }
+  ],
+  "tickets": [
+    {
+      "id": "ticket-missing",
+      "state": "open",
+      "currentAssignment": null
+    },
+    {
+      "id": "ticket-alive",
+      "state": "running",
+      "currentAssignment": "assignment-alive"
+    }
+  ],
+  "audit": [
+    {
+      "id": 1,
+      "at": 20,
+      "actor": "recovery",
+      "action": "assignment_orphaned",
+      "ticket_id": "ticket-missing",
+      "thread_key": null,
+      "detail": {
+        "assignmentId": "assignment-missing",
+        "sessionId": "gone-session"
+      }
+    }
+  ]
+}

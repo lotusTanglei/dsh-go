@@ -1,0 +1,11 @@
+{
+  "state": "passed",
+  "entries": 193,
+  "allPackageBytesMatchWorkspace": true,
+  "requiredHostClientLocaleDocs": true,
+  "knownStateDependencyProbePathsAbsent": true,
+  "sha256": "56bb595aa285dfdebc035fb12d20ea7e7ccbc418cbcc4a8b3b2bab8148421997",
+  "installationPerformed": false,
+  "affectedIntegrationTests": 814,
+  "wholeRepositoryRegression": "not-passed-current-version-see-VERIFICATION.md"
+}

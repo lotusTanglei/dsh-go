@@ -13,6 +13,9 @@ export interface SessionWorkPorts {
   canAccess(sessionId: string): boolean
   getExcluded(): readonly string[]
   setExcluded(ids: readonly string[]): void
+  getExcludedProjects?(): readonly string[]
+  setExcludedProjects?(ids: readonly string[]): void
+  getScopeVersion?(): number
   signal: AbortSignal
 }
 export type SessionWorkProject = { kind: 'project'; key: string; name: string } | { kind: 'unassigned' | 'unknown'; key: 'unassigned' | 'unknown' }
@@ -20,18 +23,26 @@ export interface SessionWorkItem {
   sessionId: string; title: string; objective?: string; project: SessionWorkProject
   runtime: 'running' | 'idle' | 'unavailable' | 'unknown'
   goalPhase?: string; progress?: string; nextAction?: string; blocker?: string; decision?: string
+  done?: string[]
+  result?: { state: 'goal-complete' | 'unverified'; summary?: string; acceptanceVerified: false }
+  approvalCoverage: 'unavailable'
   observedAt: number; evidence: 'structured' | 'missing' | 'unavailable'; excluded: boolean
+  exclusionReason?: 'session' | 'project' | 'membership-unknown'
+  factRevision?: string
 }
-export interface SessionWorkListInput { view?: 'included' | 'excluded'; cursor?: string; limit?: number }
+export interface SessionWorkListInput { view?: 'included' | 'excluded'; cursor?: string; limit?: number; projectKey?: string }
+export interface ScopeProject { key: string; kind: SessionWorkProject['kind']; name?: string; excluded: boolean; sessionTotal: number; includedTotal: number }
+export interface ScopeProjectList { state: 'ready' | 'partial'; revision: string; sampledAt: number; items: ScopeProject[]; total: number; hasMore: boolean; next?: string }
 export interface SessionWorkList {
   state: 'ready' | 'partial' | 'unavailable'; sampledAt: number; scope: 'current-host'; defaultIncluded: true
   total: number | null; excludedTotal: number | null; internalTotal: number | null
   items: SessionWorkItem[]; hasMore: boolean; next?: string; revision?: string
   error?: 'session_work_unavailable' | 'session_work_partial'
 }
-type Roster = { at: number; revision: string; ownedKey: string; projects: Record<string, SessionWorkProject>; projectRevision: string; ordinary: string[]; included: string[]; excluded: string[]; internal: string[]; partial: boolean }
+type Roster = { at: number; revision: string; ownedKey: string; projects: Record<string, SessionWorkProject>; catalog: ScopeProject[]; projectRevision: string; ordinary: string[]; included: string[]; excluded: string[]; internal: string[]; partial: boolean }
 const TTL = 15_000, FALLBACK = '未提供会话标题'
 const idValid = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:@/-]{0,199}$/.test(value) && !value.includes('://')
+const projectKeyValid = (value: unknown): value is string => value === 'unassigned' || value === 'unknown' || typeof value === 'string' && value.startsWith('project:') && idValid(value.slice(8))
 const object = (value: unknown): Record<string, any> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : undefined
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const resync = (): never => { throw new WorkspaceError('session_work_resync', 409) }
@@ -80,12 +91,106 @@ export class SessionWorkSource implements Source {
     return this.track((async () => {
       if (!idValid(sessionId) || typeof included !== 'boolean' || !input || typeof input.revision !== 'string') return resync()
       const current = await this.getRoster(true)
-      if (!this.available() || current.revision !== input.revision || this.makeRosterFromMembership(current).revision !== current.revision || ![...current.included, ...current.excluded].includes(sessionId) || !this.access(sessionId)) return resync()
+      if (!this.available() || current.revision !== input.revision || this.makeRosterFromMembership(current).revision !== current.revision || hash(this.readProjects(current.ordinary)) !== current.projectRevision || ![...current.included, ...current.excluded].includes(sessionId) || !this.access(sessionId)) return resync()
+      // Project exclusion has priority; restoring a child cannot bypass its parent.
+      if (included && current.projects[sessionId]?.kind === 'project' && this.ports.getExcludedProjects?.().includes(current.projects[sessionId]!.key)) throw new WorkspaceError('session_work_project_excluded', 409)
       const ids = new Set(this.ports.getExcluded().filter(idValid))
       if (included) ids.delete(sessionId); else ids.add(sessionId)
       this.ports.setExcluded([...ids].sort()) // Only IDs are persisted; never captions or projection bodies.
       this.invalidate()
       return { sessionId, included, revision: this.makeRosterFromMembership(current).revision }
+    })())
+  }
+  listScopeProjects(input: { cursor?: string; limit?: number } = {}): Promise<ScopeProjectList> {
+    return this.track((async () => {
+      const roster = await this.getRoster(true), generation = this.generation, limit = input.limit ?? 20
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new WorkspaceError('session_work_invalid_page', 400)
+      let offset = 0
+      if (input.cursor !== undefined) {
+        try {
+          if (!/^[A-Za-z0-9_-]{1,1024}$/.test(input.cursor)) return resync()
+          const cursor = JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8'))
+          if (!Array.isArray(cursor) || cursor.length !== 4 || cursor[0] !== roster.revision || cursor[1] !== 'projects' || cursor[3] !== limit || !Number.isSafeInteger(cursor[2]) || cursor[2] <= 0 || cursor[2] % limit !== 0) return resync()
+          offset = cursor[2]
+        } catch { return resync() }
+      }
+      if (!this.available() || generation !== this.generation || offset > roster.catalog.length || this.makeRosterFromMembership(roster).revision !== roster.revision || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || roster.ordinary.some(id => !this.access(id))) return resync()
+      const items = roster.catalog.slice(offset, offset + limit), hasMore = offset + limit < roster.catalog.length
+      return { state: roster.partial ? 'partial' : 'ready', revision: roster.revision, sampledAt: roster.at, items, total: roster.catalog.length, hasMore,
+        ...(hasMore ? { next: Buffer.from(JSON.stringify([roster.revision, 'projects', offset + limit, limit])).toString('base64url') } : {}) }
+    })())
+  }
+  setProjectIncluded(projectId: string, included: boolean, input: { revision: string }): Promise<{ projectId: string; included: boolean; revision: string; stopped: false }> {
+    return this.track((async () => {
+      if (!idValid(projectId) || typeof included !== 'boolean' || typeof input?.revision !== 'string') return resync()
+      const roster = await this.getRoster(true)
+      if (!this.available() || roster.revision !== input.revision || this.makeRosterFromMembership(roster).revision !== roster.revision || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || !roster.catalog.some(row => row.kind === 'project' && row.key === projectId)) return resync()
+      if (!this.ports.setExcludedProjects) throw new WorkspaceError('session_work_scope_unavailable', 503)
+      const ids = new Set(this.ports.getExcludedProjects?.() ?? [])
+      if (included) ids.delete(projectId); else ids.add(projectId)
+      this.ports.setExcludedProjects([...ids].sort())
+      this.invalidate()
+      // Exclusion revokes management only. No stop, activation, or replay takes place here.
+      return { projectId, included, revision: this.makeRosterFromMembership(roster).revision, stopped: false }
+    })())
+  }
+  /** Bounded fact search, not a control grant. Explicit stable IDs never bypass membership.
+   * A title match alone requires clarification; only structured objective evidence locates.
+   */
+  locate(input: { text: string; sessionId?: string; revision?: string }) {
+    return this.track((async () => {
+      if (!input || typeof input.text !== 'string' || !input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 16_384 || input.text.includes('\0') || input.sessionId !== undefined && !idValid(input.sessionId)) throw new WorkspaceError('invalid_input', 400)
+      input = { text: input.text, ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }), ...(input.revision === undefined ? {} : { revision: input.revision }) }
+      const roster = await this.getRoster(true), generation = this.generation
+      if (input.revision !== undefined && input.revision !== roster.revision) return resync()
+      const base = { revision: roster.revision, controlAvailable: false as const, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }
+      const blocked = (code: string) => ({ ...base, status: 'blocked' as const, code, candidates: [] })
+      if (input.sessionId !== undefined && (!roster.included.includes(input.sessionId) || this.exclusion(input.sessionId, roster.projects) || !this.access(input.sessionId))) return blocked('target_not_available')
+      // Avoid silently selecting a target outside the inspected window. No unbounded scan.
+      const ids = input.sessionId ? [input.sessionId] : roster.included.slice(0, 100)
+      const items = await Promise.all(ids.filter(id => !this.exclusion(id, roster.projects)).map(id => this.project(id, generation, true)))
+      if (!this.available() || generation !== this.generation || this.makeRosterFromMembership(roster).revision !== roster.revision || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || ids.some(id => !this.access(id))) return resync()
+      const partial = roster.partial || !input.sessionId && roster.included.length > ids.length || items.some(item => item.evidence === 'unavailable')
+      const needle = input.text.normalize('NFC').trim().toLocaleLowerCase()
+      const matches = items.filter(item => input.sessionId === item.sessionId || [item.objective, item.progress, item.nextAction, item.title].some(value => value && value.normalize('NFC').toLocaleLowerCase().includes(needle)))
+      const candidates = matches.slice(0, 20).map(item => {
+        const fields = ['objective', 'progress', 'nextAction', 'title'] as const
+        const matchField = fields.find(field => item[field]?.normalize('NFC').toLocaleLowerCase().includes(needle)) ?? (item.objective ? 'objective' : 'title')
+        return { sessionId: item.sessionId, title: item.title, project: roster.projects[item.sessionId]!, factRevision: item.factRevision, observedAt: item.observedAt, evidence: item.evidence,
+          matchField, matchText: item[matchField]?.slice(0, 600) ?? '' }
+      })
+      if (partial) return { ...base, status: 'blocked' as const, code: 'locate_coverage_partial', coverage: 'partial' as const, searched: ids.length, candidates }
+      if (!matches.length) return { ...base, status: 'no_match' as const, coverage: 'complete' as const, searched: ids.length, candidates }
+      const only = matches[0]!, strong = input.sessionId === only.sessionId || only.evidence === 'structured' && Boolean(only.objective?.normalize('NFC').toLocaleLowerCase().includes(needle))
+      if (matches.length !== 1 || !strong) return { ...base, status: 'clarify' as const, code: matches.length > 1 ? 'target_ambiguous' : 'title_only_match', candidates, candidateTotal: matches.length }
+      return { ...base, status: 'located' as const, target: candidates[0], candidates, coverage: 'complete' as const, searched: ids.length }
+    })())
+  }
+  /** Metadata-only global scope cut for staged uploads; no work bodies or control grant. */
+  imageScope() {
+    return this.track((async () => {
+      const roster = await this.getRoster(true), generation = this.generation
+      const fence = () => {
+        if (!this.available() || generation !== this.generation || this.makeRosterFromMembership(roster).revision !== roster.revision || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || roster.ordinary.some(id => !this.access(id))) throw new WorkspaceError('image_scope_changed', 409)
+      }
+      fence(); return { revision: roster.revision, fence }
+    })())
+  }
+  /** A fresh, exact target binding plus synchronous revocation fence. Not a control grant. */
+  actionTarget(input: { sessionId: string; scopeRevision: string; factRevision: string }) {
+    return this.track((async () => {
+      if (!input || !idValid(input.sessionId) || !/^[a-f0-9]{64}$/.test(input.scopeRevision) || !/^[a-f0-9]{64}$/.test(input.factRevision)) throw new WorkspaceError('session_action_invalid', 400)
+      const expected = { ...input }, roster = await this.getRoster(true), generation = this.generation
+      const check = () => {
+        if (!this.available() || generation !== this.generation || roster.revision !== expected.scopeRevision || this.makeRosterFromMembership(roster).revision !== roster.revision || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || !roster.included.includes(expected.sessionId) || !this.access(expected.sessionId) || this.exclusion(expected.sessionId, roster.projects)) throw new WorkspaceError('session_action_target_changed', 409)
+      }
+      check()
+      const item = await this.project(expected.sessionId, generation, true)
+      check()
+      if (item.evidence === 'unavailable' || item.factRevision !== expected.factRevision) throw new WorkspaceError('session_action_target_changed', 409)
+      const project = roster.projects[expected.sessionId]!
+      if (project.kind === 'unknown') throw new WorkspaceError('session_action_target_changed', 409)
+      return { binding: { sessionId: expected.sessionId, scopeRevision: roster.revision, factRevision: item.factRevision, project: { kind: project.kind, key: project.key } }, fence: check }
     })())
   }
   private available() { return this.active && !this.ports.signal.aborted && !this.localAbort.signal.aborted }
@@ -98,23 +203,45 @@ export class SessionWorkSource implements Source {
     this.pending.add(work); void work.then(() => this.pending.delete(work), () => this.pending.delete(work)); return work
   }
   private invalidate() { this.generation++; this.roster = undefined; this.rosterFlight = undefined; this.items.clear(); this.itemFlights.clear() }
+  private exclusion(id: string, projects: Record<string, SessionWorkProject>): SessionWorkItem['exclusionReason'] | undefined {
+    if (this.ports.getExcluded().includes(id)) return 'session'
+    const project = projects[id]
+    // Unknown membership cannot grant fresh access, nor bypass an excluded project.
+    if (!project || project.kind === 'unknown') return 'membership-unknown'
+    if (project.kind === 'project' && this.ports.getExcludedProjects?.().includes(project.key)) return 'project'
+    return undefined
+  }
   private makeRosterFromMembership(base: Roster): Roster {
-    const excluded = new Set(this.ports.getExcluded().filter(idValid))
+    const excluded = new Set(this.ports.getExcluded().filter(idValid)), projectExcluded = new Set(this.ports.getExcludedProjects?.().filter(idValid) ?? [])
     const ordinary = base.ordinary
-    const next = { ...base, included: ordinary.filter(id => !excluded.has(id)), excluded: ordinary.filter(id => excluded.has(id)) }
-    next.revision = hash([ordinary.map(id => [id, base.projects[id]]), base.projectRevision, next.internal, [...excluded].sort()])
+    // One preference snapshot per computation, not a kv read for every project/member pair.
+    const isExcluded = (id: string) => excluded.has(id) || base.projects[id]?.kind === 'project' && projectExcluded.has(base.projects[id]!.key)
+    const next = { ...base, included: ordinary.filter(id => !isExcluded(id)), excluded: ordinary.filter(isExcluded) }
+    const totals = new Map<string, { total: number; included: number }>()
+    for (const id of ordinary) {
+      const project = base.projects[id]!, key = JSON.stringify([project.kind, project.key]), count = totals.get(key) ?? { total: 0, included: 0 }
+      count.total++; if (!isExcluded(id) && project.kind !== 'unknown') count.included++
+      totals.set(key, count)
+    }
+    // Unknown ownership remains visible as partial metadata, without reading its work.
+    next.catalog = base.catalog.map(project => ({ ...project, excluded: project.kind === 'project' && projectExcluded.has(project.key),
+      sessionTotal: totals.get(JSON.stringify([project.kind, project.key]))?.total ?? 0,
+      includedTotal: totals.get(JSON.stringify([project.kind, project.key]))?.included ?? 0 }))
+    next.revision = hash([ordinary.map(id => [id, base.projects[id]]), base.projectRevision, next.internal, [...excluded].sort(), [...projectExcluded].sort(), this.ports.getScopeVersion?.() ?? 0])
     return next
   }
   private readProjects(ordinary: readonly string[]) {
     // Host membership is authoritative; no cwd/title/path guesses or log reads.
-    const projects: Record<string, SessionWorkProject> = Object.create(null)
+    const projects: Record<string, SessionWorkProject> = Object.create(null), catalog: ScopeProject[] = []
     let partial = false
     try {
       const rows = this.ports.listProjects?.()
       if (!Array.isArray(rows)) throw new Error('project registry unavailable')
-      const members = new Set(ordinary)
+      const members = new Set(ordinary), seen = new Set<string>()
       for (const row of rows) {
-        if (!object(row) || !idValid(row.id) || typeof row.title !== 'string' || !Array.isArray(row.sessionIds) || row.sessionIds.some((id: unknown) => !idValid(id))) throw new Error('invalid project registry')
+        if (!object(row) || !idValid(row.id) || seen.has(row.id) || typeof row.title !== 'string' || !Array.isArray(row.sessionIds) || new Set(row.sessionIds).size !== row.sessionIds.length || row.sessionIds.some((id: unknown) => !idValid(id))) throw new Error('invalid project registry')
+        seen.add(row.id)
+        if (row.accessible !== false) catalog.push({ key: row.id, kind: 'project', name: text(row.title, 120) ?? '', excluded: false, sessionTotal: 0, includedTotal: 0 })
         if (row.accessible === false && row.sessionIds.some((id: string) => members.has(id))) partial = true
         const project: SessionWorkProject = row.accessible === false ? { kind: 'unknown', key: 'unknown' } : { kind: 'project', key: row.id, name: text(row.title, 120) ?? '' }
         for (const id of row.sessionIds) if (members.has(id)) {
@@ -124,10 +251,12 @@ export class SessionWorkSource implements Source {
       }
       for (const id of ordinary) projects[id] ??= { kind: 'unassigned', key: 'unassigned' }
     } catch {
-      partial = true
+      partial = true; catalog.length = 0
       for (const id of ordinary) projects[id] = { kind: 'unknown', key: 'unknown' }
     }
-    return { projects, partial }
+    for (const kind of ['unassigned', 'unknown'] as const) if (ordinary.some(id => projects[id]?.kind === kind)) catalog.push({ key: kind, kind, excluded: false, sessionTotal: 0, includedTotal: 0 })
+    catalog.sort((a, b) => a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key))
+    return { projects, catalog, partial }
   }
   private async getRoster(fresh = false): Promise<Roster> {
     if (!this.available()) throw new Error('inactive')
@@ -165,9 +294,14 @@ export class SessionWorkSource implements Source {
       })
       const projectSnapshot = this.readProjects(ordinary)
       const projects = projectSnapshot.projects; partial ||= projectSnapshot.partial
-      const base: Roster = { at: Date.now(), revision: '', ownedKey: hash([...this.ports.ownedSessionIds()].sort()), projects, projectRevision: hash(projectSnapshot), ordinary, included: ordinary, excluded: [], internal: internal.sort(), partial }
+      const base: Roster = { at: Date.now(), revision: '', ownedKey: hash([...this.ports.ownedSessionIds()].sort()), projects, catalog: projectSnapshot.catalog, projectRevision: hash(projectSnapshot), ordinary, included: ordinary, excluded: [], internal: internal.sort(), partial }
       const roster = this.makeRosterFromMembership(base)
       if (generation !== this.generation || !this.available()) return resync()
+      if (this.roster && this.roster.revision !== roster.revision) {
+        // A fresh metadata request can observe a move/exclusion before the cached path.
+        // Invalidate old fact flights without clearing this newly built roster.
+        this.generation++; this.items.clear(); this.itemFlights.clear()
+      }
       this.roster = roster
       return roster
     })()
@@ -176,7 +310,7 @@ export class SessionWorkSource implements Source {
   }
   private async page(input: SessionWorkListInput): Promise<SessionWorkList> {
     const sampledAt = Date.now(), view = input.view ?? 'included', limit = input.limit ?? 20
-    if (!['included', 'excluded'].includes(view) || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new WorkspaceError('session_work_invalid_page', 400)
+    if (!['included', 'excluded'].includes(view) || !Number.isSafeInteger(limit) || limit < 1 || limit > 20 || input.projectKey !== undefined && !projectKeyValid(input.projectKey)) throw new WorkspaceError('session_work_invalid_page', 400)
     try {
       const roster = await this.getRoster(), generation = this.generation
       let offset = 0
@@ -184,21 +318,26 @@ export class SessionWorkSource implements Source {
         try {
           if (typeof input.cursor !== 'string' || input.cursor.length > 512 || !/^[A-Za-z0-9_-]+$/.test(input.cursor)) return resync()
           const cursor: unknown = JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8'))
-          if (!Array.isArray(cursor) || cursor.length !== 4 || cursor[0] !== roster.revision || cursor[1] !== view || cursor[3] !== limit || !Number.isSafeInteger(cursor[2]) || cursor[2] <= 0 || cursor[2] % limit !== 0) return resync()
+          if (!Array.isArray(cursor) || cursor.length !== 5 || cursor[0] !== roster.revision || cursor[1] !== view || cursor[3] !== limit || cursor[4] !== (input.projectKey ?? null) || !Number.isSafeInteger(cursor[2]) || cursor[2] <= 0 || cursor[2] % limit !== 0) return resync()
           offset = cursor[2]
         } catch { return resync() }
       }
-      const ids = roster[view]
+      const projectKey = (project: SessionWorkProject | undefined) => project?.kind === 'project' ? `project:${project.key}` : project?.kind
+      if (input.projectKey !== undefined && !roster.catalog.some(row => (row.kind === 'project' ? `project:${row.key}` : row.kind) === input.projectKey)) return resync()
+      const ids = roster[view].filter(id => input.projectKey === undefined || projectKey(roster.projects[id]) === input.projectKey)
       if (offset > ids.length) return resync()
       const pageIds = ids.slice(offset, offset + limit)
-      const observed = view === 'excluded' ? pageIds.map(id => this.empty(id, true, 'missing')) : await Promise.all(pageIds.map(id => this.project(id, generation)))
+      const observed = await Promise.all(pageIds.map(id => {
+        const reason = this.exclusion(id, roster.projects)
+        return view === 'excluded' || reason === 'membership-unknown' ? { ...this.empty(id, view === 'excluded', reason === 'membership-unknown' ? 'unavailable' : 'missing'), ...(reason ? { exclusionReason: reason } : {}) } : this.project(id, generation)
+      }))
       const items = observed.map(item => ({ ...item, project: roster.projects[item.sessionId] ?? { kind: 'unknown' as const, key: 'unknown' as const } }))
       if (!this.available() || generation !== this.generation || hash(this.readProjects(roster.ordinary)) !== roster.projectRevision || this.makeRosterFromMembership(roster).revision !== roster.revision || roster.ownedKey !== hash([...this.ports.ownedSessionIds()].sort()) || pageIds.some(id => !this.access(id))) return resync()
       const hasMore = offset + limit < ids.length
       const partial = roster.partial || items.some(item => item.evidence === 'unavailable')
       return { state: partial ? 'partial' : 'ready', sampledAt, scope: 'current-host', defaultIncluded: true,
         total: ids.length, excludedTotal: roster.excluded.length, internalTotal: roster.internal.length, items, hasMore,
-        revision: roster.revision, ...(hasMore ? { next: Buffer.from(JSON.stringify([roster.revision, view, offset + limit, limit])).toString('base64url') } : {}),
+        revision: roster.revision, ...(hasMore ? { next: Buffer.from(JSON.stringify([roster.revision, view, offset + limit, limit, input.projectKey ?? null])).toString('base64url') } : {}),
         ...(partial ? { error: 'session_work_partial' as const } : {}) }
     } catch (error) {
       if (error instanceof WorkspaceError) throw error
@@ -206,30 +345,39 @@ export class SessionWorkSource implements Source {
     }
   }
   private empty(id: string, excluded: boolean, evidence: SessionWorkItem['evidence']): SessionWorkItem {
-    return { sessionId: id, project: { kind: 'unknown', key: 'unknown' }, title: this.labels.get(id) ?? FALLBACK, runtime: excluded ? 'unknown' : 'unavailable', observedAt: Date.now(), evidence, excluded }
+    // Ordinary session approvals have no exact projection here; questions are not approvals.
+    return { sessionId: id, project: { kind: 'unknown', key: 'unknown' }, title: this.labels.get(id) ?? FALLBACK, runtime: excluded ? 'unknown' : 'unavailable', observedAt: Date.now(), evidence, excluded, approvalCoverage: 'unavailable' }
   }
-  private project(id: string, generation: number): Promise<SessionWorkItem> {
+  private copyItem(item: SessionWorkItem): SessionWorkItem {
+    return { ...item, ...(item.done ? { done: [...item.done] } : {}), ...(item.result ? { result: { ...item.result } } : {}) }
+  }
+  private project(id: string, generation: number, fresh = false): Promise<SessionWorkItem> {
     const cached = this.items.get(id)
-    if (cached && Date.now() - cached.at < TTL) return Promise.resolve({ ...cached.item, runtime: cached.item.evidence === 'unavailable' ? 'unknown' : this.runtime(id) })
-    const existing = this.itemFlights.get(id); if (existing) return existing.then(item => ({ ...item }))
+    if (!fresh && cached && Date.now() - cached.at < TTL) return Promise.resolve({ ...this.copyItem(cached.item), runtime: cached.item.evidence === 'unavailable' ? 'unknown' : this.runtime(id) })
+    const flightKey = `${fresh ? 'locate' : 'summary'}:${id}`
+    const existing = this.itemFlights.get(flightKey); if (existing) return existing.then(item => this.copyItem(item))
     const work = (async () => {
       while (this.reads.size >= 4) await Promise.race(this.reads)
-      if (!this.available() || generation !== this.generation || !this.access(id) || this.ports.getExcluded().includes(id)) return resync()
+      if (!this.available() || generation !== this.generation || !this.access(id) || !this.roster || Boolean(this.exclusion(id, this.readProjects(this.roster.ordinary).projects))) return resync()
       const read = this.readProjection(id)
       this.reads.add(read)
       let item: SessionWorkItem
       try { item = await read } finally { this.reads.delete(read) }
-      if (!this.available() || generation !== this.generation || !this.access(id) || this.ports.getExcluded().includes(id)) return resync()
+      if (!this.available() || generation !== this.generation || !this.access(id) || !this.roster || Boolean(this.exclusion(id, this.readProjects(this.roster.ordinary).projects))) return resync()
       this.items.set(id, { at: Date.now(), item }); this.labels.set(id, item.title)
-      return { ...item }
+      return this.copyItem(item)
     })()
     this.track(work)
-    this.itemFlights.set(id, work)
-    void work.then(() => { if (this.itemFlights.get(id) === work) this.itemFlights.delete(id) }, () => { if (this.itemFlights.get(id) === work) this.itemFlights.delete(id) })
+    this.itemFlights.set(flightKey, work)
+    void work.then(() => { if (this.itemFlights.get(flightKey) === work) this.itemFlights.delete(flightKey) }, () => { if (this.itemFlights.get(flightKey) === work) this.itemFlights.delete(flightKey) })
     return work
   }
   private async readProjection(id: string): Promise<SessionWorkItem> {
-    const item = this.empty(id, false, 'missing')
+    const item = this.empty(id, false, 'missing'), done: string[] = []
+    const completed = (value: unknown) => {
+      const fact = text(value)
+      if (fact && done.length < 3 && !done.includes(fact)) done.push(fact)
+    }
     let malformed = false, structured = false
     try {
       const result = await this.ports.read(id, this.signal())
@@ -246,7 +394,10 @@ export class SessionWorkSource implements Source {
       const todos = value('todos')
       if (todos !== undefined) {
         if (!Array.isArray(todos) || todos.length > 512 || todos.some(row => !object(row) || typeof row.content !== 'string' || !['pending', 'in_progress', 'completed'].includes(row.status))) malformed = true
-        else { structured = true; item.progress = text(todos.find(row => row.status === 'in_progress')?.content); item.nextAction = text(todos.find(row => row.status === 'pending')?.content) }
+        else {
+          structured = true; item.progress = text(todos.find(row => row.status === 'in_progress')?.content); item.nextAction = text(todos.find(row => row.status === 'pending')?.content)
+          for (const row of todos) if (row.status === 'completed') completed(row.content)
+        }
       }
       const team = value('agentTeam')
       if (team !== undefined) {
@@ -254,7 +405,10 @@ export class SessionWorkSource implements Source {
         else {
           const tasks = team.tasks.filter((row: any) => object(row) && ['pending', 'in_progress', 'completed', 'deleted'].includes(row.status) && typeof row.subject === 'string')
           if (tasks.length !== team.tasks.length) malformed = true
-          else { structured = true; item.progress ??= text(tasks.find((row: any) => row.status === 'in_progress')?.subject); item.nextAction ??= text(tasks.find((row: any) => row.status === 'pending')?.subject) }
+          else {
+            structured = true; item.progress ??= text(tasks.find((row: any) => row.status === 'in_progress')?.subject); item.nextAction ??= text(tasks.find((row: any) => row.status === 'pending')?.subject)
+            for (const row of tasks) if (row.status === 'completed') completed(row.subject)
+          }
         }
       }
       const questions = value('userQuestions')
@@ -271,8 +425,16 @@ export class SessionWorkSource implements Source {
           }
         }
       }
+      if (!malformed) {
+        if (done.length) item.done = done
+        // A goal's own completion declaration is not acceptance verification. Completed
+        // task facts alone establish neither goal completion nor a successful outcome.
+        if (item.goalPhase === 'complete') item.result = { state: 'goal-complete', ...(item.objective ? { summary: item.objective } : {}), acceptanceVerified: false }
+        else if (done.length) item.result = { state: 'unverified', summary: done[0], acceptanceVerified: false }
+      }
       item.runtime = malformed ? 'unknown' : this.runtime(id)
       item.evidence = malformed ? 'unavailable' : structured ? 'structured' : 'missing'
+      item.factRevision = hash([id, result.asOfSeq, item.title, item.objective ?? null, item.goalPhase ?? null, item.progress ?? null, item.nextAction ?? null, item.blocker ?? null, item.decision ?? null, item.done ?? null, item.result ?? null, item.approvalCoverage, item.evidence])
       return item
     } catch { return { ...item, runtime: 'unknown', evidence: 'unavailable' } }
   }

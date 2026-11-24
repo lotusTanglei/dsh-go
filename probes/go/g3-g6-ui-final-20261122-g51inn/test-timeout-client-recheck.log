@@ -1,0 +1,135 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/scope-management.test.ts (35 tests) 3440ms
+ ❯ tests/client/session-action.test.ts (90 tests | 2 failed) 60499ms
+   ✓ G2 independent blocked text action UI contracts > isolates drafts by epoch, session, project, scope and fact revision without rebinding or copying the main draft 109ms
+   ✓ G2 independent blocked text action UI contracts > retains original drafts through resetLocate and navigation, editing only the currently located exact target 76ms
+   ✓ G2 independent blocked text action UI contracts > posts only one exact continue prepare, verifies digest, retains original text, and never alters main composer 72ms
+   ✓ G2 independent blocked text action UI contracts > posts only one exact supplement prepare, verifies digest, retains original text, and never alters main composer 72ms
+   ✓ G2 independent blocked text action UI contracts > posts only one exact steer prepare, verifies digest, retains original text, and never alters main composer 73ms
+   ✓ G2 independent blocked text action UI contracts > starts a new local draft only by an explicit blocked-action click, retaining original evidence and minting new IDs only on a later check 74ms
+   ✓ G2 independent blocked text action UI contracts > never resets a unknown action or exposes a new-draft bypass 71ms
+   ✓ G2 independent blocked text action UI contracts > never resets a recorded action or exposes a new-draft bypass 69ms
+   ✓ G2 independent blocked text action UI contracts > never resets a dispatch_unknown action or exposes a new-draft bypass 70ms
+   ✓ G2 independent blocked text action UI contracts > never resets a accepted action or exposes a new-draft bypass 67ms
+   ✓ G2 independent blocked text action UI contracts > never resets a pending action or exposes a new-draft bypass 67ms
+   ✓ G2 independent blocked text action UI contracts > does not create a draft from an old target, epoch, or contradictory blocked receipt 66ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"status":"clarify"} 67ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"status":"blocked"} 66ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"coverage":"partial"} 71ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"controlAvailable":true} 73ms
+   × G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"executionReason":"enabled"} 25125ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {} 83ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"revision":"bad"} 82ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"one","project":{"kind":"project","key":"project-one","name":"Same project name"},"factRevision":"bad","title":"Same session title"}} 78ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"session-one","project":{"kind":"unknown","key":"unknown"},"factRevision":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","title":"Same session title"}} 74ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"session-one","project":{"kind":"project","key":"different-project","name":"Same project name"},"factRevision":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","title":"Same session title"}} 71ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one","name":"Same project name"},"factRevision":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","title":"Same session title"}} 71ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory epoch receipt unknown with original IDs and no retry 80ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory requestId receipt unknown with original IDs and no retry 73ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory actionId receipt unknown with original IDs and no retry 74ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory operation receipt unknown with original IDs and no retry 69ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.sessionId receipt unknown with original IDs and no retry 84ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.scopeRevision receipt unknown with original IDs and no retry 74ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.factRevision receipt unknown with original IDs and no retry 78ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.project.kind receipt unknown with original IDs and no retry 70ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.project.key receipt unknown with original IDs and no retry 69ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory digest receipt unknown with original IDs and no retry 67ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory messageId receipt unknown with original IDs and no retry 66ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory seq receipt unknown with original IDs and no retry 65ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory seq receipt unknown with original IDs and no retry 70ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory seq receipt unknown with original IDs and no retry 68ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory at receipt unknown with original IDs and no retry 64ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory updatedAt receipt unknown with original IDs and no retry 68ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory durable receipt unknown with original IDs and no retry 65ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory accepted receipt unknown with original IDs and no retry 67ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory executed receipt unknown with original IDs and no retry 64ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory executed receipt unknown with original IDs and no retry 64ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory completed receipt unknown with original IDs and no retry 68ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory completed receipt unknown with original IDs and no retry 64ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory state receipt unknown with original IDs and no retry 63ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory disposition receipt unknown with original IDs and no retry 63ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory version receipt unknown with original IDs and no retry 67ms
+   ✓ G2 independent blocked text action UI contracts > accepts an omitted optional version but rejects arbitrary, partial, missing-flag, or forged payloads  1047ms
+   ✓ G2 independent blocked text action UI contracts > handles uncertain prepare and status 404 without resending, new IDs, input loss, or treating not-found as no-delivery proof 100ms
+   ✓ G2 independent blocked text action UI contracts > closes only after an explicit click with the exact original payload, then requires a separate new-draft click and keeps closure history 106ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field epoch and keeps the original action unresolved 117ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field requestId and keeps the original action unresolved 119ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field actionId and keeps the original action unresolved 117ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field operation and keeps the original action unresolved 119ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.sessionId and keeps the original action unresolved 127ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.scopeRevision and keeps the original action unresolved 136ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.factRevision and keeps the original action unresolved 161ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.project and keeps the original action unresolved 175ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field digest and keeps the original action unresolved 202ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field seq and keeps the original action unresolved 217ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field at and keeps the original action unresolved 202ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field updatedAt and keeps the original action unresolved 209ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field state and keeps the original action unresolved 210ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field bindingVerified and keeps the original action unresolved 196ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field durable and keeps the original action unresolved 72ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field accepted and keeps the original action unresolved 70ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field executed and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field completed and keeps the original action unresolved 68ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field disposition and keeps the original action unresolved 75ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field code and keeps the original action unresolved 71ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field version and keeps the original action unresolved 70ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field messageId and keeps the original action unresolved 71ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field controlRevision and keeps the original action unresolved 73ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field grantRevision and keeps the original action unresolved 69ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field extra and keeps the original action unresolved 67ms
+   × G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent 25986ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ G2 independent blocked text action UI contracts > recovers a lost explicit close receipt through status only without another prepare or automatic closure retry 167ms
+   ✓ G2 independent blocked text action UI contracts > does not accept closure over existing exact dispatch_unknown evidence and accepts only the original normal receipt from close 159ms
+   ✓ G2 independent blocked text action UI contracts > keeps old-epoch unknown recovery unavailable and fences new actions, with no cross-epoch close request 142ms
+   ✓ G2 independent blocked text action UI contracts > keeps the check button present and disabled while pending, with a persistent visible status contract 150ms
+   ✓ G2 independent blocked text action UI contracts > does not bypass an unresolved original action by switching target or epoch 139ms
+   ✓ G2 independent blocked text action UI contracts > retains a late blocked result under the original target without covering the new target or epoch 70ms
+   ✓ G2 independent blocked text action UI contracts > retains a late unknown result under the original target without covering the new target or epoch 75ms
+   ✓ G2 independent blocked text action UI contracts > fences navigation during digest preparation before making a Host request 68ms
+   ✓ G2 independent blocked text action UI contracts > uses status only to reconcile exact recorded and dispatch_unknown evidence, with null execution facts for uncertain delivery 149ms
+   ✓ G2 independent blocked text action UI contracts > rejects status rollback, same-sequence contradiction, changing original time, and false certainty for unknown delivery  363ms
+   ✓ G2 independent blocked text action UI contracts > renders a separate progressive text check, only current target editable, literal evidence, no send/stop/approval or Enter-to-send 89ms
+   ✓ G2 independent blocked text action UI contracts > guards composition-triggered action and Escape locally without changing global shell behavior 68ms
+   ✓ G2 independent blocked text action UI contracts > validates text byte limits/NUL before requesting and supplies matching bilingual boundaries 70ms
+ ✓ tests/client/workspace-layout.test.ts (7 tests) 49ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/client/session-action.test.ts > G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"executionReason":"enabled"}
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/client/session-action.test.ts:151:4
+    149|     { executionReason: 'enabled' }, { coverage: undefined }, { revisio…
+    150|     { target: row('session-one', 'different-project') }, { target: row…
+    151|   ])('offers no current editable target for unverified location %j', e…
+       |    ^
+    152|     const { g } = harness(); g.locateResultRef.current = located(row()…
+    153|     expect(g.currentSessionAction()).toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/client/session-action.test.ts > G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/client/session-action.test.ts:247:3
+    245|   })
+    246| 
+    247|   it('rejects missing closure fields and unsolicited closed payloads w…
+       |   ^
+    248|     for (const field of Object.keys(closed({ epoch: 'e', requestId: 'r…
+    249|       const { g, edit } = harness(), key = edit()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  2 failed | 130 passed (132)
+   Start at  08:26:47
+   Duration  65.80s (transform 64ms, setup 0ms, collect 618ms, tests 63.99s, environment 0ms, prepare 201ms)
+

@@ -1,0 +1,68 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/go-settings.test.ts (36 tests) 224ms
+ ❯ tests/client/scope-management.test.ts (35 tests | 1 failed) 27290ms
+   ✓ bounded scope target lookup UI closures > searches across included scope without a project filter, send, execution, or composer changes 97ms
+   ✓ bounded scope target lookup UI closures > rechecks only explicit candidates from a current clarification, binding the original revision 66ms
+   ✓ bounded scope target lookup UI closures > ignores late results after navigation, editing, or epoch changes and never retries 68ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"different","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}} 68ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"},"coverage":"partial"} 64ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":true,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}} 72ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"clarify","candidates":[{"sessionId":"session-one","project":{"kind":"unknown","key":"unknown"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED"} 69ms
+   ✓ bounded scope target lookup UI closures > distinguishes same-title candidates with literal field-labelled work excerpts, never HTML 77ms
+   ✓ bounded scope target lookup UI closures > shows partial/blocked and no-match honestly, and offers recheck only for clarification 75ms
+   ✓ hierarchical management scope UI closures > reads the project catalog including empty projects and never scans conversation pages 55ms
+   ✓ hierarchical management scope UI closures > requests only the selected project/view and rejects mixed-project or cross-revision pages 51ms
+   ✓ hierarchical management scope UI closures > never reuses a cursor from another project and never locates or reads unknown membership 51ms
+   ✓ hierarchical management scope UI closures > ignores late reads after epoch/navigation changes without touching composer draft or target 51ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"wrong","included":false,"revision":"r2","stopped":false} 51ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":true,"revision":"r2","stopped":false} 56ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"stopped":false} 51ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"","stopped":false} 51ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"r2"} 56ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"r2","stopped":true} 59ms
+   × hierarchical management scope UI closures > preserves snapshots and does not retry failures or 409s 25191ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ hierarchical management scope UI closures > requires a session revision in the exact receipt and never bypasses project exclusion 65ms
+   ✓ hierarchical management scope UI closures > refreshes only after exact receipt, then retains the selected project and active tab 64ms
+   ✓ hierarchical management scope UI closures > retains confirmed mutation evidence across navigation/epoch changes without applying it to a new page 58ms
+   ✓ hierarchical management scope UI closures > retains unknown mutation evidence across navigation/epoch changes without applying it to a new page 58ms
+   ✓ hierarchical management scope UI closures > invalidates cached Sources work after exact confirmation even when navigation left scope 61ms
+   ✓ hierarchical management scope UI closures > fences a Sources read started before scope exclusion so late work cannot repopulate the cache 57ms
+   ✓ hierarchical management scope UI closures > keeps a new epoch Sources cache intact when an old scope mutation is exactly confirmed 53ms
+   ✓ hierarchical management scope UI closures > shows pending, confirmed, and unknown original-target evidence globally with an old-epoch warning and no replay button 61ms
+   ✓ hierarchical management scope UI closures > does not permit a second scope mutation while the first is pending after navigation 57ms
+   ✓ hierarchical management scope UI closures > restores a second-page project after confirmed session save with bounded metadata pagination and current tab 73ms
+   ✓ hierarchical management scope UI closures > stops second-page restoration when metadata revision changes and never mixes pages or reads session content 58ms
+   ✓ hierarchical management scope UI closures > does not scan beyond the originally loaded catalog boundary if the selected project is missing 53ms
+   ✓ hierarchical management scope UI closures > renders only the current level, includes empty projects, disambiguates names, and leaves unknown noninteractive 57ms
+   ✓ hierarchical management scope UI closures > does not render excluded work bodies, and visibly disables child restoration under an excluded project 55ms
+   ✓ hierarchical management scope UI closures > exposes a real settings entry without changing existing Sources closures or installing a poll 76ms
+ ✓ tests/client/pages.test.ts (20 tests) 405ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 236ms
+ ✓ tests/client/primary-navigation.test.ts (4 tests) 48ms
+ ✓ tests/client/workspace-layout.test.ts (7 tests) 63ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/client/scope-management.test.ts > hierarchical management scope UI closures > preserves snapshots and does not retry failures or 409s
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/client/scope-management.test.ts:180:3
+    178|   })
+    179| 
+    180|   it('preserves snapshots and does not retry failures or 409s', async …
+       |   ^
+    181|     for (const status of [undefined, 409]) {
+    182|       const { g, calls } = harness(), { row } = selected(g), old = g.s…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 5 passed (6)
+      Tests  1 failed | 113 passed (114)
+   Start at  09:49:18
+   Duration  32.79s (transform 156ms, setup 0ms, collect 2.14s, tests 28.27s, environment 1ms, prepare 495ms)
+

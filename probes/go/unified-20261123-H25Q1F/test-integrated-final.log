@@ -1,0 +1,35 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/session-action.test.ts (90 tests) 10766ms
+   ✓ G2 independent blocked text action UI contracts > accepts an omitted optional version but rejects arbitrary, partial, missing-flag, or forged payloads  1258ms
+   ✓ G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent  1569ms
+   ✓ G2 independent blocked text action UI contracts > rejects status rollback, same-sequence contradiction, changing original time, and false certainty for unknown delivery  437ms
+ ✓ tests/workspace/session-decisions.test.ts (141 tests) 7870ms
+ ✓ tests/workspace/runtime.test.ts (37 tests) 3567ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1609ms
+ ✓ tests/client/go-decisions.test.ts (76 tests) 3475ms
+ ✓ tests/client/scope-management.test.ts (35 tests) 2495ms
+ ✓ tests/client/image-draft.test.ts (15 tests) 1735ms
+ ✓ tests/client/pages.test.ts (20 tests) 507ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 288ms
+ ✓ tests/panel/go-slices.test.ts (5 tests) 250ms
+ ✓ tests/client/workspace-layout.test.ts (9 tests) 187ms
+ ✓ tests/client/session-work.test.ts (8 tests) 115ms
+ ✓ tests/client/go-shell-flows.test.ts (7 tests) 107ms
+ ✓ tests/client/primary-navigation.test.ts (4 tests) 62ms
+ ✓ tests/client/go-settings.test.ts (36 tests) 42ms
+ ✓ tests/client/go-projects.test.ts (36 tests) 33ms
+ ✓ tests/client/bundle.test.ts (2 tests) 12ms
+ ✓ tests/client/artifact.test.ts (3 tests) 23ms
+ ✓ tests/client/go-tencent.test.ts (18 tests) 18ms
+ ✓ tests/client/detail-readability.test.ts (84 tests) 16ms
+ ✓ tests/panel/session-work.test.ts (8 tests) 13ms
+ ✓ tests/client/desk-model.test.ts (46 tests) 8ms
+ ✓ tests/client/channel.test.ts (3 tests) 2ms
+
+ Test Files  22 passed (22)
+      Tests  695 passed (695)
+   Start at  11:12:10
+   Duration  47.43s (transform 816ms, setup 0ms, collect 4.41s, tests 31.59s, environment 2ms, prepare 2.56s)
+

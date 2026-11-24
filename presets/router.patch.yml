@@ -3,7 +3,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-router
-        name: Superagent Router
+        name: Go Router
         description: Read-only task routing and human-facing coordination.
         plugins:
           - id: router-fs
@@ -13,4 +13,4 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config: { sampleOverCapGlobResults: false }
           - id: router-business
-            name: dsh-superagent/router
+            name: dsh-go/router

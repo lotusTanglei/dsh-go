@@ -100,6 +100,15 @@ describe('document provenance binds real human commands without authorizing evid
     expect(validDocumentOrigin({ ...origin(), [Symbol('hidden')]: 'bad' })).toBe(false)
     expect(validDocumentOrigin(Object.assign(Object.create({ inherited: true }), origin()))).toBe(false)
   })
+  it('accepts only the explicit local kind and binds it distinctly from the same wecom hashes without coercing objects', () => {
+    const local = origin({ kind: 'local-document' }); expect(validDocumentOrigin(local)).toBe(true)
+    const h = fixture(), input = h.input(local); expect(() => validateCommand(input)).not.toThrow()
+    expect(commandDigest(input)).not.toBe(commandDigest({ ...input, documentOrigin: origin() }))
+    const toString = vi.fn(() => 'local-document')
+    expect(validDocumentOrigin({ ...local, kind: { toString } })).toBe(false); expect(toString).not.toHaveBeenCalled()
+    expect(validDocumentOrigin({ ...local, kind: 'local' })).toBe(false)
+  })
+
   it('requires authority and reserves one item/request before the only genuine human followup', async () => {
     const h = fixture(), noAuthority = h.ingress(false), selected = h.input(origin())
     await expect(noAuthority.ingress.submit(selected)).rejects.toMatchObject({ code: 'document_origin_unavailable' })

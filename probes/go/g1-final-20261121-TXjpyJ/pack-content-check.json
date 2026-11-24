@@ -1,0 +1,9 @@
+{
+  "state": "passed",
+  "entries": 162,
+  "allPackageBytesMatchWorkspace": true,
+  "requiredHostClientLocaleDocs": true,
+  "noStateCredentialsDependenciesOrProbes": true,
+  "sha256": "11fd99132096810f8b42a02452ae04792760aa1baae68a091f4aa484c956f4bc",
+  "installationPerformed": false
+}

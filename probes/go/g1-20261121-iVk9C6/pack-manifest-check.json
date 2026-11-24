@@ -1,0 +1,7 @@
+{
+  "state": "passed",
+  "entries": 162,
+  "requiredHostClientLocaleDocs": true,
+  "noStateCredentialsDependenciesOrProbes": true,
+  "scope": "manifest only; exact tar comparison pending latest UI cache fix"
+}

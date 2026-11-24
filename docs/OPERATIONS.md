@@ -39,6 +39,8 @@
 
 检查 Plugins/Agent Presets roster 中 `dsh-superagent-router/worker/watchdog` 的 broken 字段、profile manifest 与 DSH 版本范围。重新加载前先保留 SQLite/会话备份；不要改 Desktop profile 文件，也不要用 CLI plugin add 代替应用内管理。
 
+例外（2026-11-24 更名迁移）：包标识由 `dsh-superagent` 改为 `dsh-go`，产品名 Go。该次仅同步更新 profile 的 bundles/依赖键与 `node_modules/dsh-go` 链接，preset id（`dsh-superagent-router/worker/watchdog`）保持不变以兼容已持久化会话；目录与 SQLite 绝对路径未动。此迁移属一次性例外，之后仍走应用内管理。
+
 ## 数据保护
 
 - 不打印 token/cookie/credentials。

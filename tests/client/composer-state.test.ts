@@ -124,6 +124,31 @@ describe('actual composer state closures (not UI rendering)', () => {
     }
   })
 
+  it('hands off a local source only into an empty current chat draft, never sends or overwrites any occupied context', () => {
+    const documentOrigin = { kind: 'local-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
+    const value = { epoch: 'current', draftId: `local-draft:${'e'.repeat(64)}`, documentOrigin }
+    const updates: any[] = [], navigation: string[] = [], notices: string[] = []
+    const g: any = { composerRef: { current: { draft: '', pending: null, target: null, origin: null, documentOrigin: null } }, epochRef: { current: 'current' }, systemRef: { current: 'local-sources' }, draftEpochRef: { current: 'current' }, historyRef: { current: 'current' }, imageBusyRef: { current: null }, imageDraftsRef: { current: {} }, validDocumentOrigin: closure('validDocumentOrigin'), array: (v: any) => Array.isArray(v) ? v : [], structuredClone, documentInstruction: 'Plan only; read task_source_context', updateComposer: (v: any) => updates.push(v), navigatePrimary: (v: string) => navigation.push(v), setNotice: (v: string) => notices.push(v), tr: (v: string) => v, inputRef: { current: null } }
+    const prepare = closure('prepareLocalPlan', g)
+    expect(prepare(value)).toBe(true)
+    expect(updates).toEqual([{ draft: g.documentInstruction, intent: 'new-task', target: null, origin: null, documentOrigin }]); expect(navigation).toEqual(['chat'])
+    expect(updates[0].draft).not.toContain('source body'); expect(updates[0].documentOrigin).not.toBe(documentOrigin)
+    const blank = { ...g.composerRef.current }
+    for (const patch of [{ draft: 'Keep me' }, { pending: { requestId: 'original' } }, { target: { id: 'task' } }, { origin: { id: 'old' } }, { documentOrigin }]) {
+      g.composerRef.current = { ...blank, ...patch }; expect(prepare(value)).toBe(false); expect(updates).toHaveLength(1)
+    }
+    g.composerRef.current = blank
+    for (const ref of ['draftEpochRef', 'historyRef', 'systemRef']) { const before = g[ref].current; g[ref].current = 'other'; expect(prepare(value)).toBe(false); g[ref].current = before }
+    g.imageBusyRef.current = {}; expect(prepare(value)).toBe(false); g.imageBusyRef.current = null
+    g.imageDraftsRef.current.current = { items: [{}] }; expect(prepare(value)).toBe(false); g.imageDraftsRef.current = {}
+    for (const changed of [{ ...value, epoch: 'old' }, { ...value, draftId: 'bad' }, { ...value, documentOrigin: { ...documentOrigin, kind: 'wecom-document' } }, { ...value, documentOrigin: { ...documentOrigin, text: 'forged' } }]) expect(prepare(changed)).toBe(false)
+    expect(updates).toHaveLength(1); expect(navigation).toEqual(['chat'])
+    const sessionStorage = storage(), pending = { epoch: 'current', requestId: 'local-request', intent: 'new-task', text: g.documentInstruction, documentOrigin }
+    sessionStorage.setItem('draft:current', JSON.stringify({ draft: g.documentInstruction, intent: 'new-task', documentOrigin, pending }))
+    const read = closure('readComposer', { blankComposer: closure('blankComposer'), validDocumentOrigin: closure('validDocumentOrigin'), sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
+    expect(plain(read('current'))).toMatchObject({ documentOrigin, pending }); expect(read('other').documentOrigin).toBeNull()
+  })
+
   it('preserves the exact pending recovery payload and task target rather than converting it to a new plan', () => {
     const blankComposer = closure('blankComposer'), sessionStorage = storage()
     const pending = { epoch: 'current', requestId: 'request-1', text: 'Original input', intent: 'ticket-input', ticketId: 'ticket-A' }
@@ -189,6 +214,7 @@ describe('actual reply baseline and explicit reading closures', () => {
     const submit = closure('submit', {
       sendBusy: { current: false }, epochRef: { current: 'current' }, draftEpochRef: { current: 'current' }, historyRef: { current: 'current' },
       workspaceRef: { current: { capabilities: { send: true } } }, composerRef: { current: saved },
+      imageBusyRef: { current: null }, imageDraftsRef: { current: {} }, array: (value: any) => Array.isArray(value) ? value : [],
       replyBaselineReady: h.replyBaselineReady, replyReadThrough: h.replyReadThrough, conversations: h.conversations,
       sessionStorage: h.shared, validDocumentOrigin: closure('validDocumentOrigin'), mintId: () => 'immutable-request', TextEncoder, AbortController,
       sendController: { current: null }, alive: { current: true }, setSending() {}, updateComposer() {},

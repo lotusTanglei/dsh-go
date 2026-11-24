@@ -53,7 +53,7 @@ export function createWorkspaceDocuments(store: Store, config: Config, ports: {
   }
   const authority: DocumentOriginAuthority = {
     validate(origin, requestId) {
-      if (!validDocumentOrigin(origin)) return commandError('document_origin_invalid', 400)
+      if (!validDocumentOrigin(origin) || origin.kind !== 'wecom-document') return commandError('document_origin_invalid', 400)
       const row = read(origin.itemKey), owner = claim(origin.itemKey), ticket = linked(origin.itemKey)
       if (owner && owner.requestId !== requestId) return commandError('document_item_claimed')
       if (ticket && (!owner || owner.requestId !== requestId)) return commandError('document_item_linked')
@@ -75,6 +75,7 @@ export function createWorkspaceDocuments(store: Store, config: Config, ports: {
       store.repos.kv.insert({ k: claimPrefix + origin.itemKey, v: { requestId } })
     },
     link(origin, requestId, ticketId) {
+      if (!validDocumentOrigin(origin) || origin.kind !== 'wecom-document') return commandError('document_origin_invalid', 400)
       const prior = claim(origin.itemKey)
       if (!prior || prior.requestId !== requestId || prior.ticketId && prior.ticketId !== ticketId) return commandError('document_link_conflict')
       const ticket = store.repos.ticket.get(ticketId), record = journal.read(requestId)

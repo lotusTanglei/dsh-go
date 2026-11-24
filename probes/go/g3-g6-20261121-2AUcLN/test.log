@@ -1,0 +1,525 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/session-work.test.ts (8 tests) 99ms
+ ✓ tests/client/session-action.test.ts (90 tests) 8645ms
+   ✓ G2 independent blocked text action UI contracts > accepts an omitted optional version but rejects arbitrary, partial, missing-flag, or forged payloads  973ms
+   ✓ G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent  1278ms
+   ✓ G2 independent blocked text action UI contracts > rejects status rollback, same-sequence contradiction, changing original time, and false certainty for unknown delivery  346ms
+ ✓ tests/workspace/session-actions.test.ts (88 tests) 3709ms
+ ✓ tests/workspace/runtime.test.ts (35 tests) 2718ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1479ms
+ ✓ tests/workspace/local-sources.test.ts (61 tests) 2025ms
+ ✓ tests/workspace/session-decisions.test.ts (62 tests) 2226ms
+ ❯ tests/client/scope-management.test.ts (35 tests | 1 failed) 2569ms
+   ✓ bounded scope target lookup UI closures > searches across included scope without a project filter, send, execution, or composer changes 116ms
+   ✓ bounded scope target lookup UI closures > rechecks only explicit candidates from a current clarification, binding the original revision 83ms
+   ✓ bounded scope target lookup UI closures > ignores late results after navigation, editing, or epoch changes and never retries 83ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"different","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}} 87ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"},"coverage":"partial"} 80ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":true,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}} 86ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"clarify","candidates":[{"sessionId":"session-one","project":{"kind":"unknown","key":"unknown"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED"} 80ms
+   ✓ bounded scope target lookup UI closures > distinguishes same-title candidates with literal field-labelled work excerpts, never HTML 88ms
+   ✓ bounded scope target lookup UI closures > shows partial/blocked and no-match honestly, and offers recheck only for clarification 90ms
+   ✓ hierarchical management scope UI closures > reads the project catalog including empty projects and never scans conversation pages 64ms
+   ✓ hierarchical management scope UI closures > requests only the selected project/view and rejects mixed-project or cross-revision pages 63ms
+   ✓ hierarchical management scope UI closures > never reuses a cursor from another project and never locates or reads unknown membership 65ms
+   ✓ hierarchical management scope UI closures > ignores late reads after epoch/navigation changes without touching composer draft or target 67ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"wrong","included":false,"revision":"r2","stopped":false} 67ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":true,"revision":"r2","stopped":false} 71ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"stopped":false} 66ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"","stopped":false} 65ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"r2"} 64ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"r2","stopped":true} 71ms
+   ✓ hierarchical management scope UI closures > preserves snapshots and does not retry failures or 409s 124ms
+   ✓ hierarchical management scope UI closures > requires a session revision in the exact receipt and never bypasses project exclusion 63ms
+   ✓ hierarchical management scope UI closures > refreshes only after exact receipt, then retains the selected project and active tab 63ms
+   ✓ hierarchical management scope UI closures > retains confirmed mutation evidence across navigation/epoch changes without applying it to a new page 63ms
+   ✓ hierarchical management scope UI closures > retains unknown mutation evidence across navigation/epoch changes without applying it to a new page 62ms
+   ✓ hierarchical management scope UI closures > invalidates cached Sources work after exact confirmation even when navigation left scope 70ms
+   ✓ hierarchical management scope UI closures > fences a Sources read started before scope exclusion so late work cannot repopulate the cache 66ms
+   ✓ hierarchical management scope UI closures > keeps a new epoch Sources cache intact when an old scope mutation is exactly confirmed 65ms
+   ✓ hierarchical management scope UI closures > shows pending, confirmed, and unknown original-target evidence globally with an old-epoch warning and no replay button 71ms
+   ✓ hierarchical management scope UI closures > does not permit a second scope mutation while the first is pending after navigation 63ms
+   ✓ hierarchical management scope UI closures > restores a second-page project after confirmed session save with bounded metadata pagination and current tab 64ms
+   ✓ hierarchical management scope UI closures > stops second-page restoration when metadata revision changes and never mixes pages or reads session content 68ms
+   ✓ hierarchical management scope UI closures > does not scan beyond the originally loaded catalog boundary if the selected project is missing 63ms
+   ✓ hierarchical management scope UI closures > renders only the current level, includes empty projects, disambiguates names, and leaves unknown noninteractive 68ms
+   ✓ hierarchical management scope UI closures > does not render excluded work bodies, and visibly disables child restoration under an excluded project 68ms
+   × hierarchical management scope UI closures > exposes a real settings entry without changing existing Sources closures or installing a poll 69ms
+     → t is not defined
+ ✓ tests/workspace/images.test.ts (53 tests) 1766ms
+ ✓ tests/workspace/session-action-close.test.ts (58 tests) 1367ms
+ ✓ tests/client/image-draft.test.ts (14 tests) 1676ms
+ ✓ tests/workspace/documents.test.ts (10 tests) 1394ms
+   ✓ manual document Source coordinator with real SQLite and explicit fake connector > pages more than 100 local candidates without another connector read or loss  1071ms
+ ✓ tests/client/go-decisions.test.ts (28 tests) 1041ms
+ ✓ tests/workspace/stage-models.test.ts (45 tests) 769ms
+ ✓ tests/workspace/scope-preferences.test.ts (40 tests) 800ms
+ ✓ tests/workspace/config-mutations.test.ts (29 tests) 978ms
+ ✓ tests/sources/tencent-sheet.test.ts (44 tests) 595ms
+ ✓ tests/panel/kanban.test.ts (14 tests) 558ms
+ ✓ tests/workspace/admission.test.ts (21 tests) 437ms
+ ✓ tests/store/hardening.test.ts (9 tests) 466ms
+ ✓ tests/closeout/faults.test.ts (4 tests) 402ms
+   ✓ CLOSE-OUT C3 real offline fault injection > rejects a second real process while the first process remains alive with the store lock  351ms
+ ✓ tests/workspace/commands.test.ts (28 tests) 371ms
+ ✓ tests/client/pages.test.ts (20 tests) 435ms
+ ✓ tests/workspace/adversarial.test.ts (30 tests) 365ms
+ ❯ tests/runtime-integration.test.ts (13 tests | 13 failed) 211ms
+   × Host runtime integration contracts > passes a cold Router pending model selection to the Worker without inventing a request header 22ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > runs the persisted stall stop and escalation through the timer maintenance path 15ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > does not resume an active Worker while another approval is pending 16ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > does not resume an active Worker while another approval is denied 18ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > does not resume an active Worker while another approval is expired 14ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > steers the existing Assignment after the route has committed all approvals 13ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > starts a new Assignment only after all approvals of an ended Worker are approved 16ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > allows exactly one correction for invalid structured report and gives the next Worker a correction hint 16ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > allows exactly one correction for ready report with failed acceptance and gives the next Worker a correction hint 13ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > does not spend a correction attempt beyond maxRetries=0 20ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > returns detached read-only diagnostics with ids and no private bodies, paths or raw payloads 18ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > serializes simultaneous subscription events by seq and acknowledges only after each steer resolves 13ms
+     → image_storage_unavailable
+   × Host runtime integration contracts > retains the exact subscription Trigger pending after an awaited steer failure 17ms
+     → image_storage_unavailable
+ ✓ tests/workspace/document-origin.test.ts (16 tests) 253ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 251ms
+ ❯ tests/closeout/concurrency.test.ts (3 tests | 1 failed) 186ms
+   ✓ CLOSE-OUT C2 offline concurrency and bounded capacity > admits Promise.all 50 FakeSource arrivals once, then creates one real persisted Ticket per unique input 66ms
+   ✓ CLOSE-OUT C2 offline concurrency and bounded capacity > retains every over-limit input durably and rejects only excess admission without increasing queueLimit 95ms
+   × CLOSE-OUT C2 offline concurrency and bounded capacity > enforces default maxWorkers under simultaneous start requests and drains capacity with fake Workers only 24ms
+     → image_storage_unavailable
+ ✓ tests/engine/crash-recovery.test.ts (1 test) 201ms
+ ❯ tests/runtime-recovery.test.ts (7 tests | 1 failed) 172ms
+   × closeout deleted-main-session recovery > recreates an absent persisted Router and replaces the binding without any model request 24ms
+     → image_storage_unavailable
+   ✓ closeout deleted-main-session recovery > does not replace history on SESSION_QUERY_CORRUPT_SESSION 15ms
+   ✓ closeout deleted-main-session recovery > does not replace history on SESSION_QUERY_PERSISTENCE_FAILED 19ms
+   ✓ closeout deleted-main-session recovery > does not replace a Router on invalid resolved snapshot null 27ms
+   ✓ closeout deleted-main-session recovery > does not replace a Router on invalid resolved snapshot undefined 26ms
+   ✓ closeout deleted-main-session recovery > does not replace a Router on invalid resolved snapshot false 26ms
+   ✓ closeout deleted-main-session recovery > does not silently replace an explicitly configured missing Router 35ms
+ ✓ tests/engine/p3-engine.test.ts (11 tests) 200ms
+ ✓ tests/sources/wecom-document.test.ts (60 tests) 202ms
+ ✓ tests/config.test.ts (6 tests) 174ms
+ ✓ tests/workspace/briefing.test.ts (9 tests) 166ms
+ ✓ tests/panel/routes.test.ts (8 tests) 126ms
+ ✓ tests/store/closeout-security.test.ts (11 tests) 177ms
+ ✓ tests/store/store.test.ts (6 tests) 147ms
+ ❯ tests/runtime-safety.test.ts (6 tests | 6 failed) 139ms
+   × runtime safety boundaries > rejects Router commands from a non-main execution Agent even when the worker allowlist contains them 33ms
+     → image_storage_unavailable
+   × runtime safety boundaries > ends the Assignment and Ticket and clears the pointer when worker.result rejects 23ms
+     → image_storage_unavailable
+   × runtime safety boundaries > keeps a subscription trigger pending when Worker steer rejects, without acknowledging delivery 16ms
+     → image_storage_unavailable
+   × runtime safety boundaries > publishes an idle Channel notice once with no model wake and idempotent durable replay 16ms
+     → image_storage_unavailable
+   × runtime safety boundaries > keeps an outbound pending when Router inject rejects instead of recording sent 26ms
+     → image_storage_unavailable
+   × runtime safety boundaries > disposes before ready and waits for in-flight source processing before store shutdown 24ms
+     → image_storage_unavailable
+ ✓ tests/panel/closeout.test.ts (5 tests) 84ms
+ ❯ tests/closeout/injection.test.ts (6 tests | 2 failed) 79ms
+   ✓ C1 offline injection evidence (green evidence tests do not imply secure release) > C1-1 marks repository/task data in Worker prompt without claiming model immunity 8ms
+   ✓ C1 offline injection evidence (green evidence tests do not imply secure release) > C1-2 records that write/bash bodies remain reachable outside brief allowWrite 1ms
+   × C1 offline injection evidence (green evidence tests do not imply secure release) > C1-3 accepts report risk text as data without automatically approving a pending request 23ms
+     → image_storage_unavailable
+   ✓ C1 offline injection evidence (green evidence tests do not imply secure release) > C1-4 rejects SQL ticket ids and 201-character ids before lookup 15ms
+   × C1 offline injection evidence (green evidence tests do not imply secure release) > C1-5 redacts synthetic Channel credentials before durable notice publication 16ms
+     → image_storage_unavailable
+   ✓ C1 offline injection evidence (green evidence tests do not imply secure release) > C1-6 redacts audit detail before the physical SQLite write 15ms
+ ✓ tests/workspace/image-bytes.test.ts (10 tests) 49ms
+ ✓ tests/sources/document-evidence.test.ts (4 tests) 48ms
+ ✓ tests/client/workspace-layout.test.ts (7 tests) 52ms
+ ✓ tests/plugin.test.ts (2 tests) 38ms
+ ❯ tests/runtime.test.ts (2 tests | 1 failed) 41ms
+   ✓ Host runtime wiring > reports initialization failure without leaking the underlying error 22ms
+   × Host runtime wiring > starts a cold Router without a model request, ingests only human input, creates a ticket and returns a Worker report to Router 18ms
+     → image_storage_unavailable
+ ✓ tests/client/go-settings.test.ts (32 tests) 31ms
+ ✓ tests/client/go-tencent.test.ts (18 tests) 19ms
+ ✓ tests/sources/session-work.test.ts (8 tests) 23ms
+ ✓ tests/sources/session-locate.test.ts (8 tests) 22ms
+ ✓ tests/sources/session-scope.test.ts (20 tests) 21ms
+ ✓ tests/panel/wecom-documents.test.ts (9 tests) 16ms
+ ✓ tests/sources/session-action-target.test.ts (16 tests) 14ms
+ ✓ tests/client/detail-readability.test.ts (84 tests) 14ms
+ ✓ tests/client/artifact.test.ts (3 tests) 22ms
+ ✓ tests/panel/session-work.test.ts (8 tests) 12ms
+ ✓ tests/sources/session-progress.test.ts (21 tests) 10ms
+ ✓ tests/workspace/conversation.test.ts (25 tests) 8ms
+ ✓ tests/boundaries.test.ts (3 tests) 7ms
+ ✓ tests/client/desk-model.test.ts (46 tests) 7ms
+ ❯ tests/client/bundle.test.ts (2 tests | 1 failed) 18ms
+   ✓ Workspace client module contract > keeps the three-argument default factory registration compatible and never owns the root 6ms
+   × Workspace client module contract > keeps browser imports host-owned and serializes both imported factories explicitly 11ms
+     → expected '/** Browser factory is serialized by …' to contain 'workspaceFactory(React, request, t, s…'
+ ✓ tests/engine/dispatch.test.ts (8 tests) 4ms
+ ✓ tests/sessions/watchdog.test.ts (3 tests) 5ms
+ ✓ tests/domain/domain.test.ts (13 tests) 4ms
+ ✓ tests/sources/sources.test.ts (3 tests) 3ms
+ ✓ tests/engine/watchdog.test.ts (7 tests) 3ms
+ ✓ tests/tools/tools.test.ts (4 tests) 2ms
+ ✓ tests/sessions/worker.test.ts (2 tests) 3ms
+ ✓ tests/engine/brief-report.test.ts (4 tests) 2ms
+ ✓ tests/client/channel.test.ts (3 tests) 2ms
+ ✓ tests/domain/immutable.test.ts (2 tests) 2ms
+ ✓ tests/sessions/main.test.ts (2 tests) 2ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 26 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > passes a cold Router pending model selection to the Worker without inventing a request header
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:108:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > runs the persisted stall stop and escalation through the timer maintenance path
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:114:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > does not resume an active Worker while another approval is pending
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > does not resume an active Worker while another approval is denied
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > does not resume an active Worker while another approval is expired
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:134:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > steers the existing Assignment after the route has committed all approvals
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:148:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > starts a new Assignment only after all approvals of an ended Worker are approved
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:160:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > allows exactly one correction for invalid structured report and gives the next Worker a correction hint
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > allows exactly one correction for ready report with failed acceptance and gives the next Worker a correction hint
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:177:54
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > does not spend a correction attempt beyond maxRetries=0
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:198:54
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > returns detached read-only diagnostics with ids and no private bodies, paths or raw payloads
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:208:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > serializes simultaneous subscription events by seq and acknowledges only after each steer resolves
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:228:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/26]⎯
+
+ FAIL  tests/runtime-integration.test.ts > Host runtime integration contracts > retains the exact subscription Trigger pending after an awaited steer failure
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/runtime-integration.test.ts:82:7
+ ❯ tests/runtime-integration.test.ts:251:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/26]⎯
+
+ FAIL  tests/runtime-recovery.test.ts > closeout deleted-main-session recovery > recreates an absent persisted Router and replaces the binding without any model request
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ tests/runtime-recovery.test.ts:27:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/26]⎯
+
+ FAIL  tests/runtime-safety.test.ts > runtime safety boundaries > rejects Router commands from a non-main execution Agent even when the worker allowlist contains them
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ tests/runtime-safety.test.ts:102:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/26]⎯
+
+ FAIL  tests/runtime-safety.test.ts > runtime safety boundaries > ends the Assignment and Ticket and clears the pointer when worker.result rejects
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ setupTicket tests/runtime-safety.test.ts:90:3
+ ❯ tests/runtime-safety.test.ts:111:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/26]⎯
+
+ FAIL  tests/runtime-safety.test.ts > runtime safety boundaries > keeps a subscription trigger pending when Worker steer rejects, without acknowledging delivery
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ setupTicket tests/runtime-safety.test.ts:90:3
+ ❯ tests/runtime-safety.test.ts:125:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/26]⎯
+
+ FAIL  tests/runtime-safety.test.ts > runtime safety boundaries > publishes an idle Channel notice once with no model wake and idempotent durable replay
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ tests/runtime-safety.test.ts:142:30
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/26]⎯
+
+ FAIL  tests/runtime-safety.test.ts > runtime safety boundaries > keeps an outbound pending when Router inject rejects instead of recording sent
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ tests/runtime-safety.test.ts:163:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/26]⎯
+
+ FAIL  tests/runtime-safety.test.ts > runtime safety boundaries > disposes before ready and waits for in-flight source processing before store shutdown
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ setupTicket tests/runtime-safety.test.ts:90:3
+ ❯ tests/runtime-safety.test.ts:193:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/26]⎯
+
+ FAIL  tests/runtime.test.ts > Host runtime wiring > starts a cold Router without a model request, ingests only human input, creates a ticket and returns a Worker report to Router
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ tests/runtime.test.ts:40:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/26]⎯
+
+ FAIL  tests/client/bundle.test.ts > Workspace client module contract > keeps browser imports host-owned and serializes both imported factories explicitly
+AssertionError: expected '/** Browser factory is serialized by …' to contain 'workspaceFactory(React, request, t, s…'
+
+- Expected
++ Received
+
+- workspaceFactory(React, request, t, styleFactory(), deskFactory)
++ /** Browser factory is serialized by build-client; React and slots stay host-owned. */
++ import { createWorkspacePage } from './workspace.js'
++ import { workspaceStyles } from './workspace-style.js'
++ import { deriveDeskState } from './desk-model.js'
++ import { createGoSettings } from './go-settings.js'
++ import { createGoDecisions } from './go-decisions.js'
++ import { createGoTencent } from './go-tencent.js'
++ export function createClientPlugin(React: any, dictionaries: Record<string, Record<string, unknown>>, channelDefinitions: readonly unknown[], workspaceFactory = createWorkspacePage, styleFactory = workspaceStyles, deskFactory = deriveDeskState, settingsFactory = createGoSettings, decisionsFactory = createGoDecisions, tencentFactory = createGoTencent) {
++   const h = React.createElement
++   const NS = 'superagent'
++   return {
++     inject: ['slots', 'locale', 'layout', 'uiConversation'],
++     apply(ctx: any) {
++       ctx.effect(() => ctx.locale.register(NS, dictionaries))
++       const t = ctx.locale.bind(NS)
++       for (const definition of channelDefinitions) ctx.effect(() => ctx.uiConversation.events.register(definition))
++       function ChannelNotice({ node }: any) {
++         return h('section', { role: 'status', 'aria-label': t('channelNotice'), style: { color: 'var(--dsw-alias-label-primary)', background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 12, margin: '8px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, h('strong', null, t('channelNotice')), ...(node.data.messages ?? []).map((message: any) => h('p', { key: message.id, style: { margin: '8px 0 0' } }, message.text)))
++       }
++       ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'superagent-channel-notice', locale: NS }, ChannelNotice))
++       async function request(path: string, body = {}, signal?: AbortSignal) {
++         const timeout = new AbortController()
++         const documentScan = path === 'document-source' && (body as any)?.action === 'scan'
++         const timer = setTimeout(() => timeout.abort(), documentScan ? 190000 : 15000)
++         const abort = () => timeout.abort()
++         signal?.addEventListener('abort', abort, { once: true })
++         if (signal?.aborted) timeout.abort()
++         try {
++           const response = await fetch(new URL(`/api/superagent/${path.replace(/^\/+/, '')}`, document.baseURI), { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: timeout.signal })
++           const text = await response.text()
++           let value: any
++           try { value = text ? JSON.parse(text) : {} } catch { const error: any = new Error(response.status === 401 ? t('webAuthRequired') : t('invalidResponse')); error.code = response.status === 401 ? 'web_auth_required' : 'invalid_response'; error.status = response.status; throw error }
++           if (!response.ok || !value?.ok) {
++             const error: any = new Error(response.status === 401 ? t('webAuthRequired') : t('requestFailed'))
++             error.code = response.status === 401 ? 'web_auth_required' : value?.code || value?.error?.code
++             error.status = response.status
++             throw error
++           }
++           return value.data
++         } catch (e: any) {
++           if (e?.name === 'AbortError' && !signal?.aborted) { throw new Error(t('requestTimeout')) }
++           throw e
++         } finally {
++           clearTimeout(timer)
++           signal?.removeEventListener('abort', abort)
++         }
++       }
++       function Icon() {
++         return h('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true }, h('path', { d: 'M3 4h18v16H3zM8 4v16M13 4v16M18 4v16' }))
++       }
++       const Page = workspaceFactory(React, request, t, styleFactory(), deskFactory, settingsFactory, decisionsFactory, tencentFactory)
++       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'superagent', order: 100, label: () => t('title'), locale: NS }, Icon))
++       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'superagent', inject: () => ({}), locale: NS }, Page))
++     },
++   }
++ }
++
+
+ ❯ tests/client/bundle.test.ts:55:20
+     53|     expect(source).toContain('workspaceFactory = createWorkspacePage')
+     54|     expect(source).toContain('styleFactory = workspaceStyles')
+     55|     expect(source).toContain('workspaceFactory(React, request, t, styl…
+       |                    ^
+     56|     expect(source).toContain("credentials: 'same-origin'")
+     57|     expect(source).toContain('new URL(`/api/superagent/')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/26]⎯
+
+ FAIL  tests/client/scope-management.test.ts > hierarchical management scope UI closures > exposes a real settings entry without changing existing Sources closures or installing a poll
+ReferenceError: t is not defined
+ ❯ evalmachine.<anonymous>:1:421
+ ❯ tests/client/scope-management.test.ts:335:50
+    333|     const { g } = harness(), opened: string[] = []
+    334|     Object.assign(g, { h, button, openSystem: (tab: string) => opened.…
+    335|     const entry = closure('scopeSettingsEntry', g)()
+       |                                                  ^
+    336|     nodes(entry).find(node => node.tag === 'button').props.onClick()
+    337|     expect(opened).toEqual(['scope'])
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/26]⎯
+
+ FAIL  tests/closeout/concurrency.test.ts > CLOSE-OUT C2 offline concurrency and bounded capacity > enforces default maxWorkers under simultaneous start requests and drains capacity with fake Workers only
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ tests/closeout/concurrency.test.ts:94:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/26]⎯
+
+ FAIL  tests/closeout/injection.test.ts > C1 offline injection evidence (green evidence tests do not imply secure release) > C1-3 accepts report risk text as data without automatically approving a pending request
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/closeout/injection.test.ts:58:5
+ ❯ tests/closeout/injection.test.ts:104:38
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/26]⎯
+
+ FAIL  tests/closeout/injection.test.ts > C1 offline injection evidence (green evidence tests do not imply secure release) > C1-5 redacts synthetic Channel credentials before durable notice publication
+Error: image_storage_unavailable
+ ❯ check src/workspace/image-bytes.ts:65:307
+
+ ❯ createImageBytes src/workspace/image-bytes.ts:67:3
+ ❯ createWorkspaceImages src/workspace/images.ts:31:17
+ ❯ src/runtime.ts:446:14
+ ❯ Object.ticket tests/closeout/injection.test.ts:58:5
+ ❯ tests/closeout/injection.test.ts:132:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/26]⎯
+
+
+ Test Files  8 failed | 62 passed (70)
+      Tests  26 failed | 1359 passed (1385)
+   Start at  16:05:23
+   Duration  67.81s (transform 891ms, setup 0ms, collect 4.49s, tests 38.68s, environment 6ms, prepare 4.71s)
+

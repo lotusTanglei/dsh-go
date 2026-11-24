@@ -1,0 +1,14 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/workspace/runtime.test.ts (37 tests) 3879ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G4 wires explicit roots, journaled manual capture and original image into an independent untrusted draft only  389ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1604ms
+ ✓ tests/panel/go-slices.test.ts (5 tests) 249ms
+ ✓ tests/client/artifact.test.ts (3 tests) 27ms
+
+ Test Files  3 passed (3)
+      Tests  45 passed (45)
+   Start at  11:11:31
+   Duration  6.64s (transform 464ms, setup 0ms, collect 765ms, tests 4.15s, environment 0ms, prepare 395ms)
+

@@ -24,9 +24,9 @@ async function post(routes: Map<string, (request: Request) => Promise<Response>>
 }
 
 describe('panel host routes', () => {
-  it('registers all twenty exact POST buffered routes and uses a stable envelope', async () => {
+  it('registers all twenty-eight exact POST buffered routes and uses a stable envelope', async () => {
     const store = makeStore(); const { routes } = setup(store)
-    expect([...routes.keys()].sort()).toEqual(['admission', 'admission-revise', 'approval', 'approvals', 'board', 'command', 'command-cancel', 'command-status', 'conversation', 'document-image', 'document-source', 'health', 'overview', 'session-work', 'settings', 'threads', 'ticket', 'ticket-action', 'tickets', 'workspace'].map(name => `/api/superagent/${name}`))
+    expect([...routes.keys()].sort()).toEqual(['admission', 'admission-revise', 'approval', 'approvals', 'board', 'command', 'command-cancel', 'command-status', 'config-mutation', 'conversation', 'document-image', 'document-source', 'health', 'images', 'local-sources', 'overview', 'session-action', 'session-decision', 'session-locate', 'session-work', 'settings', 'stage-models', 'tencent-source', 'threads', 'ticket', 'ticket-action', 'tickets', 'workspace'].map(name => `/api/superagent/${name}`))
     const result = await post(routes, '/settings', {})
     expect(result.status).toBe(200); expect(result.body).toEqual({ ok: true, data: { effective: expect.arrayContaining([expect.objectContaining({ key: 'panelPageSize', value: 20, origin: expect.any(String) })]) } })
   })

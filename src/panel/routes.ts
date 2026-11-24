@@ -6,6 +6,8 @@ import { readBoard, boardTicket, approvalFingerprint } from './board.js'
 import type { BoardColumn } from './board.js'
 import { WorkspaceError } from '../workspace/commands.js'
 import { ConversationError } from '../workspace/conversation.js'
+import { validSessionAction } from '../workspace/session-actions.js'
+import { validSessionDecision } from '../workspace/session-decisions.js'
 import { approvalImpact } from '../engine/approval-impact.js'
 import type { Config } from '../config.js'
 import { effectiveSettings, type EffectiveSetting } from './settings.js'
@@ -59,6 +61,17 @@ export interface PanelPorts {
   readonly documentSource?: (input: any) => Promise<unknown>
   /** Passive current-Host observations and persistent membership only; runtime checks epoch/revision. */
   readonly sessionWork?: (input: any) => Promise<unknown>
+  /** Side-effect-free target proposal only; never dispatches to the returned Session. */
+  readonly sessionLocate?: (input: any) => Promise<unknown>
+  /** Exact prepared control metadata only; production is blocked before any Agent activation. */
+  readonly sessionAction?: (input: any) => Promise<unknown>
+  /** Bounded original-byte upload/preview and target binding; no model or delivery call. */
+  readonly images?: (input: any) => Promise<unknown>
+  readonly localSources?: (input: any) => Promise<unknown>
+  readonly stageModels?: (input: any) => Promise<unknown>
+  readonly sessionDecision?: (input: any) => Promise<unknown>
+  readonly configMutation?: (input: any) => Promise<unknown>
+  readonly tencentSource?: (input: any) => Promise<unknown>
   /** Exact local evidence only; never resolves a caller-provided path, URL, or tool. */
   readonly documentImage?: (input: any) => Promise<{ bytes: Buffer; mimeType: string }>
   readonly settings?: () => readonly EffectiveSetting[] | Promise<readonly EffectiveSetting[]>
@@ -76,7 +89,7 @@ export interface PanelInstallation {
 }
 
 type Envelope = { ok: true; data: unknown } | { ok: false; code: string; error: { code: string; message: string }; message: string }
-const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/document-source', '/document-image', '/session-work'] as const
+const ROUTES = ['/workspace', '/conversation', '/command', '/command-status', '/command-cancel', '/admission', '/admission-revise', '/board', '/overview', '/tickets', '/ticket', '/threads', '/approvals', '/approval', '/ticket-action', '/health', '/settings', '/document-source', '/document-image', '/session-work', '/session-locate', '/session-action', '/images', '/local-sources', '/stage-models', '/session-decision', '/config-mutation', '/tencent-source'] as const
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/
 const SAFE_LIMIT = 100
 
@@ -135,13 +148,15 @@ function validWorkCursor(value: unknown): value is string { return typeof value 
 function sessionWorkData(value: unknown): unknown {
   if (!isObject(value)) return { state: 'unavailable', scope: 'current-host', items: [], total: null, hasMore: false }
   const result: Record<string, unknown> = {}
-  for (const key of ['state', 'scope', 'defaultIncluded', 'sampledAt', 'total', 'excludedTotal', 'internalTotal', 'hasMore', 'error', 'included']) {
+  for (const key of ['state', 'scope', 'defaultIncluded', 'sampledAt', 'total', 'excludedTotal', 'internalTotal', 'hasMore', 'error', 'included', 'stopped']) {
     const item = value[key]
     if (typeof item === 'string' || typeof item === 'boolean' || item === null || typeof item === 'number' && Number.isFinite(item)) result[key] = sanitize(item)
   }
-  for (const key of ['sessionId', 'revision']) if (validWorkId(value[key])) result[key] = value[key]
+  for (const key of ['sessionId', 'projectId', 'revision']) if (validWorkId(value[key])) result[key] = value[key]
   if (validWorkCursor(value.next)) result.next = value.next
-  if (Array.isArray(value.items)) result.items = value.items.slice(0, 20).filter(item => isObject(item) && validWorkId(item.sessionId)).map(item => {
+  if (Array.isArray(value.items)) result.items = value.items.slice(0, 20).filter(item => isObject(item) && (validWorkId(item.sessionId) || validWorkId(item.key) && ['project', 'unassigned', 'unknown'].includes(String(item.kind)))).map(item => {
+    if (!validWorkId(item.sessionId)) return { key: item.key, kind: item.kind, ...(typeof item.name === 'string' ? { name: sanitize(item.name) } : {}), excluded: item.excluded === true,
+      sessionTotal: Number.isSafeInteger(item.sessionTotal) && item.sessionTotal >= 0 ? item.sessionTotal : null, includedTotal: Number.isSafeInteger(item.includedTotal) && item.includedTotal >= 0 ? item.includedTotal : null }
     const row: Record<string, unknown> = { sessionId: item.sessionId }
     const project = item.project
     if (isObject(project) && project.kind === 'project' && validWorkId(project.key) && typeof project.name === 'string') row.project = { kind: 'project', key: project.key, name: sanitize(project.name) }
@@ -149,6 +164,11 @@ function sessionWorkData(value: unknown): unknown {
     // Excluded rows retain only the safe source label and membership metadata.
     const keys = item.excluded === true ? ['title', 'excluded', 'observedAt'] : ['title', 'objective', 'runtime', 'goalPhase', 'progress', 'nextAction', 'blocker', 'decision', 'observedAt', 'evidence', 'excluded']
     for (const key of keys) if (typeof item[key] === 'string' || typeof item[key] === 'boolean' || typeof item[key] === 'number' && Number.isFinite(item[key])) row[key] = sanitize(item[key])
+    if (item.excluded !== true && typeof item.factRevision === 'string' && /^[a-f0-9]{64}$/.test(item.factRevision)) row.factRevision = item.factRevision
+    if (item.approvalCoverage === 'unavailable') row.approvalCoverage = 'unavailable'
+    if (item.excluded !== true && Array.isArray(item.done)) row.done = item.done.slice(0, 3).filter((value: unknown) => typeof value === 'string').map((value: string) => sanitize(value))
+    if (item.excluded !== true && isObject(item.result) && ['goal-complete', 'unverified'].includes(String(item.result.state)) && item.result.acceptanceVerified === false) row.result = { state: item.result.state, acceptanceVerified: false, ...(typeof item.result.summary === 'string' ? { summary: sanitize(item.result.summary) } : {}) }
+    if (['session', 'project', 'membership-unknown'].includes(String(item.exclusionReason))) row.exclusionReason = item.exclusionReason
     return row
   })
   return result
@@ -166,11 +186,11 @@ function limitOf(value: unknown, configured: number | undefined): number {
   if (value === undefined) return Math.min(SAFE_LIMIT, Math.max(1, Math.trunc(configured ?? 20)))
   return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= SAFE_LIMIT ? value : 0
 }
-async function body(request: Request, keys: readonly string[]): Promise<{ value?: Record<string, unknown>; error?: Response }> {
+async function body(request: Request, keys: readonly string[], maxBytes = 24_576): Promise<{ value?: Record<string, unknown>; error?: Response }> {
   let value: unknown
   try {
     const raw = await request.text()
-    if (Buffer.byteLength(raw, 'utf8') > 24_576) return { error: fail('body_too_large', 'Request body is too large', 400) }
+    if (Buffer.byteLength(raw, 'utf8') > maxBytes) return { error: fail('body_too_large', 'Request body is too large', 400) }
     value = JSON.parse(raw)
   } catch { return { error: fail('invalid_json', 'Request body must be JSON', 400) } }
   if (!isObject(value) || !only(value, keys)) return { error: fail('invalid_input', 'Request fields are not permitted', 400) }
@@ -274,7 +294,7 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
       try { return await handler(request) } catch (error) {
         const code = (error as any)?.code, status = (error as any)?.status
         const fixed = ['invalid_input', 'invalid_cursor', 'epoch_mismatch', 'epoch_not_found', 'board_resync_required', 'invalid_command', 'request_conflict', 'command_record_invalid', 'command_conflict', 'command_not_found', 'workspace_paused', 'queue_full', 'ticket_input_denied', 'model_unavailable', 'workspace_unavailable', 'history_unavailable', 'admission_conflict', 'plan_expired', 'plan_not_found', 'admission_invalid', 'admission_unavailable']
-        if (typeof code === 'string' && (fixed.includes(code) || error instanceof WorkspaceError || error instanceof ConversationError)) return fail(code, 'Workspace request could not be completed', [400, 404, 409, 429, 503].includes(status) ? status : code === 'epoch_mismatch' ? 409 : 400)
+        if (typeof code === 'string' && (fixed.includes(code) || error instanceof WorkspaceError || error instanceof ConversationError)) return fail(code, 'Workspace request could not be completed', [400, 403, 404, 409, 413, 415, 429, 503].includes(status) ? status : code === 'epoch_mismatch' ? 409 : 400)
         return fail('internal_error', 'Panel request could not be completed', 500)
       }
     } }))
@@ -513,15 +533,187 @@ export function installPanelRoutes(context: PanelContext, store: Store, config: 
     return ok(publicTicket({ ...current, state: transitioned.state, stopped_by_human: action === 'stop', ended_at: transitioned.ended?.at, ended_by: transitioned.ended?.by, outcome: transitioned.ended?.outcome, current_assignment: null, updated_at: transitioned.updatedAt }))
   })
   route('/session-work', async request => {
-    const parsed = await body(request, ['action', 'epoch', 'view', 'cursor', 'limit', 'sessionId', 'included', 'revision']); if (parsed.error) return parsed.error
+    const parsed = await body(request, ['action', 'epoch', 'view', 'cursor', 'limit', 'sessionId', 'projectId', 'projectKey', 'included', 'revision']); if (parsed.error) return parsed.error
     const input = parsed.value!
+    const page = (input.cursor === undefined || validWorkCursor(input.cursor)) && (input.limit === undefined || Number.isInteger(input.limit) && Number(input.limit) >= 1 && Number(input.limit) <= 20)
     const shape = input.action === 'list'
-      ? only(input, ['action', 'epoch', 'view', 'cursor', 'limit']) && (input.view === undefined || ['included', 'excluded'].includes(String(input.view))) && (input.cursor === undefined || validWorkCursor(input.cursor)) && (input.limit === undefined || Number.isInteger(input.limit) && Number(input.limit) >= 1 && Number(input.limit) <= 20)
+      ? only(input, ['action', 'epoch', 'view', 'cursor', 'limit', 'projectKey']) && (input.view === undefined || ['included', 'excluded'].includes(String(input.view))) && (input.projectKey === undefined || input.projectKey === 'unknown' || input.projectKey === 'unassigned' || typeof input.projectKey === 'string' && input.projectKey.startsWith('project:') && validWorkId(input.projectKey.slice(8))) && page
+      : input.action === 'projects' ? only(input, ['action', 'epoch', 'cursor', 'limit']) && page
+      : input.action === 'set-project-included' ? only(input, ['action', 'epoch', 'projectId', 'included', 'revision']) && validWorkId(input.projectId) && typeof input.included === 'boolean' && validWorkId(input.revision)
       : input.action === 'set-included' && only(input, ['action', 'epoch', 'sessionId', 'included', 'revision']) && validWorkId(input.sessionId) && typeof input.included === 'boolean' && validWorkId(input.revision)
     if (!shape || !validId(input.epoch)) return fail('invalid_input', 'Session work request fields are invalid', 400)
     if (!ports.sessionWork) return fail('session_work_unavailable', 'Session work is unavailable', 503)
     // This port can only observe or change membership; it cannot control/open a Session or create a Ticket.
     return json({ ok: true, data: sessionWorkData(await ports.sessionWork(input)) })
+  })
+  route('/session-locate', async request => {
+    const parsed = await body(request, ['epoch', 'text', 'sessionId', 'revision']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    if (!validId(input.epoch) || typeof input.text !== 'string' || !input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 16_384 || input.text.includes('\0') || input.sessionId !== undefined && !validWorkId(input.sessionId) || input.revision !== undefined && !validHash(input.revision)) return fail('invalid_input', 'Target lookup fields are invalid', 400)
+    if (!ports.sessionLocate) return fail('session_work_unavailable', 'Target lookup is unavailable', 503)
+    const data = await ports.sessionLocate(input) as any
+    const candidate = (item: any) => {
+      if (!isObject(item) || !validWorkId(item.sessionId)) return undefined
+      const safe = sessionWorkData({ items: [item] }) as any
+      return { ...safe.items?.[0], ...(validHash(item.factRevision) ? { factRevision: item.factRevision } : {}),
+        ...(['objective', 'progress', 'nextAction', 'title'].includes(String(item.matchField)) && typeof item.matchText === 'string' ? { matchField: item.matchField, matchText: sanitize(item.matchText.slice(0, 600)) } : {}) }
+    }
+    // Nothing supplied by a model/caller is an authority or control acknowledgement.
+    const candidates = Array.isArray(data?.candidates) ? data.candidates.slice(0, 20).map(candidate).filter(Boolean) : []
+    return json({ ok: true, data: { status: ['located', 'clarify', 'no_match', 'blocked'].includes(data?.status) ? data.status : 'blocked',
+      ...(validHash(data?.revision) ? { revision: data.revision } : {}), controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED',
+      ...(typeof data?.code === 'string' && /^[a-z_]{1,80}$/.test(data.code) ? { code: data.code } : {}), ...(data?.coverage === 'partial' || data?.coverage === 'complete' ? { coverage: data.coverage } : {}),
+      ...(Number.isSafeInteger(data?.searched) ? { searched: data.searched } : {}), ...(Number.isSafeInteger(data?.candidateTotal) ? { candidateTotal: data.candidateTotal } : {}),
+      candidates, ...(data?.status === 'located' && candidate(data.target) ? { target: candidate(data.target) } : {}) } })
+  })
+  route('/tencent-source', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'requestId', 'id', 'fileId', 'sheetId', 'range', 'idColumn', 'titleColumn', 'textColumns', 'expectedRevision', 'expectedSnapshot', 'snapshotId']); if (parsed.error) return parsed.error
+    const input = parsed.value!, action = input.action
+    const shapes: Record<string, string[]> = { list: ['action', 'epoch'], configure: ['action', 'epoch', 'requestId', 'id', 'fileId', 'sheetId', 'range', 'idColumn', 'titleColumn', 'textColumns', 'expectedRevision'], remove: ['action', 'epoch', 'requestId', 'id', 'expectedRevision'], scan: ['action', 'epoch', 'requestId', 'id', 'expectedRevision', 'expectedSnapshot'], detail: ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId'] }
+    if (typeof action !== 'string' || !shapes[action] || !only(input, shapes[action]!) || !validWorkId(input.epoch) || ['configure', 'remove', 'scan'].includes(action) && !validWorkId(input.requestId)) return fail('invalid_input', 'Tencent source fields are invalid', 400)
+    if (!ports.tencentSource) return fail('tencent_sheet_unavailable', 'Tencent source service is unavailable', 503)
+    const result = await ports.tencentSource(input)
+    const keys = new Set(['mutation', 'value', 'version', 'epoch', 'requestId', 'kind', 'digest', 'state', 'at', 'updatedAt', 'code', 'id', 'fileId', 'sheetId', 'range', 'idColumn', 'titleColumn', 'textColumns', 'revision', 'expectedRevision', 'sourceId', 'configRevision', 'snapshotId', 'sources', 'connection', 'support', 'reason', 'freshness', 'remoteRevision', 'images', 'imageSeen', 'trust', 'authorization', 'config', 'items', 'itemId', 'rowId', 'row', 'title', 'text', 'strike', 'eligible', 'capturedAt', 'current', 'changes', 'added', 'changed', 'removed'])
+    const metadata = (value: any, depth = 0): any => {
+      if (depth > 10) return null
+      if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') return value
+      if (Array.isArray(value)) return value.slice(0, 1000).map(item => metadata(item, depth + 1))
+      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => keys.has(key)).map(([key, item]) => [key, metadata(item, depth + 1)])) : null
+    }
+    return json({ ok: true, data: metadata(result) })
+  })
+  route('/config-mutation', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'requestId', 'kind', 'payload']); if (parsed.error) return parsed.error
+    const { action, ...input } = parsed.value!
+    const shape = action === 'status' ? only(input, ['epoch', 'requestId']) : action === 'close' && only(input, ['epoch', 'requestId', 'kind', 'payload']) && ['local-configure', 'local-remove', 'local-scan', 'stage-save', 'tencent-configure', 'tencent-remove', 'tencent-scan'].includes(String(input.kind)) && isObject(input.payload)
+    if (!shape || !validWorkId(input.epoch) || !validWorkId(input.requestId)) return fail('invalid_input', 'Configuration receipt fields are invalid', 400)
+    if (!ports.configMutation) return fail('config_mutation_unavailable', 'Configuration receipt service is unavailable', 503)
+    const result = await ports.configMutation({ action, ...input }) as any
+    // The service owns this metadata/result contract; no request payload or raw errors are echoed.
+    const m = result?.mutation
+    if (!isObject(m) || m.version !== 1 || !validHash(m.digest) || !['recorded', 'settled', 'rejected', 'closed'].includes(String(m.state)) || m.epoch !== input.epoch || m.requestId !== input.requestId) return fail('config_mutation_record_invalid', 'Configuration receipt is invalid', 503)
+    const mutation = Object.fromEntries(['version', 'epoch', 'requestId', 'kind', 'digest', 'state', 'at', 'updatedAt', 'code'].filter(key => m[key] !== undefined).map(key => [key, m[key]]))
+    const allowed = new Set(['config', 'configVersion', 'revision', 'default', 'stages', 'locate', 'understand', 'plan', 'execute', 'summarize', 'verify', 'mode', 'selection', 'provider', 'model', 'reasoningEffort', 'existingSessionModelPolicy', 'existingSessionOverride', 'state', 'code', 'snapshot', 'stage', 'configured', 'requirements', 'capabilityProof', 'vision', 'tools', 'structured', 'contextWindow', 'minContextTokens', 'modelInfoEvidence', 'hostEvidence', 'reasoningEfforts', 'defaultEffort', 'inputModalities', 'defaultMaxTokens', 'id', 'name', 'rootId', 'relativePath', 'kind', 'csv', 'idColumn', 'sourceId', 'configRevision', 'snapshotId', 'reason', 'freshness', 'epoch', 'removed', 'changes', 'added', 'changed', 'imagesChanged', 'items', 'itemId', 'location', 'row', 'rowId', 'draftId', 'images', 'reference', 'digest', 'mediaType', 'size', 'imageSeen', 'fileId', 'sheetId', 'range', 'titleColumn', 'textColumns', 'remoteRevision', 'authorization', 'strike', 'eligible', 'title', 'text'])
+    const safeValue = (value: any, depth = 0): any => {
+      if (depth > 10) return null
+      if (value === null || typeof value === 'boolean' || typeof value === 'number') return value
+      if (typeof value === 'string') return value
+      if (Array.isArray(value)) return value.slice(0, 1000).map(item => safeValue(item, depth + 1))
+      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => allowed.has(key)).map(([key, item]) => [key, safeValue(item, depth + 1)])) : null
+    }
+    return json({ ok: true, data: { mutation, ...(m.state === 'settled' ? { value: safeValue(result.value) } : {}) } })
+  })
+  route('/session-decision', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'target', 'requestId', 'actionId', 'callId', 'snapshot', 'answers'], 80 * 1024); if (parsed.error) return parsed.error
+    const { action, ...input } = parsed.value!
+    const shape = action === 'prepare' || action === 'close' ? validSessionDecision(input)
+      : action === 'list' ? only(input, ['epoch', 'target']) && isObject(input.target) && only(input.target, ['sessionId', 'scopeRevision', 'factRevision']) && validWorkId(input.target.sessionId) && validHash(input.target.scopeRevision) && validHash(input.target.factRevision)
+      : action === 'status' && only(input, ['epoch', 'actionId']) && validWorkId(input.actionId)
+    if (!shape || !validWorkId(input.epoch)) return fail('invalid_input', 'Decision fields are invalid', 400)
+    if (!ports.sessionDecision) return fail('session_decision_unavailable', 'Decision service is unavailable', 503)
+    const result = await ports.sessionDecision({ action, ...input })
+    const keys = new Set(['version', 'epoch', 'requestId', 'actionId', 'target', 'sessionId', 'scopeRevision', 'factRevision', 'project', 'kind', 'key', 'callId', 'snapshot', 'asOfSeq', 'revision', 'digest', 'answerSummary', 'questions', 'selections', 'customBytes', 'skipped', 'seq', 'at', 'updatedAt', 'state', 'code', 'controlRevision', 'grantRevision', 'durable', 'accepted', 'executed', 'completed', 'approval', 'disposition', 'availability', 'complete', 'snapshotRevision', 'calls', 'canAnswer', 'id', 'question', 'detail', 'header', 'options', 'label', 'description', 'multiSelect', 'bindingVerified'])
+    const minimal = (value: any, depth = 0): any => {
+      if (depth > 10) return null
+      if (value === null || typeof value === 'boolean' || typeof value === 'number') return value
+      if (typeof value === 'string') return value
+      if (Array.isArray(value)) return value.slice(0, 64).map(item => minimal(item, depth + 1))
+      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => keys.has(key)).map(([key, item]) => [key, minimal(item, depth + 1)])) : null
+    }
+    return json({ ok: true, data: minimal(result) })
+  })
+  route('/stage-models', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'requestId', 'config', 'provider', 'model']); if (parsed.error) return parsed.error
+    const input = parsed.value!
+    const selectionId = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\x00-\x1f\x7f]/.test(value)
+    const shape = input.action === 'settings' ? only(input, ['action', 'epoch']) : input.action === 'save' ? only(input, ['action', 'epoch', 'requestId', 'config']) && validWorkId(input.requestId) && isObject(input.config) : input.action === 'inspect' && only(input, ['action', 'epoch', 'provider', 'model']) && selectionId(input.provider) && selectionId(input.model)
+    if (!validWorkId(input.epoch) || !shape) return fail('invalid_input', 'Stage model fields are invalid', 400)
+    if (!ports.stageModels) return fail('stage_models_unavailable', 'Stage model service is unavailable', 503)
+    const result = await ports.stageModels(input)
+    // Only model configuration/capability metadata; the runtime exposes no call operation.
+    const keys = new Set(['mutation', 'value', 'version', 'epoch', 'requestId', 'kind', 'digest', 'at', 'updatedAt', 'config', 'configVersion', 'revision', 'default', 'stages', 'locate', 'understand', 'plan', 'execute', 'summarize', 'verify', 'mode', 'selection', 'provider', 'model', 'reasoningEffort', 'existingSessionModelPolicy', 'existingSessionOverride', 'catalog', 'id', 'name', 'models', 'reasoningEfforts', 'defaultEffort', 'inputModalities', 'defaultMaxTokens', 'state', 'code', 'snapshot', 'stage', 'configured', 'requirements', 'capabilityProof', 'vision', 'tools', 'structured', 'contextWindow', 'minContextTokens', 'modelInfoEvidence', 'hostEvidence'])
+    const metadata = (value: any, depth = 0): any => {
+      if (depth > 10) return null
+      if (value === null || typeof value === 'boolean' || typeof value === 'number') return value
+      if (typeof value === 'string') return value.slice(0, 512)
+      if (Array.isArray(value)) return value.slice(0, 200).map(item => metadata(item, depth + 1))
+      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => keys.has(key)).map(([key, item]) => [key, metadata(item, depth + 1)])) : null
+    }
+    return json({ ok: true, data: metadata(result) })
+  })
+  route('/local-sources', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'id', 'rootId', 'relativePath', 'kind', 'csv', 'expectedRevision', 'expectedSnapshot', 'snapshotId', 'imageDigest', 'itemId', 'requestId', 'humanReview']); if (parsed.error) return parsed.error
+    const input = parsed.value!, action = input.action
+    const shapes: Record<string, string[]> = { list: ['action', 'epoch'], configure: ['action', 'epoch', 'requestId', 'id', 'rootId', 'relativePath', 'kind', 'csv', 'expectedRevision'], remove: ['action', 'epoch', 'requestId', 'id', 'expectedRevision'], scan: ['action', 'epoch', 'requestId', 'id', 'expectedRevision', 'expectedSnapshot'], detail: ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId', 'imageDigest'], claim: ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId', 'itemId', 'requestId', 'humanReview'], 'plan-origin': ['action', 'epoch', 'id', 'expectedRevision', 'snapshotId', 'itemId', 'requestId'] }
+    if (typeof action !== 'string' || !shapes[action] || !only(input, shapes[action]!) || !validWorkId(input.epoch)) return fail('invalid_input', 'Local source fields are invalid', 400)
+    if (!ports.localSources) return fail('local_source_unavailable', 'Local source service is unavailable', 503)
+    const result = await ports.localSources(input) as any
+    if (result?.kind === 'image') {
+      if (action !== 'detail' || !Buffer.isBuffer(result.bytes) || result.bytes.length > 5 * 1024 * 1024 || !validRaster(result.bytes, result.mediaType) || createHash('sha256').update(result.bytes).digest('hex') !== input.imageDigest) return fail('local_source_image_invalid', 'Local source image is unavailable', 503)
+      return json({ ok: true, data: { kind: 'image', encoded: result.bytes.toString('base64'), mediaType: result.mediaType, digest: input.imageDigest, imageSeen: false } })
+    }
+    const keys = new Set(['mutation', 'value', 'version', 'digest', 'at', 'updatedAt', 'code', 'roots', 'id', 'name', 'sources', 'rootId', 'relativePath', 'kind', 'csv', 'idColumn', 'revision', 'state', 'snapshotId', 'reason', 'freshness', 'support', 'blocked', 'requires', 'limits', 'fileBytes', 'imageBytes', 'totalImageBytes', 'images', 'csvRows', 'csvColumns', 'sourceId', 'configRevision', 'epoch', 'changes', 'added', 'changed', 'removed', 'imagesChanged', 'items', 'itemId', 'location', 'row', 'rowId', 'reference', 'digest', 'mediaType', 'size', 'imageSeen', 'config', 'capturedAt', 'text', 'trust', 'authorization', 'current', 'draftId', 'requestId', 'origin', 'humanReview', 'documentOrigin', 'itemKey', 'evidenceDigest', 'configVersion', 'planningOnly'])
+    const snapshot = (value: any, depth = 0): any => {
+      if (depth > 10) return null
+      if (value === null || typeof value === 'boolean' || typeof value === 'number') return value
+      if (typeof value === 'string') return value
+      if (Array.isArray(value)) return value.slice(0, 501).map(item => snapshot(item, depth + 1))
+      return isObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => keys.has(key)).map(([key, item]) => [key, snapshot(item, depth + 1)])) : null
+    }
+    return json({ ok: true, data: snapshot(result) })
+  })
+  route('/images', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'draftId', 'uploadId', 'digest', 'mediaType', 'encoded', 'reference', 'target'], 12 * 1024 * 1024); if (parsed.error) return parsed.error
+    const input = parsed.value!, ref = input.reference
+    const validRef = isObject(ref) && only(ref, ['imageId', 'digest', 'seq']) && validWorkId(ref.imageId) && validHash(ref.digest) && Number.isSafeInteger(ref.seq) && Number(ref.seq) > 0
+    const shape = input.action === 'upload' ? only(input, ['action', 'epoch', 'draftId', 'uploadId', 'digest', 'mediaType', 'encoded']) && validWorkId(input.draftId) && validWorkId(input.uploadId) && validHash(input.digest) && input.mediaType === 'image/png' && typeof input.encoded === 'string'
+      : input.action === 'list' ? only(input, ['action', 'epoch', 'draftId']) && validWorkId(input.draftId)
+      : input.action === 'bind' ? only(input, ['action', 'epoch', 'reference', 'target']) && validRef && isObject(input.target) && only(input.target, ['sessionId', 'scopeRevision', 'factRevision']) && validWorkId(input.target.sessionId) && validHash(input.target.scopeRevision) && validHash(input.target.factRevision)
+      : ['original', 'release'].includes(String(input.action)) && only(input, ['action', 'epoch', 'reference']) && validRef
+    if (!shape || !validWorkId(input.epoch)) return fail('invalid_input', 'Image request fields are invalid', 400)
+    if (!ports.images) return fail('image_unavailable', 'Image service is unavailable', 503)
+    const result = await ports.images(input) as any
+    if (input.action === 'original') {
+      if (!result || !Buffer.isBuffer(result.bytes) || result.bytes.length > 8 * 1024 * 1024 || result.mediaType !== 'image/png' || !validRaster(result.bytes, result.mediaType) || createHash('sha256').update(result.bytes).digest('hex') !== (isObject(ref) ? ref.digest : undefined)) return fail('image_original_invalid', 'Original image is unavailable', 503)
+      return json({ ok: true, data: { mediaType: result.mediaType, digest: isObject(ref) ? ref.digest : null, encoded: result.bytes.toString('base64') } })
+    }
+    const image = (value: any) => {
+      const output: Record<string, unknown> = {}
+      for (const key of ['imageId', 'uploadId', 'draftId', 'epoch']) if (validWorkId(value?.[key])) output[key] = value[key]
+      for (const key of ['digest', 'scopeRevision']) if (validHash(value?.[key])) output[key] = value[key]
+      for (const key of ['seq', 'at', 'width', 'height', 'size']) if (Number.isSafeInteger(value?.[key]) && value[key] >= 0) output[key] = value[key]
+      if (value?.mediaType === 'image/png') output.mediaType = value.mediaType
+      if (['staged', 'bound', 'released'].includes(value?.state)) output.state = value.state
+      for (const key of ['original', 'uploadedNotSent', 'stale', 'bytesRetained', 'thirdPartyErasureGuaranteed']) if (typeof value?.[key] === 'boolean') output[key] = value[key]
+      const target = value?.target
+      if (isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
+      return output
+    }
+    return json({ ok: true, data: input.action === 'list' ? { ...(validHash(result?.scopeRevision) ? { scopeRevision: result.scopeRevision } : {}), items: Array.isArray(result?.items) ? result.items.slice(0, 5).map(image) : [], capability: { upload: 'png-8bit-noninterlaced', originalUnderstanding: false, targetDelivery: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' } } : image(result) })
+  })
+  route('/session-action', async request => {
+    const parsed = await body(request, ['action', 'epoch', 'requestId', 'actionId', 'operation', 'text', 'target']); if (parsed.error) return parsed.error
+    const { action, ...input } = parsed.value!
+    if (action === 'prepare' || action === 'close' ? !validSessionAction(input) : action !== 'status' || !only(input, ['epoch', 'actionId']) || !validWorkId(input.epoch) || typeof input.actionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.actionId)) return fail('invalid_input', 'Session action fields are invalid', 400)
+    if (!ports.sessionAction) return fail('session_action_unavailable', 'Session action service is unavailable', 503)
+    const data = await ports.sessionAction(action === 'prepare' || action === 'close' ? { action, input } : { action, ...input }) as any
+    // Metadata-only receipt. No raw text, arbitrary target object, authority, or model output.
+    const output: Record<string, unknown> = { accepted: data?.state === 'accepted' && data?.accepted === true, executed: ['recorded', 'blocked'].includes(data?.state) ? false : null, completed: ['recorded', 'blocked'].includes(data?.state) ? false : null }
+    if (data?.version === 1) output.version = 1
+    for (const field of ['epoch', 'requestId', 'actionId', 'messageId']) if (validWorkId(data?.[field])) output[field] = data[field]
+    for (const field of ['digest', 'controlRevision', 'grantRevision']) if (validHash(data?.[field])) output[field] = data[field]
+    for (const field of ['seq', 'at', 'updatedAt']) if (Number.isSafeInteger(data?.[field]) && data[field] >= 0) output[field] = data[field]
+    if (['recorded', 'blocked', 'dispatch_unknown', 'accepted', 'closed'].includes(data?.state)) output.state = data.state
+    if (['continue', 'supplement', 'steer'].includes(data?.operation)) output.operation = data.operation
+    if (typeof data?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(data.code)) output.code = data.code
+    output.durable = data?.durable === true
+    if (['not-dispatched', 'reconcile-only', 'target-durable-receipt', 'closed-before-dispatch'].includes(data?.disposition)) output.disposition = data.disposition
+    const target = data?.target
+    if (data?.state === 'closed' && data?.bindingVerified === false && isObject(target) && only(target, ['sessionId', 'scopeRevision', 'factRevision']) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision)) {
+      output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision }; output.bindingVerified = false
+    }
+    if (data?.state !== 'closed' && isObject(target) && validWorkId(target.sessionId) && validHash(target.scopeRevision) && validHash(target.factRevision) && isObject(target.project) && ['project', 'unassigned'].includes(String(target.project.kind)) && validWorkId(target.project.key)) output.target = { sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision, project: { kind: target.project.kind, key: target.project.key } }
+    return json({ ok: true, data: output })
   })
   route('/document-source', async request => {
     const parsed = await body(request, ['action', 'epoch', 'sourceId', 'itemKey', 'revision', 'cursor', 'evidenceDigest', 'decision']); if (parsed.error) return parsed.error

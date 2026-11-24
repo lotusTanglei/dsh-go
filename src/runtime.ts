@@ -20,6 +20,16 @@ import { createWatchdog, type WatchdogAssignment } from './engine/watchdog.js'
 import { sampleDeviation } from './sessions/watchdog.js'
 import { createWorkspaceRuntime } from './workspace/runtime.js'
 import { createWorkspaceDocuments } from './workspace/documents.js'
+import { validDocumentOrigin, type DocumentOrigin, type DocumentOriginAuthority } from './workspace/document-origin.js'
+import { createScopePreferences } from './workspace/scope-preferences.js'
+import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
+import { createWorkspaceImages } from './workspace/images.js'
+import { createLocalSources } from './workspace/local-sources.js'
+import { createStageModels, type StageCatalogPort } from './workspace/stage-models.js'
+import { WorkspaceError } from './workspace/commands.js'
+import { createSessionDecisions, sessionDecisionSnapshotDigest, type SessionDecisionProjection } from './workspace/session-decisions.js'
+import { createConfigMutations, type ConfigMutationJSON, type ConfigMutationKind } from './workspace/config-mutations.js'
+import { createTencentSheets } from './sources/tencent-sheet.js'
 import type { WecomToolsPort } from './sources/wecom-connector.js'
 import type { Spawner } from './sessions/worker.js'
 import { approvalImpact } from './engine/approval-impact.js'
@@ -37,10 +47,11 @@ export interface RuntimeContext {
   readonly get?: (name: string) => any
   readonly sessions?: { flush(session: any): Promise<boolean> }
   readonly agentDefaultModel?: { currentSelection(): any }
-  readonly llm?: { resolveModelInfo(provider: string, model: string): Promise<any> }
+  readonly llm?: { resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<any>; listProviders?(): readonly { id: string; name: string }[]; listModels?(provider: string): Promise<readonly { provider: string; id: string; name: string }[]> }
   readonly effect: (factory: () => (() => void | Promise<void>)) => unknown
   readonly on: (event: string, callback: (...args: any[]) => any) => (() => void)
 }
+const safeConfigJSON = (value: unknown): ConfigMutationJSON => JSON.parse(JSON.stringify(value)) as ConfigMutationJSON
 const message = (text: string) => ({ id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'superagent', form: 'notice', summary: 'Superagent runtime context' } })
 
 /** Every tool execution obtains a fresh trusted DB snapshot, not model-supplied ids. */
@@ -65,6 +76,14 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
   let workspace: ReturnType<typeof createWorkspaceRuntime> | undefined
   let documents: ReturnType<typeof createWorkspaceDocuments> | undefined
   let sessionWork: SessionWorkSource | undefined
+  let sessionActions: ReturnType<typeof createSessionActions> | undefined
+  let images: ReturnType<typeof createWorkspaceImages> | undefined
+  let localSources: ReturnType<typeof createLocalSources> | undefined
+  let stageModels: ReturnType<typeof createStageModels> | undefined
+  let stageCatalog: StageCatalogPort | undefined
+  let sessionDecisions: ReturnType<typeof createSessionDecisions> | undefined
+  let configMutations: ReturnType<typeof createConfigMutations> | undefined
+  let tencentSources: ReturnType<typeof createTencentSheets> | undefined
   let disposed = false
   let initialization: 'starting' | 'ready' | 'failed' = 'starting'
   let heartbeat: number | undefined
@@ -387,7 +406,7 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       tools: ctx.tools, signal: controller.signal, registry: sources,
       ingest: trigger => engine.ingest(trigger), reply: (body, idem) => source.reply('session', threadKey(`session:${mainId}`), body, idem),
     })
-    const excludedKey = 'session-work-excluded:v1'
+    const scopePreferences = createScopePreferences(store)
     sessionWork = new SessionWorkSource({
       signal: controller.signal,
       listProjects() {
@@ -411,22 +430,84 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       agent: id => ctx.agents.get(id),
       canAccess: id => ctx.remoteAccess?.allows({ kind: 'session', id }) === true,
       ownedSessionIds: () => [mainId!, ...ownedSessions, ...store.repos.assignment.all().map(row => String(row.session_id))],
-      getExcluded() {
-        const value = store.repos.kv.get(excludedKey)?.v
-        if (value === undefined) return []
-        if (!Array.isArray(value) || !value.every(id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$/.test(id))) throw new Error('session_work_exclusions_invalid')
-        return value
-      },
-      setExcluded(ids) {
-        store.transaction(() => {
-          store.repos.kv.insertOrIgnore({ k: excludedKey, v: [...ids] })
-          store.db.prepare('UPDATE kv SET v=? WHERE k=?').run(encodeJson([...ids], false), excludedKey)
-        })
-      },
+      ...scopePreferences,
     })
     sources.register(sessionWork)
     await sessionWork.start()
-    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, documentOrigins: documents?.authority, sessionWork: () => sessionWork!.summary() })
+    // The facade is created before workspace binding; services are resolved lazily after ready.
+    // Source kinds never share an authority merely because their opaque hashes happen to match.
+    const originCall = (method: keyof DocumentOriginAuthority, origin: DocumentOrigin, ...ids: string[]) => {
+      if (!validDocumentOrigin(origin)) throw new WorkspaceError('document_origin_invalid', 400)
+      const authority = origin.kind === 'wecom-document' ? documents?.authority : localSources?.authority
+      if (!authority) throw new WorkspaceError('document_origin_unavailable', 503)
+      try { return (authority[method] as (...args: any[]) => unknown).call(authority, origin, ...ids) }
+      catch (error) {
+        if (error instanceof Error && /^local_source_[a-z_]+$/.test(error.message)) throw new WorkspaceError(`document_${error.message}`, [400, 403, 404, 409, 413, 415, 429, 503].includes((error as any).status) ? (error as any).status : 409)
+        throw error
+      }
+    }
+    const documentOrigins: DocumentOriginAuthority = {
+      validate(origin, requestId) { originCall('validate', origin, requestId) },
+      reserve(origin, requestId) { originCall('reserve', origin, requestId) },
+      link(origin, requestId, ticketId) { originCall('link', origin, requestId, ticketId) },
+      context(origin, requestId) { return originCall('context', origin, requestId) },
+    }
+    if (!testAdapter?.legacyInput) workspace = createWorkspaceRuntime(store, config, policy, { ctx, mainId: mainId!, source, engine, deliverTicket: deliverPending, approvalsReady, mandateValid, documentOrigins, sessionWork: () => sessionWork!.summary() })
+    sessionActions = createSessionActions(store, {
+      requireEpoch(epoch) {
+        if (disposed || !workspace) throw Object.assign(new Error('session_action_unavailable'), { code: 'session_action_unavailable', status: 503 })
+        workspace.requireEpoch(epoch)
+      },
+      target: input => sessionWork!.actionTarget(input),
+      // No production dispatch/evidence adapter or config bypass, including the legacy Worker test seam.
+      gate: async () => ({ allowed: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }),
+    })
+    images = createWorkspaceImages(store, config.stateDir, {
+      requireEpoch(epoch) {
+        if (disposed || !workspace) throw Object.assign(new Error('image_unavailable'), { code: 'image_unavailable', status: 503 })
+        workspace.requireEpoch(epoch)
+      },
+      scope: () => sessionWork!.imageScope(), target: input => sessionWork!.actionTarget(input),
+      // Original-image interpretation/delivery needs a verified Host model+permission adapter.
+    })
+    sessionDecisions = createSessionDecisions(store, {
+      requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('session_decision_unavailable', 503); workspace.requireEpoch(epoch) },
+      target: input => sessionWork!.actionTarget(input),
+      async questions(binding) {
+        if (!ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess?.allows({ kind: 'session', id: binding.sessionId })) throw new WorkspaceError('session_decision_projection_unavailable', 503)
+        return ctx.sessionQuery.inspectSession(binding.sessionId, session => {
+          const project = () => {
+            const cut = ctx.sessionProjections!.snapshot(session, ['userQuestions'])
+            const value = cut.values.userQuestions as any, active = value?.active
+            // Permission and plan-review intents must remain in their original Host approval surface.
+            const complete = Number.isSafeInteger(cut.asOfSeq) && cut.asOfSeq >= -1 && value && Array.isArray(active) && active.length <= 64 && active.every((call: any) => Array.isArray(call?.questions) && call.questions.length > 0 && call.questions.every((question: any) => question && typeof question === 'object' && question.intent === undefined))
+            const projection: SessionDecisionProjection = { availability: ctx.agents.get(binding.sessionId) ? 'live' : 'cold', complete: Boolean(complete), asOfSeq: cut.asOfSeq,
+              active: complete ? structuredClone(active) : [] }
+            return { ...projection, snapshotRevision: sessionDecisionSnapshotDigest(binding, projection) }
+          }
+          const cut = project()
+          return { ...cut, fence() {
+            if (disposed || controller.signal.aborted || !ctx.remoteAccess?.allows({ kind: 'session', id: binding.sessionId }) || project().snapshotRevision !== cut.snapshotRevision) throw new WorkspaceError('session_decision_question_changed', 409)
+          } }
+        }, controller.signal)
+      },
+      gate: async () => ({ allowed: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }),
+      // No live answer/steer or receipt adapter until isolation and durable exact-question authority is proved.
+    })
+    const requireGoEpoch = (epoch: string) => {
+      if (disposed || !workspace) throw new WorkspaceError('workspace_unavailable', 503)
+      workspace.requireEpoch(epoch)
+    }
+    localSources = createLocalSources(store, { roots: () => config.localSourceRoots ?? [], requireEpoch: requireGoEpoch, signal: controller.signal })
+    configMutations = createConfigMutations(store, { requireEpoch: requireGoEpoch })
+    tencentSources = createTencentSheets(store, { requireEpoch: requireGoEpoch, signal: controller.signal })
+    // OAuth credentials and remote image/version authority are not configured by this slice.
+    const llm = ctx.llm ?? (ctx.get ? ctx.get('llm') : undefined)
+    if (llm?.listProviders && llm?.listModels && llm?.resolveModelInfo) stageCatalog = {
+      listProviders: () => llm.listProviders(), listModels: provider => llm.listModels(provider), resolveModelInfo: (provider, model, signal) => llm.resolveModelInfo(provider, model, signal),
+    }
+    stageModels = createStageModels(store, { ...(stageCatalog ? { catalog: stageCatalog } : {}) })
+    // Catalog inspection/configuration only: no call, bind, or provider authorization port.
     await documents?.start()
     if (!testAdapter) {
       // Upgrades/reloads cannot keep an old, unverified Worker executable.
@@ -549,12 +630,170 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
       async commandStatus(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.commandStatus(input) },
       async reviseAdmission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.reviseAdmission(input) },
       async admission(input: any) { await ready; if (!workspace) throw Object.assign(new Error('workspace_unavailable'), { code: 'workspace_unavailable', status: 503 }); return workspace.decideAdmission(input) },
-      async sessionWork(input: { action: 'list' | 'set-included'; epoch: string; view?: 'included' | 'excluded'; cursor?: string; limit?: number; sessionId?: string; included?: boolean; revision?: string }) {
+      async sessionWork(input: { action: 'list' | 'set-included' | 'projects' | 'set-project-included'; epoch: string; view?: 'included' | 'excluded'; cursor?: string; limit?: number; projectKey?: string; projectId?: string; sessionId?: string; included?: boolean; revision?: string }) {
         await ready
         if (!workspace || !sessionWork || disposed) throw Object.assign(new Error('session_work_unavailable'), { code: 'session_work_unavailable', status: 503 })
         workspace.requireEpoch(input.epoch)
-        if (input.action === 'list') return sessionWork.list({ ...(input.view === undefined ? {} : { view: input.view }), ...(input.cursor === undefined ? {} : { cursor: input.cursor }), ...(input.limit === undefined ? {} : { limit: input.limit }) } satisfies SessionWorkListInput)
+        if (input.action === 'list') return sessionWork.list({ ...(input.view === undefined ? {} : { view: input.view }), ...(input.cursor === undefined ? {} : { cursor: input.cursor }), ...(input.limit === undefined ? {} : { limit: input.limit }), ...(input.projectKey === undefined ? {} : { projectKey: input.projectKey }) } satisfies SessionWorkListInput)
+        if (input.action === 'projects') return sessionWork.listScopeProjects({ cursor: input.cursor, limit: input.limit })
+        if (input.action === 'set-project-included' && typeof input.projectId === 'string' && typeof input.included === 'boolean' && typeof input.revision === 'string') return sessionWork.setProjectIncluded(input.projectId, input.included, { revision: input.revision })
         if (input.action === 'set-included' && typeof input.sessionId === 'string' && typeof input.included === 'boolean' && typeof input.revision === 'string') return sessionWork.setIncluded(input.sessionId, input.included, { revision: input.revision })
+        throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
+      },
+      async sessionLocate(input: { epoch: string; text: string; sessionId?: string; revision?: string }) {
+        await ready
+        if (!workspace || !sessionWork || disposed) throw Object.assign(new Error('session_work_unavailable'), { code: 'session_work_unavailable', status: 503 })
+        workspace.requireEpoch(input.epoch)
+        const result = await sessionWork.locate(input)
+        workspace.requireEpoch(input.epoch)
+        return result
+      },
+      async sessionAction(input: { action: 'prepare'; input: SessionActionInput } | { action: 'close'; input: SessionActionInput } | { action: 'status'; epoch: string; actionId: string }) {
+        await ready
+        if (disposed || !sessionActions) throw Object.assign(new Error('session_action_unavailable'), { code: 'session_action_unavailable', status: 503 })
+        if (input.action === 'prepare') return sessionActions.prepare(input.input)
+        if (input.action === 'close') return sessionActions.close(input.input)
+        return sessionActions.status({ epoch: input.epoch, actionId: input.actionId })
+      },
+      async tencentSource(input: any) {
+        input = structuredClone(input)
+        await ready
+        if (disposed || !tencentSources || !configMutations || !workspace) throw new WorkspaceError('tencent_sheet_unavailable', 503)
+        workspace.requireEpoch(input?.epoch)
+        const { action, requestId, ...payload } = input
+        if (action === 'list') return tencentSources.list(payload)
+        if (action === 'detail') return tencentSources.detail(payload)
+        if (!['configure', 'remove', 'scan'].includes(action)) throw new WorkspaceError('invalid_input', 400)
+        const { epoch, ...body } = payload
+        return configMutations.run({ epoch, requestId, kind: `tencent-${action}` as ConfigMutationKind, payload: body }, async commit => {
+          try {
+            if (action === 'configure') return safeConfigJSON(tencentSources!.configure(payload, value => commit(safeConfigJSON(value))))
+            if (action === 'remove') return safeConfigJSON(tencentSources!.remove(payload, value => commit(safeConfigJSON(value))))
+            return safeConfigJSON(await tencentSources!.scan(payload, value => commit(safeConfigJSON(value))))
+          } catch (error) {
+            const code = (error as any)?.code
+            if (typeof code === 'string' && /^tencent_sheet_[a-z_]+$/.test(code)) throw new WorkspaceError(code, (error as any).status ?? 409)
+            throw error
+          }
+        })
+      },
+      async configMutation(input: any) {
+        await ready
+        if (disposed || !configMutations || !workspace) throw new WorkspaceError('config_mutation_unavailable', 503)
+        workspace.requireEpoch(input?.epoch)
+        const { action, ...payload } = input
+        if (action === 'status') return configMutations.status(payload)
+        if (action === 'close') return configMutations.close(payload)
+        throw new WorkspaceError('invalid_input', 400)
+      },
+      async sessionDecision(input: any) {
+        input = structuredClone(input)
+        await ready
+        if (disposed || !sessionDecisions || !workspace) throw new WorkspaceError('session_decision_unavailable', 503)
+        workspace.requireEpoch(input?.epoch)
+        const { action, ...payload } = input
+        if (action === 'list') return sessionDecisions.list(payload)
+        if (action === 'prepare') return sessionDecisions.prepare(payload)
+        if (action === 'status') return sessionDecisions.status(payload)
+        if (action === 'close') return sessionDecisions.close(payload)
+        throw new WorkspaceError('invalid_input', 400)
+      },
+      async localSources(input: any) {
+        input = structuredClone(input)
+        await ready
+        if (disposed || !localSources || !workspace) throw new WorkspaceError('local_source_unavailable', 503)
+        workspace.requireEpoch(input?.epoch)
+        const { action, requestId, ...payload } = input
+        try {
+          if (['configure', 'remove', 'scan'].includes(action)) {
+            if (!configMutations) throw new WorkspaceError('config_mutation_unavailable', 503)
+            const { epoch, ...body } = payload
+            return configMutations.run({ epoch, requestId, kind: `local-${action}` as ConfigMutationKind, payload: body }, commit => {
+              try {
+                if (action === 'configure') return safeConfigJSON(localSources!.configure(payload, value => commit(safeConfigJSON(value))))
+                if (action === 'remove') return safeConfigJSON(localSources!.remove(payload, value => commit(safeConfigJSON(value))))
+                return safeConfigJSON(localSources!.scan(payload, value => commit(safeConfigJSON(value))))
+              } catch (error) {
+                if (error instanceof Error && /^local_source_[a-z_]+$/.test(error.message)) throw new WorkspaceError(error.message, (error as any).status ?? 409)
+                throw error
+              }
+            })
+          }
+          if (action === 'list') return localSources.list(payload)
+          if (action === 'detail') return localSources.detail(payload)
+          if (action === 'claim') return localSources.claim({ ...payload, requestId })
+          if (action === 'plan-origin') return localSources.planOrigin({ ...payload, requestId })
+          throw new WorkspaceError('invalid_input', 400)
+        } catch (error) {
+          if (error instanceof Error && /^local_source_[a-z_]+$/.test(error.message)) throw new WorkspaceError(error.message, [400, 403, 404, 409, 413, 415, 429, 503].includes((error as any).status) ? (error as any).status : 409)
+          throw error
+        }
+      },
+      async stageModels(input: any) {
+        input = structuredClone(input)
+        await ready
+        if (disposed || !stageModels || !workspace) throw new WorkspaceError('stage_models_unavailable', 503)
+        const epoch = input?.epoch
+        const checkpoint = () => { if (disposed || !workspace) throw new WorkspaceError('stage_models_unavailable', 503); workspace.requireEpoch(epoch) }
+        checkpoint()
+        if (input.action === 'inspect') {
+          if (!stageCatalog || typeof input.provider !== 'string' || typeof input.model !== 'string') throw new WorkspaceError('stage_models_catalog_unavailable', 503)
+          const providers = stageCatalog.listProviders()
+          if (!providers.some(provider => provider.id === input.provider)) throw new WorkspaceError('stage_models_provider_unavailable', 503)
+          const models = await stageCatalog.listModels(input.provider); checkpoint()
+          if (!models.some(model => model.provider === input.provider && model.id === input.model)) throw new WorkspaceError('stage_models_model_unavailable', 503)
+          const info = await stageCatalog.resolveModelInfo(input.provider, input.model, controller.signal); checkpoint()
+          if (info.provider !== input.provider || info.id !== input.model) throw new WorkspaceError('stage_models_model_unavailable', 503)
+          return { provider: info.provider, model: info.id, reasoningEfforts: info.reasoning?.efforts.map(effort => ({ id: effort.id, name: effort.name })) ?? [], ...(info.reasoning?.defaultEffort ? { defaultEffort: info.reasoning.defaultEffort } : {}) }
+        }
+        if (input.action === 'save') {
+          if (!configMutations) throw new WorkspaceError('config_mutation_unavailable', 503)
+          return configMutations.run({ epoch, requestId: input.requestId, kind: 'stage-save', payload: { config: input.config } }, async (commit, mutationCheckpoint) => {
+            try { return safeConfigJSON(await stageModels!.save(input.config, () => { checkpoint(); mutationCheckpoint() }, value => commit(safeConfigJSON(value)))) }
+            catch (error) {
+              const code = (error as any)?.code
+              if (typeof code === 'string' && /^stage_models_[a-z_]+$/.test(code)) throw new WorkspaceError(code, code.includes('unavailable') ? 503 : 409)
+              throw error
+            }
+          })
+        }
+        let settings: Awaited<ReturnType<NonNullable<typeof stageModels>['settings']>>
+        try {
+          if (input.action === 'settings') settings = await stageModels.settings()
+          else throw new WorkspaceError('invalid_input', 400)
+        } catch (error) {
+          const code = (error as any)?.code
+          if (typeof code === 'string' && /^stage_models_[a-z_]+$/.test(code)) throw new WorkspaceError(code, code.includes('unavailable') ? 503 : 409)
+          throw error
+        }
+        checkpoint()
+        const catalog = [] as { id: string; name: string; models: { id: string; name: string; reasoningEfforts?: readonly { id: string; name: string }[] }[] }[]
+        for (const provider of stageCatalog?.listProviders().slice(0, 50) ?? []) {
+          if (!provider || typeof provider.id !== 'string' || typeof provider.name !== 'string') continue
+          let models = [] as { id: string; name: string; reasoningEfforts?: readonly { id: string; name: string }[] }[]
+          try {
+            const listed = await stageCatalog!.listModels(provider.id); checkpoint()
+            for (const model of listed.slice(0, 200)) {
+              if (model.provider !== provider.id || typeof model.id !== 'string' || typeof model.name !== 'string') continue
+              // Catalog is metadata only. Efforts are resolved when a model is selected/saved.
+              models.push({ id: model.id, name: model.name })
+            }
+          } catch { checkpoint(); models = [] }
+          catalog.push({ id: provider.id, name: provider.name, models })
+        }
+        checkpoint(); return { ...settings, catalog }
+      },
+      async images(input: any) {
+        input = structuredClone(input)
+        await ready
+        if (disposed || !images || !workspace) throw Object.assign(new Error('image_unavailable'), { code: 'image_unavailable', status: 503 })
+        workspace.requireEpoch(input.epoch)
+        const { action, ...payload } = input
+        if (action === 'upload') return images.upload(payload)
+        if (action === 'list') return images.list(payload)
+        if (action === 'original') return images.original(payload)
+        if (action === 'bind') return images.bind(payload)
+        if (action === 'release') return images.release(payload)
         throw Object.assign(new Error('invalid_input'), { code: 'invalid_input', status: 400 })
       },
       async documentSource(input: any) {

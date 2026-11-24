@@ -1,0 +1,43 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/workspace/adversarial.test.ts (30 tests) 354ms
+ ✓ tests/workspace/commands.test.ts (28 tests) 339ms
+ ✓ tests/client/session-action.test.ts (90 tests) 9854ms
+   ✓ G2 independent blocked text action UI contracts > accepts an omitted optional version but rejects arbitrary, partial, missing-flag, or forged payloads  1190ms
+   ✓ G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent  1424ms
+   ✓ G2 independent blocked text action UI contracts > rejects status rollback, same-sequence contradiction, changing original time, and false certainty for unknown delivery  374ms
+ ✓ tests/client/go-decisions.test.ts (76 tests) 3353ms
+ ✓ tests/workspace/runtime.test.ts (39 tests) 3312ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1574ms
+ ✓ tests/workspace/local-sources.test.ts (100 tests) 4869ms
+ ✓ tests/client/scope-management.test.ts (35 tests) 2598ms
+ ✓ tests/client/image-draft.test.ts (15 tests) 1649ms
+ ✓ tests/workspace/documents.test.ts (11 tests) 1417ms
+   ✓ manual document Source coordinator with real SQLite and explicit fake connector > pages more than 100 local candidates without another connector read or loss  1115ms
+ ✓ tests/workspace/admission.test.ts (21 tests) 475ms
+ ✓ tests/client/pages.test.ts (20 tests) 480ms
+ ✓ tests/client/composer-state.test.ts (13 tests) 313ms
+ ✓ tests/workspace/document-origin.test.ts (17 tests) 285ms
+ ✓ tests/panel/routes.test.ts (8 tests) 239ms
+ ✓ tests/client/workspace-layout.test.ts (9 tests) 213ms
+ ✓ tests/panel/go-slices.test.ts (5 tests) 133ms
+ ✓ tests/client/session-work.test.ts (8 tests) 102ms
+ ✓ tests/client/go-shell-flows.test.ts (7 tests) 110ms
+ ✓ tests/client/go-settings.test.ts (74 tests) 63ms
+ ✓ tests/sources/document-evidence.test.ts (4 tests) 48ms
+ ✓ tests/client/primary-navigation.test.ts (4 tests) 56ms
+ ✓ tests/client/go-projects.test.ts (36 tests) 32ms
+ ✓ tests/client/artifact.test.ts (3 tests) 20ms
+ ✓ tests/client/go-tencent.test.ts (18 tests) 19ms
+ ✓ tests/client/detail-readability.test.ts (84 tests) 15ms
+ ✓ tests/panel/session-work.test.ts (8 tests) 12ms
+ ✓ tests/client/bundle.test.ts (2 tests) 10ms
+ ✓ tests/client/desk-model.test.ts (46 tests) 7ms
+ ✓ tests/client/channel.test.ts (3 tests) 2ms
+
+ Test Files  29 passed (29)
+      Tests  814 passed (814)
+   Start at  14:07:23
+   Duration  43.68s (transform 660ms, setup 0ms, collect 3.78s, tests 30.38s, environment 3ms, prepare 1.90s)
+

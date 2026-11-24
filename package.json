@@ -1,5 +1,5 @@
 {
-  "name": "dsh-superagent",
+  "name": "dsh-go",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -30,7 +30,7 @@
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-chat"] }
   },
-  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md", "integrations/wecom-readonly", "docs/WECOM-DOCUMENT-SOURCE.md", "docs/KANBAN-SESSION-COVERAGE.md", "docs/KANBAN-TASK-FIRST.md"],
+  "files": ["lib", "host.cjs", "host-runtime.json", "cordis.patch.yml", "locale", "icon.svg", "README.md", "integrations/wecom-readonly", "docs/WECOM-DOCUMENT-SOURCE.md", "docs/KANBAN-SESSION-COVERAGE.md", "docs/KANBAN-TASK-FIRST.md", "docs/GO-IMPLEMENTATION-20261121.md", "docs/GO-SESSION-ACTIONS.md", "docs/GO-IMAGE-LIFECYCLE.md", "docs/GO-LOCAL-SOURCES.md", "docs/GO-TENCENT-SOURCE.md", "docs/GO-STAGE-MODELS.md", "docs/GO-DECISIONS.md", "docs/GO-CONFIG-MUTATIONS.md"],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

@@ -1,0 +1,25 @@
+0 verbose cli /Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness /Users/dundundebaba/.hermes/node/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@10.9.8
+2 info using node@v24.21.0
+3 silly config load:file:/Users/dundundebaba/.hermes/node/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/dundundebaba/sync/dsh-s-p/.npmrc
+5 silly config load:file:/Users/dundundebaba/.npmrc
+6 silly config load:file:/Applications/DeepSeek Harness.app/Contents/etc/npmrc
+7 verbose title npm pack
+8 verbose argv "pack" "--dry-run" "--ignore-scripts" "--json" "--cache" "/Users/dundundebaba/sync/dsh-s-p/probes/go/g3-g6-final-20261121-3XwV0v/npm-cache"
+9 verbose logfile logs-max:10 dir:/Users/dundundebaba/sync/dsh-s-p/probes/go/g3-g6-final-20261121-3XwV0v/npm-cache/_logs/2026-11-21T08_26_03_324Z-
+10 verbose logfile /Users/dundundebaba/sync/dsh-s-p/probes/go/g3-g6-final-20261121-3XwV0v/npm-cache/_logs/2026-11-21T08_26_03_324Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4395630592 maxSize:1098907648 maxEntrySize:549453824
+13 http fetch GET 200 https://registry.npmmirror.com/npm 324ms
+14 verbose cwd /Users/dundundebaba/sync/dsh-s-p
+15 verbose os Darwin 27.0.0
+16 verbose node v24.21.0
+17 verbose npm  v10.9.8
+18 notice
+18 notice New major version of npm available! 10.9.8 -> 12.2.3
+18 notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+18 notice To update run: npm install -g npm@12.2.3
+18 notice  { force: true, Symbol(proc-log.meta): true }
+19 verbose exit 0
+20 info ok

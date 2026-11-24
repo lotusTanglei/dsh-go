@@ -21,7 +21,7 @@ const h = (tag: any, props: any, ...children: any[]) => ({ tag, props, children 
 // Execute the actual closures. These are data/interaction contracts, not DOM or visual proof.
 describe('read-only conversation work UI closures', () => {
   it('separates durable active/complete from idle runtime and never turns missing evidence into work', () => {
-    const card = closure('sessionWorkCard', { h, React: { Fragment: 'fragment' }, tr, displayTitle: (v: any) => v, sessionSourceTitle: (v: any) => v.title, sessionWorkBusy: '', time: () => 'snapshot', button() {} })
+    const card = closure('sessionWorkCard', { h, array, React: { Fragment: 'fragment' }, tr, displayTitle: (v: any) => v, sessionSourceTitle: (v: any) => v.title, sessionWorkBusy: '', time: () => 'snapshot', button() {} })
     const base = { sessionId: 'source', title: 'Source', evidence: 'structured', objective: 'Ship feature', goalPhase: 'active', runtime: 'idle' }
     const active = JSON.stringify(card(base))
     expect(active).toContain('SessionWorkGoalActive'); expect(active).toContain('SessionWorkRuntimeIdle'); expect(active).not.toContain('SessionWorkGoalCompleted')
@@ -30,7 +30,7 @@ describe('read-only conversation work UI closures', () => {
     expect(missing).toContain('SessionWorkNoSummary'); expect(missing).not.toContain('Ship feature'); expect(missing).not.toContain('Do not invent me')
     const blocker = JSON.stringify(card({ ...base, blocker: 'Waiting for CI' }))
     expect(blocker).not.toContain('SessionWorkDecision')
-    const readFull = closure('sessionWorkCard', { h, React: { Fragment: 'fragment' }, tr, displayTitle: (v: string) => v.slice(0, 8), sessionSourceTitle: (v: any) => v.title, sessionWorkBusy: '', time: () => 'snapshot', button() {} })
+    const readFull = closure('sessionWorkCard', { h, array, React: { Fragment: 'fragment' }, tr, displayTitle: (v: string) => v.slice(0, 8), sessionSourceTitle: (v: any) => v.title, sessionWorkBusy: '', time: () => 'snapshot', button() {} })
     const objective = 'A complete objective that must remain readable on the source page', decision = 'A complete question that must remain readable without a hover tooltip'
     const preview = JSON.stringify(readFull({ ...base, objective, decision }))
     expect(preview).not.toContain(objective)
@@ -63,7 +63,7 @@ describe('read-only conversation work UI closures', () => {
   })
 
   it('distinguishes same-title included sessions in source management without turning identities into headlines', () => {
-    const card=closure('sessionWorkCard',{h,React:{Fragment:'fragment'},tr,displayTitle:(v:any)=>v,sessionSourceTitle:(row:any)=>row.title,sessionWorkBusy:'',time:()=>'',button(){}})
+    const card=closure('sessionWorkCard',{h,array,React:{Fragment:'fragment'},tr,displayTitle:(v:any)=>v,sessionSourceTitle:(row:any)=>row.title,sessionWorkBusy:'',time:()=>'',button(){}})
     const base={title:'Same title',evidence:'missing',runtime:'idle'}
     const first=JSON.stringify(card({...base,sessionId:'session-first-12345678'},true,'revision')),second=JSON.stringify(card({...base,sessionId:'session-next-87654321'},true,'revision'))
     expect(first).toContain('…12345678');expect(second).toContain('…87654321')
@@ -80,18 +80,18 @@ describe('read-only conversation work UI closures', () => {
 
   it('reads only the dedicated route and rejects cross-revision pagination without mixing records', async () => {
     const old = { revision: 'r1', items: [{ sessionId: 'one' }], hasMore: true, next: 'opaque' }, pages = { current: { included: old } }, errors: string[] = [], calls: any[] = []
-    const read = closure('readSessionWork', { epochRef: { current: 'epoch' }, sessionWorkBusyRef: { current: false }, sessionWorkPagesRef: pages, alive: { current: true }, array, tr,
+    const read = closure('readSessionWork', { epochRef: { current: 'epoch' }, sessionWorkBusyRef: { current: false }, sessionWorkGeneration: { current: 0 }, sessionWorkPagesRef: pages, alive: { current: true }, array, tr,
       setSessionWorkBusy() {}, setSessionWorkError: (v: string) => errors.push(v), setSessionWorkPages() {},
       call: async (path: string, input: any) => { calls.push({ path, input }); return { revision: 'r2', items: [{ sessionId: 'two' }] } },
     })
     await read('included', true)
     expect(calls).toEqual([{ path: 'session-work', input: { action: 'list', epoch: 'epoch', view: 'included', limit: 20, cursor: 'opaque' } }])
-    expect(pages.current.included).toBe(old); expect(errors.at(-1)).toBe('SessionWorkChanged')
+    expect(pages.current).toEqual({}); expect(errors.at(-1)).toBe('SessionWorkChanged') // Known revision drift revokes the old body, not merely its next cursor.
   })
 
   it('does not hide or retry membership changes after an uncertain receipt', async () => {
     const pages = { current: { included: { items: ['retain'] } } }, errors: string[] = [], calls: any[] = []
-    const change = closure('setSessionIncluded', { epochRef: { current: 'epoch' }, sessionWorkBusyRef: { current: false }, sessionWorkPagesRef: pages, alive: { current: true }, tr,
+    const change = closure('setSessionIncluded', { epochRef: { current: 'epoch' }, sessionWorkBusyRef: { current: false }, sessionWorkGeneration: { current: 0 }, sessionWorkPagesRef: pages, alive: { current: true }, tr,
       setSessionWorkBusy() {}, setSessionWorkError: (v: string) => errors.push(v), setSessionWorkPages() { throw new Error('must retain') }, setNotice() {},
       call: async (path: string, input: any) => { calls.push({ path, input }); throw new Error('network') },
     })
@@ -102,7 +102,7 @@ describe('read-only conversation work UI closures', () => {
 
   it('refreshes only after a confirmed membership receipt, without optimistic preview edits or controls', async () => {
     const calls: any[] = [], pages = { current: { included: {} } }, notices: string[] = []
-    const change = closure('setSessionIncluded', { epochRef: { current: 'epoch' }, sessionWorkBusyRef: { current: false }, sessionWorkPagesRef: pages, alive: { current: true }, excludedOpenRef: { current: true }, tr,
+    const change = closure('setSessionIncluded', { epochRef: { current: 'epoch' }, sessionWorkBusyRef: { current: false }, sessionWorkGeneration: { current: 0 }, sessionWorkPagesRef: pages, alive: { current: true }, excludedOpenRef: { current: true }, tr,
       setSessionWorkBusy() {}, setSessionWorkError() {}, setSessionWorkPages() {}, setNotice: (v: string) => notices.push(v), poke: { current: () => calls.push('preview') },
       readSessionWork: async (view: string) => calls.push(view), call: async (path: string, input: any) => { calls.push(path); return { sessionId: input.sessionId, included: input.included } },
     })

@@ -1,0 +1,10 @@
+
+$ pnpm run typecheck
+
+> dsh-superagent@0.1.0 typecheck /Users/dundundebaba/sync/dsh-s-p
+> tsc --noEmit -p tsconfig.json
+
+tests/workspace/runtime.test.ts(243,133): error TS2339: Property 'revision' does not exist on type 'SessionWorkList | { state: "unavailable"; sampledAt: number; scope: "current-host"; defaultIncluded: true; total: null; excludedTotal: null; internalTotal: null; items: never[]; hasMore: boolean; error: "session_work_unavailable"; }'.
+  Property 'revision' does not exist on type '{ state: "unavailable"; sampledAt: number; scope: "current-host"; defaultIncluded: true; total: null; excludedTotal: null; internalTotal: null; items: never[]; hasMore: boolean; error: "session_work_unavailable"; }'.
+ ELIFECYCLE  Command failed with exit code 2.
+[exit code: 2] [tee exit code: 0]

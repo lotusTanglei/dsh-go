@@ -120,6 +120,8 @@ export interface Config {
   readonly sqliteBusyTimeoutMs: number
   readonly staleLockMs: number
   readonly sources: readonly SourceConfig[]
+  /** Explicit Host-authorized roots; never derived from projects or browser paths. */
+  readonly localSourceRoots?: readonly { readonly id: string; readonly path: string; readonly name?: string }[]
   readonly roleTools: {
     readonly router: readonly string[]
     readonly worker: readonly string[]
@@ -168,6 +170,7 @@ export function createConfigSchema(z: SchemaFactory): SchemaNode<Config> {
     backupIntervalMs: positive(defaults.backupIntervalMs), backupKeep: positive(defaults.backupKeep),
     triggerRetentionMs: positive(defaults.triggerRetentionMs), outboundRetentionMs: positive(defaults.outboundRetentionMs),
     sqliteBusyTimeoutMs: nonnegative(defaults.sqliteBusyTimeoutMs), staleLockMs: nonnegative(defaults.staleLockMs),
+    localSourceRoots: z.array(z.object({ id: z.string().required(), path: z.string().required(), name: z.string() })).default([]),
     sources: z.array(z.object({
       id: z.string().required(), kind: z.union(['session', 'inbox', 'wecom-document']).required(), attended: z.boolean().required(),
       doc: z.string(), sheet: z.string(), range: z.string(), idColumn: z.string(), titleColumn: z.string(),
@@ -204,5 +207,7 @@ export function resolveConfig(config: Config): Config {
     }
   }
   if (new Set(config.sources.map(source => source.id)).size !== config.sources.length) throw new Error('duplicate source instance id')
+  const roots = config.localSourceRoots ?? []
+  if (!Array.isArray(roots) || roots.length > 100 || roots.some(root => !root || Object.keys(root).some(key => !['id', 'path', 'name'].includes(key)) || typeof root.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(root.id) || typeof root.path !== 'string' || !isAbsolute(root.path) || root.name !== undefined && (typeof root.name !== 'string' || root.name.length > 80 || /[\/\\\x00-\x1f]/.test(root.name))) || new Set(roots.map(root => root.id)).size !== roots.length) throw new Error('local source roots must be distinct explicit Host authorizations')
   return { ...config, stateDir: resolve(config.stateDir), dbPath: resolve(dbPath), lockPath: resolve(lockPath), workRoot: resolve(workRoot) }
 }

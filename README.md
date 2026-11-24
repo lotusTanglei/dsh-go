@@ -1,6 +1,6 @@
-# DSH Super-agent
+# Go
 
-在 DeepSeek Harness 上实现的一个 Super-agent bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
+Go 是跑在 DeepSeek Harness 上的一个 Super-agent bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
 **当前状态：看板工作区开发中，部分完成／不可交付，非生产就绪。** 本轮真实安装版探针证明 L1 spawn 继承父根、L2 同票未授权/deny 路径仍可被 native/shell 写入；生产 Worker 启动与恢复执行现已 fail-closed。历史 A/B/C 证据保留，不代表当前安全门禁已通过。
 

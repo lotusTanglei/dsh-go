@@ -15,7 +15,7 @@ Desktop profile **只能使用应用内 Plugins 管理界面**：
 1. 准备可移植 bundle 副本，把自有 bundle 的 `superagent-foundation` 配置改为**包目录之外**的持久绝对 `stateDir`；`dbPath/lockPath/workRoot` 留空由它派生，或显式配置到同一包外目录。当前仓库 patch 的路径是开发机示例，不能原样用于别的机器。禁止改 Desktop profile 文件。
 2. 打开 DeepSeek Harness → Plugins。截图位 A：侧栏 Plugins 入口和 Add plugin 按钮。
 3. 选择 Add plugin / 本地目录，选择准备好的 bundle 目录并确认 manifest/图标/说明。截图位 B：本地目录选择与确认框（隐藏用户路径）。
-4. 在 Plugins 列表确认 `dsh-superagent` 已启用，确认配置为包外持久目录。截图位 C：启用状态及脱敏的配置检查。
+4. 在 Plugins 列表确认 `dsh-go` 已启用，确认配置为包外持久目录。截图位 C：启用状态及脱敏的配置检查。
 5. 新建会话后检查三个 preset 无 broken，并在超管工作区的系统→健康检查 DB/version/runtime。截图位 D：preset roster 与健康真实数据。
 6. 用本轮[工作区人工清单](<KANBAN-MANUAL.md>)逐项验收；[旧P5视觉清单](<P5-VISUAL-CHECKLIST.md>)仅作历史对照。上述截图位仅为采集说明，没有伪造截图。
 

@@ -70,7 +70,7 @@ const translationKeys = () => {
 // visual acceptance, or proof of backend authorization/execution is claimed.
 describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () => {
   it('uses one Workspace main panel instead of the superseded seven-page top navigation', () => {
-    contains(index, ["import { createWorkspacePage } from './workspace.js'", "import { workspaceStyles } from './workspace-style.js'", 'workspaceFactory = createWorkspacePage', 'styleFactory = workspaceStyles', 'workspaceFactory(React, request, t, styleFactory(), deskFactory)', "name: 'main', key: 'superagent'", '}, Page)'])
+    contains(index, ["import { createWorkspacePage } from './workspace.js'", "import { workspaceStyles } from './workspace-style.js'", 'workspaceFactory = createWorkspacePage', 'styleFactory = workspaceStyles', 'workspaceFactory(React, request, t, styleFactory(), deskFactory, settingsFactory, decisionsFactory, tencentFactory, projectsFactory)', "name: 'main', key: 'superagent'", '}, Page)'])
     expect(index).not.toMatch(/\bconst pages\b|\bsetPage\b|\bselected\b|h\(['"]nav['"]|sa-tabs/)
     expect([...index.matchAll(/name:\s*['"]main['"]/g)]).toHaveLength(1)
     contains(workspace, ["['pending', 'running', 'waiting', 'ended']", "tr('Workspace')", "tr('DeskTitle')", "tr('Board')", 'saw-workspace'])
@@ -82,8 +82,33 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'call' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) routes.add(node.arguments[0].text)
       if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
         const key = ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name) ? node.name.text : ''
-        // Exact Session identity is permitted only for the membership-only route, never commands.
-        if (key === 'sessionId') expect(node.parent.getText(tree)).toContain("action: 'set-included'")
+        // Identity use is confined to membership, lookup, and the explicitly bound action checker.
+        // Ordinary workspace commands still cannot choose arbitrary sessions.
+        if (key === 'sessionId') {
+          let owner: ts.Node | undefined = node.parent
+          while (owner && !ts.isCallExpression(owner)) owner = owner.parent
+          const route = owner && ts.isCallExpression(owner) && owner.arguments[0] && ts.isStringLiteralLike(owner.arguments[0]) ? owner.arguments[0].text : ''
+          if (route) {
+            expect(['session-work', 'session-locate', 'images']).toContain(route)
+            if (route === 'session-work') expect(node.parent.getText(tree)).toContain("action: 'set-included'")
+            else if (route === 'images') expect(node.parent.getText(tree)).toBe('{ sessionId: target.sessionId, scopeRevision: target.scopeRevision, factRevision: target.factRevision }')
+            else {
+              expect(['{ sessionId: candidate.sessionId, revision: old.revision }', '{ epoch, text: row.sessionId, sessionId: row.sessionId, revision }']).toContain(node.parent.getText(tree))
+              if (node.parent.getText(tree).includes('row.sessionId')) contains(section('inspectSessionQuestions'), ["row.excluded !== false", "!['structured', 'missing'].includes(row.evidence)", 'result.target?.factRevision !== row.factRevision', 'result.revision !== revision'])
+            }
+          } else {
+            let declaration: ts.Node | undefined = node
+            while (declaration && !ts.isVariableDeclaration(declaration)) declaration = declaration.parent
+            const name = declaration && ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name) ? declaration.name.text : ''
+            if (name === 'parseViewRoute') { expect(node.parent.getText(tree)).toContain('sessionId'); expect(section('parseViewRoute')).toContain('routeId(sessionId)'); return }
+            if (name === 'request' || name === 'props') return
+            if (node.parent.getText(tree).includes('viewRoute.sessionId')) { expect(workspace).toContain('onNavigate: navigateProject'); return }
+            expect(name).toMatch(/^(?:binding|payload)$/)
+            const initializer = node.parent.getText(tree)
+            expect(initializer).toMatch(/sessionId: (?:target\.sessionId|current!\.target\.sessionId)/)
+            expect(initializer).toContain('scopeRevision:'); expect(initializer).toContain('factRevision:')
+          }
+        }
         else expect(key).not.toMatch(/^(?:sessionID|mainSessionId|actor|workerId|threadKey|assignmentId|agentOptions)$/)
       }
     })
@@ -114,7 +139,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     const open = section('openDetail')
     contains(open, ['setDetailId(item.id)', 'readDetail(item.id)'])
     expect(open).not.toMatch(/updateComposer|saveComposer|target\s*:|supplement\(/)
-    contains(section('supplement'), ['composerRef.current.pending', 'draftEpochRef.current !== epochRef.current', 'updateComposer({ target: { id: item.id', "setMobileTab('chat')", 'inputRef.current?.focus()'])
+    contains(section('supplement'), ['composerRef.current.pending', 'draftEpochRef.current !== epochRef.current', 'updateComposer({ target: { id: item.id', "navigatePrimary('chat')", 'inputRef.current?.focus()'])
     contains(workspace, ["className: 'saw-chip'", "tr('SupplementTo')", 'composer.target.title', "button('×', () => updateComposer({ target: null })", "'aria-label': tr('CancelTarget')", "button(tr('Supplement'), () => supplement(card)", "button(tr('Supplement'), () => supplement(item)"])
   })
 
@@ -127,8 +152,8 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     expect(section('readConversation')).not.toMatch(/setConversation\(\s*\{\s*\}\s*\)|conversations\.current\s*=\s*\{\s*\}/)
   })
 
-  it('keeps decisions in the main work area and raw history behind explicit chat controls', () => {
-    contains(workspace, ["React.useState('briefing')", 'setActivityView(view)', "activityView === 'briefing' ? briefingView()", "tr('DeskTitle')", "'BackToDesk' : 'HistoryShort'", "React.useState('board')"])
+  it('keeps decisions in main work and an independent full conversation with explicit history controls', () => {
+    contains(workspace, ["React.useState('history')", 'setActivityView(view)', "activityView === 'briefing' ? briefingView()", "tr('DeskTitle')", "'BackToDesk' : 'HistoryShort'", "React.useState('overview')"])
     expect(workspace).not.toMatch(/saw-activity-tabs|tr\('BriefingVersion'\)|tr\('BriefingScope'\)|tr\('BriefingRecordHint'\)|tr\('NoStructuredDecisions'\)/)
     contains(section('workDecisions'), ['desk.actions.map(decisionView)', 'desk.moreActions', '(desk.actionTotal ?? 0) > 0'])
     contains(section('briefingView'), ['desk.records.map(recordView)', 'desk.moreRecords', 'newReplies && latestAssistant', "tr('ChatIntro')"])
@@ -136,7 +161,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('decisionView'), ["entry.kind === 'plan'", 'openPlan(data)', "entry.kind === 'approval' ? 'approvals' : 'overview'", "'ReadAndAnswer'", "'ReviewPlan'"])
     expect(section('decisionView')).not.toMatch(/askConfirm|call\(/)
     contains(workspace, ['reviewingPlan ? admissionView(reviewingPlan)', "className: 'saw-inspector'", "rows: 2", "composer.intent === 'new-task' ? 'GeneratePlan' : 'Send'", "tr('PlanMode')", "tr('AskMode')", "workerExecution === false ? 'PlanningOnly' : 'ExecutionUnknown'"])
-    contains(section('showAllTasks'), ["changeFilter('', '')", "setMobileTab('board')"])
+    contains(section('showAllTasks'), ["changeFilter('', '')", "navigatePrimary('board')"])
     contains(section('desk'), ['deskState(workspace, Date.now(), !!error)'])
     contains(section('chooseActivity'), ["view === 'briefing'", 'historyRef.current = epochRef.current', 'setHistoryEpoch(epochRef.current)', 'readConversation(epochRef.current)'])
     expect(section('chooseActivity')).not.toMatch(/updateComposer|saveComposer|target:|setNewReplies/)
@@ -144,7 +169,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
     contains(section('readLatestReply'), ['replyReadThrough.current[epoch] = reply.lastSeq', 'sessionStorage.setItem', 'setNewReplies(0)'])
     contains(section('replyToCoordinator'), ['composerRef.current.pending', 'composerRef.current.target', 'composerRef.current.draft.trim()', "intent: 'message'"])
     contains(workspace, ['latestAssistant.text', "className: 'saw-message-technical'", "h('summary', null, tr('TechnicalDetails'))", "activityViewRef.current === 'history' && autoScroll.current"])
-    contains(workspace, ['await readConversation(epoch)', 'if (historyRef.current && historyRef.current !== epoch) await readConversation(historyRef.current)', 'inspectorOpener.current.focus()', 'inspectorReturnToInput.current', '!inputRef.current.disabled', 'historyButtonRef.current?.focus()', "`${collapsed ? '‹' : '›'}${newReplies ? ' •' : ''}`"])
+    contains(workspace, ['await readConversation(epoch)', 'if (historyRef.current && historyRef.current !== epoch) await readConversation(historyRef.current)', 'inspectorOpener.current.focus()', 'inspectorReturnToInput.current', '!inputRef.current.disabled', 'historyButtonRef.current?.focus()', "primaryNavigation()", "className: 'saw-workspace', hidden: !!system"])
     contains(section('recordView'), ['record.anomaly', 'record.disabledReason', 'stateName(result ? record.outcome : record.state)', "result ? 'results' : 'overview'"])
     contains(styles, ['.saw-head-actions', '.saw-compose-footer', '@media(max-height:650px)', '.saw-messages{flex:1;min-height:0;', '.saw-inspector-scroll{flex:1;min-height:0;overflow:auto'])
   })
@@ -187,7 +212,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
 
   it('keeps detail headers scan-readable and presents results before execution internals', () => {
     contains(workspace, ["id: 'saw-detail-title'", 'displayTitle(item.title)', "'aria-labelledby': 'saw-detail-title'", "className: 'saw-original-request'", "tr('OriginalTaskText')", "item.title || tr('Untitled')", "detailTab === 'results' ? resultView()"])
-    contains(styles, ['.saw-detail>.saw-detail-head h2{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis', '.saw-detail-head>.saw-btn{flex-shrink:0}', '.saw-card-title{display:-webkit-box;-webkit-line-clamp:2'])
+    contains(styles, ['.saw-work-detail>.saw-detail-head h2{font-size:26px;white-space:normal;overflow-wrap:anywhere', '.saw-detail-head>.saw-btn{flex-shrink:0}', '.saw-card-title{display:-webkit-box;-webkit-line-clamp:2'])
     const original = workspace.indexOf("className: 'saw-original-request'")
     expect(original).toBeGreaterThan(workspace.indexOf("h('div', { className: 'saw-detail-scroll' }"))
     const result = section('resultView')
@@ -291,7 +316,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 source contracts (not visual proof)', () =>
 
   it('covers literal and semantic dynamic translations without forcing obsolete pages or unrelated source strings', () => {
     const keys = translationKeys()
-    for (const key of ['title', 'channelNotice', 'wWebAuthRequired', 'wWorkspace', 'wRetrySameRequest', 'wPending', 'wCleanTree', 'wBudgets', 'wFingerprint', 'wOverview', 'wTimeline', 'wResults', 'wDatabase', 'wBoundaryBody']) expect(keys.has(key), key).toBe(true)
+    for (const key of ['title', 'channelNotice', 'wWebAuthRequired', 'wWorkspace', 'wRetrySameRequest', 'wPending', 'wCleanTree', 'wBudgets', 'wFingerprint', 'wOverview', 'wGoProgress', 'wResults', 'wDatabase', 'wBoundaryBody']) expect(keys.has(key), key).toBe(true)
     for (const nonKey of ['wcommand-status', 'wsaw-draft', 'wstateDir', 'wticket-input', 'w/api/superagent/']) expect(keys.has(nonKey), nonKey).toBe(false)
     for (const key of keys) {
       expect(typeof en[key], `en:${key}`).toBe('string')

@@ -3,7 +3,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-worker
-        name: Superagent Worker
+        name: Go Worker
         description: Ticket-scoped execution and structured reporting.
         plugins:
           - id: worker-fs
@@ -16,4 +16,4 @@
           - id: worker-jobs
             name: '@deepseek-ai/dsh-tool-jobs'
           - id: worker-business
-            name: dsh-superagent/worker
+            name: dsh-go/worker

@@ -1,0 +1,17 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/workspace/runtime.test.ts (39 tests) 3435ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > hands a reviewed local text item through the production planning port with provenance, explicit approval, and no Worker execution  316ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1563ms
+ ✓ tests/workspace/documents.test.ts (11 tests) 1454ms
+   ✓ manual document Source coordinator with real SQLite and explicit fake connector > pages more than 100 local candidates without another connector read or loss  1119ms
+ ✓ tests/client/composer-state.test.ts (13 tests) 314ms
+ ✓ tests/workspace/document-origin.test.ts (17 tests) 285ms
+ ✓ tests/panel/go-slices.test.ts (5 tests) 174ms
+
+ Test Files  5 passed (5)
+      Tests  85 passed (85)
+   Start at  14:04:01
+   Duration  8.30s (transform 387ms, setup 0ms, collect 855ms, tests 5.66s, environment 0ms, prepare 371ms)
+

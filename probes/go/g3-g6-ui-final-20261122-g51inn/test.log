@@ -1,0 +1,215 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ❯ tests/client/session-action.test.ts (90 tests | 2 failed) 61199ms
+   ✓ G2 independent blocked text action UI contracts > isolates drafts by epoch, session, project, scope and fact revision without rebinding or copying the main draft 185ms
+   ✓ G2 independent blocked text action UI contracts > retains original drafts through resetLocate and navigation, editing only the currently located exact target 180ms
+   ✓ G2 independent blocked text action UI contracts > posts only one exact continue prepare, verifies digest, retains original text, and never alters main composer 205ms
+   ✓ G2 independent blocked text action UI contracts > posts only one exact supplement prepare, verifies digest, retains original text, and never alters main composer 203ms
+   ✓ G2 independent blocked text action UI contracts > posts only one exact steer prepare, verifies digest, retains original text, and never alters main composer 200ms
+   ✓ G2 independent blocked text action UI contracts > starts a new local draft only by an explicit blocked-action click, retaining original evidence and minting new IDs only on a later check 217ms
+   ✓ G2 independent blocked text action UI contracts > never resets a unknown action or exposes a new-draft bypass 251ms
+   ✓ G2 independent blocked text action UI contracts > never resets a recorded action or exposes a new-draft bypass 163ms
+   ✓ G2 independent blocked text action UI contracts > never resets a dispatch_unknown action or exposes a new-draft bypass 70ms
+   ✓ G2 independent blocked text action UI contracts > never resets a accepted action or exposes a new-draft bypass 67ms
+   ✓ G2 independent blocked text action UI contracts > never resets a pending action or exposes a new-draft bypass 67ms
+   ✓ G2 independent blocked text action UI contracts > does not create a draft from an old target, epoch, or contradictory blocked receipt 69ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"status":"clarify"} 69ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"status":"blocked"} 69ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"coverage":"partial"} 67ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"controlAvailable":true} 72ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"executionReason":"enabled"} 66ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {} 67ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"revision":"bad"} 67ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"one","project":{"kind":"project","key":"project-one","name":"Same project name"},"factRevision":"bad","title":"Same session title"}} 75ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"session-one","project":{"kind":"unknown","key":"unknown"},"factRevision":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","title":"Same session title"}} 69ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"session-one","project":{"kind":"project","key":"different-project","name":"Same project name"},"factRevision":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","title":"Same session title"}} 68ms
+   ✓ G2 independent blocked text action UI contracts > offers no current editable target for unverified location {"target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one","name":"Same project name"},"factRevision":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","title":"Same session title"}} 68ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory epoch receipt unknown with original IDs and no retry 72ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory requestId receipt unknown with original IDs and no retry 68ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory actionId receipt unknown with original IDs and no retry 68ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory operation receipt unknown with original IDs and no retry 66ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.sessionId receipt unknown with original IDs and no retry 71ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.scopeRevision receipt unknown with original IDs and no retry 67ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.factRevision receipt unknown with original IDs and no retry 72ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.project.kind receipt unknown with original IDs and no retry 70ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory target.project.key receipt unknown with original IDs and no retry 67ms
+   × G2 independent blocked text action UI contracts > keeps a contradictory digest receipt unknown with original IDs and no retry 25093ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory messageId receipt unknown with original IDs and no retry 78ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory seq receipt unknown with original IDs and no retry 78ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory seq receipt unknown with original IDs and no retry 78ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory seq receipt unknown with original IDs and no retry 72ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory at receipt unknown with original IDs and no retry 72ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory updatedAt receipt unknown with original IDs and no retry 69ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory durable receipt unknown with original IDs and no retry 67ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory accepted receipt unknown with original IDs and no retry 70ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory executed receipt unknown with original IDs and no retry 69ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory executed receipt unknown with original IDs and no retry 72ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory completed receipt unknown with original IDs and no retry 65ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory completed receipt unknown with original IDs and no retry 73ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory state receipt unknown with original IDs and no retry 69ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory disposition receipt unknown with original IDs and no retry 75ms
+   ✓ G2 independent blocked text action UI contracts > keeps a contradictory version receipt unknown with original IDs and no retry 68ms
+   ✓ G2 independent blocked text action UI contracts > accepts an omitted optional version but rejects arbitrary, partial, missing-flag, or forged payloads  1026ms
+   ✓ G2 independent blocked text action UI contracts > handles uncertain prepare and status 404 without resending, new IDs, input loss, or treating not-found as no-delivery proof 70ms
+   ✓ G2 independent blocked text action UI contracts > closes only after an explicit click with the exact original payload, then requires a separate new-draft click and keeps closure history 70ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field epoch and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field requestId and keeps the original action unresolved 66ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field actionId and keeps the original action unresolved 69ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field operation and keeps the original action unresolved 67ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.sessionId and keeps the original action unresolved 66ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.scopeRevision and keeps the original action unresolved 68ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.factRevision and keeps the original action unresolved 67ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field target.project and keeps the original action unresolved 64ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field digest and keeps the original action unresolved 69ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field seq and keeps the original action unresolved 67ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field at and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field updatedAt and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field state and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field bindingVerified and keeps the original action unresolved 68ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field durable and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field accepted and keeps the original action unresolved 65ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field executed and keeps the original action unresolved 68ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field completed and keeps the original action unresolved 80ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field disposition and keeps the original action unresolved 81ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field code and keeps the original action unresolved 82ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field version and keeps the original action unresolved 84ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field messageId and keeps the original action unresolved 98ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field controlRevision and keeps the original action unresolved 92ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field grantRevision and keeps the original action unresolved 90ms
+   ✓ G2 independent blocked text action UI contracts > rejects contradictory closure field extra and keeps the original action unresolved 100ms
+   ✓ G2 independent blocked text action UI contracts > rejects missing closure fields and unsolicited closed payloads without explicit closure intent  2530ms
+   ✓ G2 independent blocked text action UI contracts > recovers a lost explicit close receipt through status only without another prepare or automatic closure retry 69ms
+   ✓ G2 independent blocked text action UI contracts > does not accept closure over existing exact dispatch_unknown evidence and accepts only the original normal receipt from close 71ms
+   ✓ G2 independent blocked text action UI contracts > keeps old-epoch unknown recovery unavailable and fences new actions, with no cross-epoch close request 67ms
+   ✓ G2 independent blocked text action UI contracts > keeps the check button present and disabled while pending, with a persistent visible status contract 69ms
+   ✓ G2 independent blocked text action UI contracts > does not bypass an unresolved original action by switching target or epoch 68ms
+   ✓ G2 independent blocked text action UI contracts > retains a late blocked result under the original target without covering the new target or epoch 75ms
+   ✓ G2 independent blocked text action UI contracts > retains a late unknown result under the original target without covering the new target or epoch 69ms
+   ✓ G2 independent blocked text action UI contracts > fences navigation during digest preparation before making a Host request 67ms
+   ✓ G2 independent blocked text action UI contracts > uses status only to reconcile exact recorded and dispatch_unknown evidence, with null execution facts for uncertain delivery 141ms
+   × G2 independent blocked text action UI contracts > rejects status rollback, same-sequence contradiction, changing original time, and false certainty for unknown delivery 25307ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ G2 independent blocked text action UI contracts > renders a separate progressive text check, only current target editable, literal evidence, no send/stop/approval or Enter-to-send 91ms
+   ✓ G2 independent blocked text action UI contracts > guards composition-triggered action and Escape locally without changing global shell behavior 72ms
+   ✓ G2 independent blocked text action UI contracts > validates text byte limits/NUL before requesting and supplies matching bilingual boundaries 74ms
+ ✓ tests/workspace/session-actions.test.ts (89 tests) 4220ms
+ ❯ tests/client/scope-management.test.ts (35 tests | 2 failed) 901146ms
+   ✓ bounded scope target lookup UI closures > searches across included scope without a project filter, send, execution, or composer changes 119ms
+   ✓ bounded scope target lookup UI closures > rechecks only explicit candidates from a current clarification, binding the original revision 76ms
+   ✓ bounded scope target lookup UI closures > ignores late results after navigation, editing, or epoch changes and never retries 72ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"different","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}} 72ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"},"coverage":"partial"} 71ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"located","candidates":[{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":true,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED","target":{"sessionId":"session-one","project":{"kind":"project","key":"project-one"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}} 69ms
+   ✓ bounded scope target lookup UI closures > rejects contradictory or unknown target receipts {"status":"clarify","candidates":[{"sessionId":"session-one","project":{"kind":"unknown","key":"unknown"},"excluded":false,"title":"Work","evidence":"structured","objective":"Do the work"}],"revision":"r1","controlAvailable":false,"executionReason":"SA_EXECUTION_BOUNDARY_UNVERIFIED"} 75ms
+   ✓ bounded scope target lookup UI closures > distinguishes same-title candidates with literal field-labelled work excerpts, never HTML 75ms
+   ✓ bounded scope target lookup UI closures > shows partial/blocked and no-match honestly, and offers recheck only for clarification 73ms
+   ✓ hierarchical management scope UI closures > reads the project catalog including empty projects and never scans conversation pages 53ms
+   ✓ hierarchical management scope UI closures > requests only the selected project/view and rejects mixed-project or cross-revision pages 53ms
+   ✓ hierarchical management scope UI closures > never reuses a cursor from another project and never locates or reads unknown membership 54ms
+   ✓ hierarchical management scope UI closures > ignores late reads after epoch/navigation changes without touching composer draft or target 53ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"wrong","included":false,"revision":"r2","stopped":false} 54ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":true,"revision":"r2","stopped":false} 54ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"stopped":false} 59ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"","stopped":false} 56ms
+   ✓ hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"r2"} 53ms
+   × hierarchical management scope UI closures > retains snapshots without refresh or retry for inexact project receipt {"projectId":"project-one","included":false,"revision":"r2","stopped":true} 898898ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ hierarchical management scope UI closures > preserves snapshots and does not retry failures or 409s 147ms
+   ✓ hierarchical management scope UI closures > requires a session revision in the exact receipt and never bypasses project exclusion 70ms
+   ✓ hierarchical management scope UI closures > refreshes only after exact receipt, then retains the selected project and active tab 60ms
+   ✓ hierarchical management scope UI closures > retains confirmed mutation evidence across navigation/epoch changes without applying it to a new page 60ms
+   ✓ hierarchical management scope UI closures > retains unknown mutation evidence across navigation/epoch changes without applying it to a new page 58ms
+   ✓ hierarchical management scope UI closures > invalidates cached Sources work after exact confirmation even when navigation left scope 59ms
+   ✓ hierarchical management scope UI closures > fences a Sources read started before scope exclusion so late work cannot repopulate the cache 62ms
+   ✓ hierarchical management scope UI closures > keeps a new epoch Sources cache intact when an old scope mutation is exactly confirmed 58ms
+   ✓ hierarchical management scope UI closures > shows pending, confirmed, and unknown original-target evidence globally with an old-epoch warning and no replay button 63ms
+   ✓ hierarchical management scope UI closures > does not permit a second scope mutation while the first is pending after navigation 59ms
+   ✓ hierarchical management scope UI closures > restores a second-page project after confirmed session save with bounded metadata pagination and current tab 57ms
+   ✓ hierarchical management scope UI closures > stops second-page restoration when metadata revision changes and never mixes pages or reads session content 55ms
+   ✓ hierarchical management scope UI closures > does not scan beyond the originally loaded catalog boundary if the selected project is missing 63ms
+   ✓ hierarchical management scope UI closures > renders only the current level, includes empty projects, disambiguates names, and leaves unknown noninteractive 60ms
+   ✓ hierarchical management scope UI closures > does not render excluded work bodies, and visibly disables child restoration under an excluded project 62ms
+   × hierarchical management scope UI closures > exposes a real settings entry without changing existing Sources closures or installing a poll 62ms
+     → expected 'import { deriveDeskState } from \'./d…' to contain 'scope: \'ScopeManagement\''
+ ✓ tests/workspace/runtime.test.ts (36 tests) 3189ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1527ms
+ ✓ tests/workspace/local-sources.test.ts (61 tests) 2716ms
+   ✓ G4 manual local source core with real temporary SQLite and files > configures only explicit paths, never reads during list/configure, and never exposes absolute roots  361ms
+   ✓ G4 manual local source core with real temporary SQLite and files > captures untrusted text and original PNG bytes separately, never claiming imageSeen or execution permission  587ms
+ ✓ tests/workspace/session-decisions.test.ts (65 tests) 4434ms
+   ✓ G6 exact decisions: synthetic ports and independent durable target > retains exact custom Unicode/CRLF/whitespace in digest and rejects changed same-ID input  441ms
+ ✓ tests/workspace/images.test.ts (53 tests) 3032ms
+ ✓ tests/client/image-draft.test.ts (14 tests) 4197ms
+   ✓ independent image draft lifecycle UI > preserves original bytes/hash, previews locally and never uploads or alters composer implicitly  426ms
+   ✓ independent image draft lifecycle UI > keeps immutable unknown upload payload and only retries the same ID and bytes explicitly  306ms
+   ✓ independent image draft lifecycle UI > hash-verifies original bytes and rejects tampering before creating a verified preview  478ms
+   ✓ independent image draft lifecycle UI > renders only thumbnails or the selected detail and always discloses blocked capabilities  318ms
+ ✓ tests/workspace/documents.test.ts (10 tests) 2113ms
+   ✓ manual document Source coordinator with real SQLite and explicit fake connector > pages more than 100 local candidates without another connector read or loss  1483ms
+ ❯ tests/client/go-decisions.test.ts (29 tests | 1 failed) 928838ms
+   ✓ G6 exact business answer closures > factory renders only the active list/detail, literal text and disabled cold/open checks without a DOM 115ms
+   ✓ G6 exact business answer closures > requires exact located target, project, scope and fact evidence 42ms
+   ✓ G6 exact business answer closures > validates exact original question DTO and never accepts canAnswer or approval upgrades 40ms
+   ✓ G6 exact business answer closures > preserves bounded Unicode and prototype-like question IDs as exact IDs, not inherited form values 34ms
+   ✓ G6 exact business answer closures > requires every question answered or explicitly skipped; blank is never consent 36ms
+   ✓ G6 exact business answer closures > preserves distinct option-combination conditions and custom drafts while excluding hidden content 34ms
+   ✓ G6 exact business answer closures > allows multiple selections only for multiSelect and retains their exact order 33ms
+   ✓ G6 exact business answer closures > shows but never checks unanswerable projections {"availability":"cold"} 40ms
+   ✓ G6 exact business answer closures > shows but never checks unanswerable projections {"complete":false} 31ms
+   ✓ G6 exact business answer closures > shows but never checks unanswerable projections {"calls":[{"callId":"call-one","state":"open","questions":[{"id":"q1","question":"Choose a plan?","options":[{"label":"Keep compatibility","description":"Retain old clients"},{"label":"New only"}]}],"canAnswer":false}]} 31ms
+   ✓ G6 exact business answer closures > prepares one exact immutable payload and validates matching blocked receipt and answer digest without sending approval 40ms
+   ✓ G6 exact business answer closures > retains uncertain payload and performs status only, never new IDs, retries, or 404-as-no-delivery 31ms
+   ✓ G6 exact business answer closures > blocks old epoch status recovery and competing unknown drafts 36ms
+   ✓ G6 exact business answer closures > retains late receipt under original target and rejects navigation during async hashing before any request 66ms
+   ✓ G6 exact business answer closures > uses new snapshot keys with no old answers copied, and creates empty blocked drafts only explicitly 39ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field epoch without success 32ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field actionId without success 36ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field callId without success 34ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field digest without success 34ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field snapshot without success 38ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field target without success 44ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field answerSummary without success 34ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field seq without success 32ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field approval without success 31ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field durable without success 32ms
+   ✓ G6 exact business answer closures > rejects contradictory receipt field executed without success 30ms
+   ✓ G6 exact business answer closures > honors composition and inactive lifecycle before issuing requests 30ms
+   × G6 exact business answer closures > verifies the complete original-question snapshot digest before installing a list 927738ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ G6 exact business answer closures > reads the list only on explicit user request and ignores stale in-flight snapshots 43ms
+ ✓ tests/workspace/session-action-close.test.ts (58 tests) 1345ms
+ ✓ tests/workspace/config-mutations.test.ts (29 tests) 892ms
+ ✓ tests/client/composer-state.test.ts (12 tests) 547ms
+ ✓ tests/workspace/scope-preferences.test.ts (40 tests) 2648ms
+ ✓ tests/workspace/stage-models.test.ts (46 tests) 712ms
+ ❯ tests/panel/kanban.test.ts (14 tests | 1 failed) 25709ms
+   ✓ kanban panel handler contract with real SQLite > registers the workspace/kanban routes as POST buffered handlers and rejects Origin before a port call 19ms
+   ✓ kanban panel handler contract with real SQLite > enforces per-handler authority-field allowlists before touching workspace ports 15ms
+   ✓ kanban panel handler contract with real SQLite > blocks approval of a scope hidden by privacy projection, while allowing a precise safe plan and rejection 15ms
+   ✓ kanban panel handler contract with real SQLite > preserves body as inert port data, rejects malformed epoch fields, and returns fixed errors without echoing injection 14ms
+   ✓ kanban panel handler contract with real SQLite > round-trips conversation history and delta cursors and rejects a cursor from another epoch 17ms
+   ✓ kanban panel handler contract with real SQLite > declares ledger-only coverage even for zero or filtered counts, never all DSH conversations 24ms
+   ✓ kanban panel handler contract with real SQLite > pages every column beyond 100 cards with complete totals and round-trippable opaque cursors 220ms
+   ✓ kanban panel handler contract with real SQLite > keeps unknown states/outcomes visible with anomaly and no invented outcome or enabled actions 13ms
+   ✓ kanban panel handler contract with real SQLite > returns 409 and fresh counts instead of losing cards after a column changes between pages 15ms
+   ✓ kanban panel handler contract with real SQLite > rejects stale pages when approval-derived card status changes even without a ticket timestamp write 42ms
+   ✓ kanban panel handler contract with real SQLite > pages all task approvals beyond 100 without mixing other tasks or losing decided history 54ms
+   × kanban panel handler contract with real SQLite > paginates ticket-scoped old audit history without dropping it among newer unrelated activity 25217ms
+     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ kanban panel handler contract with real SQLite > binds approval to the reviewed fingerprint and rejects both stale-content and second-tab decisions 17ms
+   ✓ kanban panel handler contract with real SQLite > expires at the exact timeout boundary and never releases the linked waiting ticket 26ms
+ ✓ tests/store/hardening.test.ts (9 tests) 787ms
+   ✓ P1 persistence regression proofs > preserves a failed-migration backup and verifies old data after retries  478ms
+ ✓ tests/sources/tencent-sheet.test.ts (44 tests) 524ms
+ ✓ tests/workspace/admission.test.ts (21 tests) 430ms
+ ✓ tests/closeout/faults.test.ts (4 tests) 431ms
+   ✓ CLOSE-OUT C3 real offline fault injection > rejects a second real process while the first process remains alive with the store lock  370ms
+ ✓ tests/workspace/commands.test.ts (28 tests) 376ms
+ ✓ tests/workspace/adversarial.test.ts (30 tests) 583ms

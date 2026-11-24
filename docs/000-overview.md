@@ -2,7 +2,7 @@
 
 ## 1. 这份文档集是什么
 
-一个跑在 DeepSeek Harness（DSH）上的 **Super-agent bundle** 的完整设计与开发计划。
+**Go**：一个跑在 DeepSeek Harness（DSH）上的 **Super-agent bundle** 的完整设计与开发计划。
 不含产品代码，只有方案、接口契约、状态机、表结构、阶段计划与验收口径。
 
 | 文档 | 内容 |

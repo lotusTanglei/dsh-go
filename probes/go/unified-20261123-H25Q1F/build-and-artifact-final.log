@@ -1,0 +1,11 @@
+DSH client factory built: lib/client.js
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ✓ tests/client/artifact.test.ts (3 tests) 29ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  11:14:36
+   Duration  632ms (transform 27ms, setup 0ms, collect 30ms, tests 29ms, environment 0ms, prepare 138ms)
+

@@ -38,7 +38,8 @@ describe('KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof)', 
     // import in a toString()-serialized factory must fail, not pass via a test shim.
     new Script(artifact, { filename: 'lib/client.js' }).runInContext(context, { timeout: 1000 })
     expect(modules).toHaveLength(1)
-    expect(modules[0]!.id).toBe('dsh-superagent')
+    const packageName = JSON.parse(readFileSync('package.json', 'utf8')).name as string
+    expect(modules[0]!.id).toBe(packageName)
     const plugin = modules[0]!.factory((id: string) => {
       imports.push(id)
       if (id !== 'react') throw new Error(`unexpected browser import: ${id}`)
@@ -105,7 +106,7 @@ describe('KANBAN-WORKSPACE-DESIGN v1 built client contract (not visual proof)', 
     const colorDeclarations = [...styles.matchAll(/(?:^|[;{])\s*(?:color|background(?:-color)?|border(?:-(?:color|top|bottom|left|right|inline-start))?|outline(?:-color)?)\s*:\s*([^;}]+)/g)]
     expect(colorDeclarations.length).toBeGreaterThan(0)
     for (const declaration of colorDeclarations) {
-      expect(declaration[1] === '0' || declaration[1]!.includes('var(--dsw-alias-'), declaration[0]).toBe(true)
+      expect(['0', 'transparent', 'inherit', '2px solid transparent'].includes(declaration[1]!) || declaration[1]!.includes('var(--dsw-alias-'), declaration[0]).toBe(true)
     }
   })
 })

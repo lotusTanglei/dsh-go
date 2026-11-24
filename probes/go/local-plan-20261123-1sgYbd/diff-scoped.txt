@@ -1,0 +1,118 @@
+diff --git a/src/workspace/document-origin.ts b/src/workspace/document-origin.ts
+index 1018d98..58a2f8d 100644
+--- a/src/workspace/document-origin.ts
++++ b/src/workspace/document-origin.ts
+@@ -1,6 +1,6 @@
+ /** Opaque provenance is Host-resolved; document text is never a human command. */
+ export interface DocumentOrigin {
+-  readonly kind: 'wecom-document'
++  readonly kind: 'wecom-document' | 'local-document'
+   readonly itemKey: string
+   readonly revision: string
+   readonly evidenceDigest: string
+@@ -12,7 +12,7 @@ export function validDocumentOrigin(value: unknown): value is DocumentOrigin {
+   if (![Object.prototype, null].includes(Object.getPrototypeOf(row)) || Object.getOwnPropertySymbols(row).length || Object.getOwnPropertyNames(row).length !== 5) return false
+   const fields = ['kind', 'itemKey', 'revision', 'evidenceDigest', 'configVersion']
+   if (!fields.every(key => { const property = Object.getOwnPropertyDescriptor(row, key); return property && 'value' in property && property.enumerable })) return false
+-  return row.kind === 'wecom-document' && fields.slice(1).every(key => typeof row[key] === 'string' && /^[a-f0-9]{64}$/.test(row[key] as string))
++  return typeof row.kind === 'string' && ['wecom-document', 'local-document'].includes(row.kind) && fields.slice(1).every(key => typeof row[key] === 'string' && /^[a-f0-9]{64}$/.test(row[key] as string))
+ }
+ /** Synchronous fresh authority checks bracket every admission transaction/settlement. */
+ export interface DocumentOriginAuthority {
+diff --git a/src/workspace/documents.ts b/src/workspace/documents.ts
+index 46f2410..f644b81 100644
+--- a/src/workspace/documents.ts
++++ b/src/workspace/documents.ts
+@@ -53,7 +53,7 @@ export function createWorkspaceDocuments(store: Store, config: Config, ports: {
+   }
+   const authority: DocumentOriginAuthority = {
+     validate(origin, requestId) {
+-      if (!validDocumentOrigin(origin)) return commandError('document_origin_invalid', 400)
++      if (!validDocumentOrigin(origin) || origin.kind !== 'wecom-document') return commandError('document_origin_invalid', 400)
+       const row = read(origin.itemKey), owner = claim(origin.itemKey), ticket = linked(origin.itemKey)
+       if (owner && owner.requestId !== requestId) return commandError('document_item_claimed')
+       if (ticket && (!owner || owner.requestId !== requestId)) return commandError('document_item_linked')
+diff --git a/tests/client/composer-state.test.ts b/tests/client/composer-state.test.ts
+index c27249b..48ec5fc 100644
+--- a/tests/client/composer-state.test.ts
++++ b/tests/client/composer-state.test.ts
+@@ -124,6 +124,31 @@ describe('actual composer state closures (not UI rendering)', () => {
+     }
+   })
+ 
++  it('hands off a local source only into an empty current chat draft, never sends or overwrites any occupied context', () => {
++    const documentOrigin = { kind: 'local-document', itemKey: 'a'.repeat(64), revision: 'b'.repeat(64), evidenceDigest: 'c'.repeat(64), configVersion: 'd'.repeat(64) }
++    const value = { epoch: 'current', draftId: `local-draft:${'e'.repeat(64)}`, documentOrigin }
++    const updates: any[] = [], navigation: string[] = [], notices: string[] = []
++    const g: any = { composerRef: { current: { draft: '', pending: null, target: null, origin: null, documentOrigin: null } }, epochRef: { current: 'current' }, systemRef: { current: 'local-sources' }, draftEpochRef: { current: 'current' }, historyRef: { current: 'current' }, imageBusyRef: { current: null }, imageDraftsRef: { current: {} }, validDocumentOrigin: closure('validDocumentOrigin'), array: (v: any) => Array.isArray(v) ? v : [], structuredClone, documentInstruction: 'Plan only; read task_source_context', updateComposer: (v: any) => updates.push(v), navigatePrimary: (v: string) => navigation.push(v), setNotice: (v: string) => notices.push(v), tr: (v: string) => v, inputRef: { current: null } }
++    const prepare = closure('prepareLocalPlan', g)
++    expect(prepare(value)).toBe(true)
++    expect(updates).toEqual([{ draft: g.documentInstruction, intent: 'new-task', target: null, origin: null, documentOrigin }]); expect(navigation).toEqual(['chat'])
++    expect(updates[0].draft).not.toContain('source body'); expect(updates[0].documentOrigin).not.toBe(documentOrigin)
++    const blank = { ...g.composerRef.current }
++    for (const patch of [{ draft: 'Keep me' }, { pending: { requestId: 'original' } }, { target: { id: 'task' } }, { origin: { id: 'old' } }, { documentOrigin }]) {
++      g.composerRef.current = { ...blank, ...patch }; expect(prepare(value)).toBe(false); expect(updates).toHaveLength(1)
++    }
++    g.composerRef.current = blank
++    for (const ref of ['draftEpochRef', 'historyRef', 'systemRef']) { const before = g[ref].current; g[ref].current = 'other'; expect(prepare(value)).toBe(false); g[ref].current = before }
++    g.imageBusyRef.current = {}; expect(prepare(value)).toBe(false); g.imageBusyRef.current = null
++    g.imageDraftsRef.current.current = { items: [{}] }; expect(prepare(value)).toBe(false); g.imageDraftsRef.current = {}
++    for (const changed of [{ ...value, epoch: 'old' }, { ...value, draftId: 'bad' }, { ...value, documentOrigin: { ...documentOrigin, kind: 'wecom-document' } }, { ...value, documentOrigin: { ...documentOrigin, text: 'forged' } }]) expect(prepare(changed)).toBe(false)
++    expect(updates).toHaveLength(1); expect(navigation).toEqual(['chat'])
++    const sessionStorage = storage(), pending = { epoch: 'current', requestId: 'local-request', intent: 'new-task', text: g.documentInstruction, documentOrigin }
++    sessionStorage.setItem('draft:current', JSON.stringify({ draft: g.documentInstruction, intent: 'new-task', documentOrigin, pending }))
++    const read = closure('readComposer', { blankComposer: closure('blankComposer'), validDocumentOrigin: closure('validDocumentOrigin'), sessionStorage, storageKey: (epoch: string) => `draft:${epoch}` })
++    expect(plain(read('current'))).toMatchObject({ documentOrigin, pending }); expect(read('other').documentOrigin).toBeNull()
++  })
++
+   it('preserves the exact pending recovery payload and task target rather than converting it to a new plan', () => {
+     const blankComposer = closure('blankComposer'), sessionStorage = storage()
+     const pending = { epoch: 'current', requestId: 'request-1', text: 'Original input', intent: 'ticket-input', ticketId: 'ticket-A' }
+@@ -189,6 +214,7 @@ describe('actual reply baseline and explicit reading closures', () => {
+     const submit = closure('submit', {
+       sendBusy: { current: false }, epochRef: { current: 'current' }, draftEpochRef: { current: 'current' }, historyRef: { current: 'current' },
+       workspaceRef: { current: { capabilities: { send: true } } }, composerRef: { current: saved },
++      imageBusyRef: { current: null }, imageDraftsRef: { current: {} }, array: (value: any) => Array.isArray(value) ? value : [],
+       replyBaselineReady: h.replyBaselineReady, replyReadThrough: h.replyReadThrough, conversations: h.conversations,
+       sessionStorage: h.shared, validDocumentOrigin: closure('validDocumentOrigin'), mintId: () => 'immutable-request', TextEncoder, AbortController,
+       sendController: { current: null }, alive: { current: true }, setSending() {}, updateComposer() {},
+diff --git a/tests/workspace/document-origin.test.ts b/tests/workspace/document-origin.test.ts
+index 4a19f85..7d54401 100644
+--- a/tests/workspace/document-origin.test.ts
++++ b/tests/workspace/document-origin.test.ts
+@@ -100,6 +100,15 @@ describe('document provenance binds real human commands without authorizing evid
+     expect(validDocumentOrigin({ ...origin(), [Symbol('hidden')]: 'bad' })).toBe(false)
+     expect(validDocumentOrigin(Object.assign(Object.create({ inherited: true }), origin()))).toBe(false)
+   })
++  it('accepts only the explicit local kind and binds it distinctly from the same wecom hashes without coercing objects', () => {
++    const local = origin({ kind: 'local-document' }); expect(validDocumentOrigin(local)).toBe(true)
++    const h = fixture(), input = h.input(local); expect(() => validateCommand(input)).not.toThrow()
++    expect(commandDigest(input)).not.toBe(commandDigest({ ...input, documentOrigin: origin() }))
++    const toString = vi.fn(() => 'local-document')
++    expect(validDocumentOrigin({ ...local, kind: { toString } })).toBe(false); expect(toString).not.toHaveBeenCalled()
++    expect(validDocumentOrigin({ ...local, kind: 'local' })).toBe(false)
++  })
++
+   it('requires authority and reserves one item/request before the only genuine human followup', async () => {
+     const h = fixture(), noAuthority = h.ingress(false), selected = h.input(origin())
+     await expect(noAuthority.ingress.submit(selected)).rejects.toMatchObject({ code: 'document_origin_unavailable' })
+diff --git a/tests/workspace/documents.test.ts b/tests/workspace/documents.test.ts
+index 9d074eb..f26435f 100644
+--- a/tests/workspace/documents.test.ts
++++ b/tests/workspace/documents.test.ts
+@@ -62,6 +62,15 @@ describe('manual document Source coordinator with real SQLite and explicit fake
+     expect(f.store.repos.ticket.all()).toHaveLength(0)
+     expect(f.store.repos.trigger_disposition.all()[0]?.filtered).toBe('untrusted')
+   })
++  it('does not let the local-document kind borrow a wecom authority with otherwise matching hashes', async () => {
++    const f = await fixture(); await f.docs.scan(source.id)
++    const local = { ...origin(f.docs), kind: 'local-document' as const }
++    expect(() => f.docs.authority.validate(local, randomUUID())).toThrow('document_origin_invalid')
++    expect(() => f.docs.authority.reserve(local, randomUUID())).toThrow('document_origin_invalid')
++    expect(() => f.docs.authority.context(local, randomUUID())).toThrow('document_origin_invalid')
++    expect(f.store.repos.ticket.all()).toEqual([])
++  })
++
+   it('repeated reads and row movement retain one Trigger/item and never build a Ticket', async () => {
+     const f = await fixture(); await f.docs.scan(source.id)
+     const old = origin(f.docs)

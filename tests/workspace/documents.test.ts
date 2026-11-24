@@ -62,6 +62,16 @@ describe('manual document Source coordinator with real SQLite and explicit fake 
     expect(f.store.repos.ticket.all()).toHaveLength(0)
     expect(f.store.repos.trigger_disposition.all()[0]?.filtered).toBe('untrusted')
   })
+  it('does not let the local-document kind borrow a wecom authority with otherwise matching hashes', async () => {
+    const f = await fixture(); await f.docs.scan(source.id)
+    const local = { ...origin(f.docs), kind: 'local-document' as const }
+    expect(() => f.docs.authority.validate(local, randomUUID())).toThrow('document_origin_invalid')
+    expect(() => f.docs.authority.reserve(local, randomUUID())).toThrow('document_origin_invalid')
+    expect(() => f.docs.authority.context(local, randomUUID())).toThrow('document_origin_invalid')
+    expect(() => f.docs.authority.link(local, randomUUID(), 'unrelated-ticket')).toThrow('document_origin_invalid')
+    expect(f.store.repos.ticket.all()).toEqual([])
+  })
+
   it('repeated reads and row movement retain one Trigger/item and never build a Ticket', async () => {
     const f = await fixture(); await f.docs.scan(source.id)
     const old = origin(f.docs)

@@ -1,0 +1,82 @@
+
+ RUN  v3.2.4 /Users/dundundebaba/sync/dsh-s-p
+
+ ❯ tests/workspace/runtime.test.ts (39 tests | 1 failed) 3516ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G3 wires exact PNG originals and target binding without delivery, revoking even after scope restoration 47ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G4 wires explicit roots, journaled manual capture and original image into an independent untrusted draft only 234ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > hands a reviewed local text item through the production planning port with provenance, explicit approval, and no Worker execution  307ms
+   × workspace runtime: real SQLite and explicitly fake Host contract > isolates a stale local planning command on restart without blocking unrelated workspace recovery 183ms
+     → expected { …(8) } to match object { accepted: true, stage: 'processing' }
+(6 matching properties omitted from actual)
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G5 saves journaled per-stage metadata using catalog APIs without changing an existing Agent model or running one 21ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > snapshots a queued stage save before caller mutation so persisted config still matches the journal digest 19ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G6 never strips approval intent into an answerable business decision 16ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G6 never strips plan-review intent into an answerable business decision 15ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G6 exact bounded projection keeps live-continued non-dispatching and stores no answer text 20ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G6 exact bounded projection keeps cold-continued non-dispatching and stores no answer text 19ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G6 exact bounded projection keeps live-open non-dispatching and stores no answer text 20ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > G6 closes an absent original answer ID through the production panel port without target activation or dispatch 22ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > isolates a failed or resyncing work preview from the normal workspace and human command path 19ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > defaults to read-only ordinary session work and persists manual exclusion without a Ticket or Agent wake 32ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > persists project scope and ABA fences through real SQLite restart, and lookup never dispatches 40ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > prepares exact ordinary-session control metadata but keeps production blocked before cold activation or dispatch 37ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > manually collects no-format document evidence, binds a real request, confirms exactly once and never bypasses production execution 90ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > manually collects unknown-format document evidence, binds a real request, confirms exactly once and never bypasses production execution 81ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > is cold at ready and exposes workspace/conversation without waking a model or starting a Worker 20ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > deduplicates same-ID tab retries, rejects changed body, and keeps same-body different IDs independent 26ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > requires a trusted current new-task turn and approval of the exact immutable plan before one ticket exists 24ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > makes stale-tab plans and expired confirmations fail closed without admitting a different plan 19ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > does not reinterpret body text as authority, epoch, target or a self-approval 20ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > injects an A supplement without waking Router and maps it only to engine lineage A, never the latest B 38ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > keeps false-flush input pending then recovers its unique splice after SQLite reopen without re-followup 32ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > publishes a structured acceptance summary through Outbox without another human message or model wake 23ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > retains unknown result delivery with false flush, then recovers exactly one notice and one Outbox row 66ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > rejects incomplete structured acceptance instead of announcing completed work 34ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > keeps a rejected admission terminal across status, exact resubmit and SQLite recovery while releasing its pending slot 47ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > persists an inherited live Worker ended before production ready interrupts it and keeps every start path closed 76ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > rotates a missing canonical Router epoch, keeps old history read-only and routes current-epoch input by archived ticket lineage 42ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > completes ordinary messages without task Triggers or leaked capacity across repeated one-slot turns 47ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > revises only the current exact owner plan without a new command or Trigger and approves only its replacement brief 25ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > expires a one-slot pending plan at its exact deadline and keeps the terminal release across tick and SQLite reopen 52ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > pages more than 100 active plans without loss and approves the off-page exact plan through the route filter  1564ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > keeps supplements to archived owned Tickets admitted after configured document Sources make the allowlist nonempty 36ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > recreates a human-stopped archived task only as a fresh confirmed plan with durable origin and independent thread 46ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > rejects recreation from running, foreign or mismatched-lineage tickets and binds recreateFrom into request identity 34ms
+   ✓ workspace runtime: real SQLite and explicitly fake Host contract > never promotes synthetic fake-Spawner execution permission into the production runtime 24ms
+ ✓ tests/workspace/documents.test.ts (11 tests) 1477ms
+   ✓ manual document Source coordinator with real SQLite and explicit fake connector > pages more than 100 local candidates without another connector read or loss  1129ms
+ ✓ tests/workspace/document-origin.test.ts (17 tests) 269ms
+ ✓ tests/client/composer-state.test.ts (13 tests) 309ms
+ ✓ tests/panel/go-slices.test.ts (5 tests) 170ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/workspace/runtime.test.ts > workspace runtime: real SQLite and explicitly fake Host contract > isolates a stale local planning command on restart without blocking unrelated workspace recovery
+AssertionError: expected { …(8) } to match object { accepted: true, stage: 'processing' }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "accepted": true,
+-   "stage": "processing",
++   "stage": "published",
+  }
+
+ ❯ tests/workspace/runtime.test.ts:348:96
+    346|     const localRecord = f.store.repos.side_effect.get(`workspace-comma…
+    347|     expect(localRecord).toMatchObject({ stage: 'rejected', error: 'doc…
+    348|     expect(await f.runtime.panelPorts.commandStatus({ epoch, requestId…
+       |                                                                                                ^
+    349|     expect(f.store.repos.ticket.all()).toEqual([]); expect(f.calls.fol…
+    350|     expect((await f.runtime.panelPorts.workspace()).state).toBe('ready…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  1 failed | 84 passed (85)
+   Start at  14:02:41
+   Duration  8.37s (transform 405ms, setup 0ms, collect 870ms, tests 5.74s, environment 0ms, prepare 363ms)
+

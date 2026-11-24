@@ -3,7 +3,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-watchdog
-        name: Superagent Watchdog
+        name: Go Watchdog
         description: Read-only assignment observation and later intervention seam.
         plugins:
           - id: watchdog-fs
@@ -13,4 +13,4 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config: { sampleOverCapGlobResults: false }
           - id: watchdog-business
-            name: dsh-superagent/watchdog
+            name: dsh-go/watchdog
