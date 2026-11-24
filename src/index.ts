@@ -25,6 +25,7 @@ export interface PluginContext {
   workspaceRegistry?: RuntimeContext['workspaceRegistry']
   sessions?: RuntimeContext['sessions']
   agentDefaultModel?: RuntimeContext['agentDefaultModel']
+  userQuestions?: RuntimeContext['userQuestions']
   llm?: RuntimeContext['llm']
   on?: RuntimeContext['on']
 }

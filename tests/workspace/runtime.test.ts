@@ -44,7 +44,7 @@ const approve = (plan: AdmissionPlanDTO) => ({ epoch: plan.epoch, requestId: pla
 async function drainTasks() { for (let i = 0; i < 4; i++) await new Promise<void>(done => setImmediate(done)) }
 
 /** Real on-disk SQLite + explicit fake Host. No provider/service is reachable. */
-function fixture(options: { production?: boolean; config?: Partial<Config>; attachments?: boolean; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string>; projects?: Array<{id:string;title:string;sessionIds:string[]}> } } = {}) {
+function fixture(options: { production?: boolean; config?: Partial<Config>; attachments?: boolean; userQuestions?: boolean; sessionWork?: { records: any[]; values: Map<string, Record<string, unknown>>; reads: string[]; denied?: Set<string>; projects?: Array<{id:string;title:string;sessionIds:string[]}> } } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'workspace-runtime-')))
   const config = resolveConfig({ ...defaults, stateDir: dir, dbPath: '', lockPath: '', workRoot: '', sources: [],
     confirm: 'always', watchdogIntervalMs: 60_000, ...options.config } as Config)
@@ -54,7 +54,7 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; atta
   const listeners = new Map<string, Set<(...args: any[]) => unknown>>()
   const missingSessions = new Set<string>()
   const interruptions: Array<{ id: string; ticketState?: unknown; currentAssignment?: unknown; assignmentState?: unknown; endedReason?: unknown }> = []
-  const calls = { followup: [] as Message[], inject: [] as Message[], realActivation: vi.fn(), model: vi.fn(), modelCall: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(), resume: vi.fn(), cancel: vi.fn(), history: vi.fn(), snapshots: [] as Array<{ id: string; keys: string[] }>, saveImage: [] as Array<{ data: Uint8Array; mediaType: string; name?: string; ref: any }> }
+  const calls = { followup: [] as Message[], inject: [] as Message[], realActivation: vi.fn(), model: vi.fn(), modelCall: vi.fn(), listProviders: vi.fn(), listModels: vi.fn(), resume: vi.fn(), cancel: vi.fn(), history: vi.fn(), snapshots: [] as Array<{ id: string; keys: string[] }>, saveImage: [] as Array<{ data: Uint8Array; mediaType: string; name?: string; ref: any }>, userAnswers: [] as Array<{ sessionId: string; callId: string; answers: any }> }
   // Exact Fake Host visual capability: null/undefined modalities are an honest unknown.
   let imageModalities: readonly string[] | null = ['text', 'image']
   let durable = true, modelVerified = true, turns = 0, modelWait: (() => Promise<void>) | undefined
@@ -106,8 +106,55 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; atta
       if (!modelVerified) throw new Error('fake model is unavailable')
       return { provider, id: model, name: 'Verified fake model', reasoning: { efforts: [{ id: 'medium', name: 'Medium' }] }, ...(imageModalities === null ? {} : { inputModalities: [...imageModalities] }) }
     } }
-  const services: Record<string, any> = { agentPresets, agentDefaultModel, sessionPersistence, llm }
+  /**
+   * Mutable exact timed-question projection for the real answer seam. Campaign tests seed one continued
+   * call; a successful Host answer admits the reply into the log and settles exactly that call.
+   */
+  const questionStates = new Map<string, { asOfSeq: number; active: any[]; settled: any[] }>()
+  const questionState = (id: string) => {
+    const current = questionStates.get(id)
+    if (current) return current
+    const raw = options.sessionWork?.values.get(id)?.userQuestions as { active?: unknown } | undefined
+    const created = { asOfSeq: 3, active: structuredClone(Array.isArray(raw?.active) ? raw.active : []), settled: [] as any[] }
+    questionStates.set(id, created)
+    return created
+  }
+  const coded = (code: string) => Object.assign(new Error(code), { name: 'UserQuestionError', code })
+  const queuedReplies = new Map<string, Set<string>>()
+  let answerMode: 'ok' | 'false' | 'throw' | 'reply-queued' | 'bad' = 'ok', answerAdmits = true
+  const userQuestions = {
+    /** Exact rc.5 semantics: live ordinary root, continued call, one reply per call, boolean admission. */
+    answer(agent: any, callId: string, answer: { answers: readonly { id: string; selected: readonly string[]; custom?: string }[] }) {
+      calls.userAnswers.push({ sessionId: String(agent?.id), callId, answers: structuredClone([...answer.answers]) })
+      if (!agent || agents.get(agent.id) !== agent) throw coded('CALLER_NOT_LIVE')
+      if (agent.session?.header?.origin === 'subagent') throw coded('DELEGATED_CALLER')
+      if (answerMode === 'throw') throw coded('UNKNOWN_ANSWER_FAILURE')
+      if (answerMode === 'false') return false
+      if (answerMode === 'reply-queued') throw coded('REPLY_QUEUED')
+      if (answerMode === 'bad') throw coded('BAD_ANSWER')
+      const state = questionState(agent.id)
+      const question = state.active.find((call: any) => call.callId === callId && call.state === 'continued')
+      if (!question) return false
+      const ids = new Set(answer.answers.map(item => item.id))
+      if (ids.size !== answer.answers.length || question.questions.length !== answer.answers.length || !question.questions.every((item: any) => ids.has(item.id))) throw coded('BAD_ANSWER')
+      const queued = queuedReplies.get(agent.id) ?? new Set<string>()
+      if (queued.has(callId)) throw coded('REPLY_QUEUED')
+      queued.add(callId); queuedReplies.set(agent.id, queued)
+      const message = { id: randomUUID(), role: 'user', content: [{ type: 'text', text: JSON.stringify({ kind: 'answer_to_pending_question', tool: 'ask_user_question', callId, questions: question.questions, answers: answer.answers }) }], source: { kind: 'user-question-reply', callId, outcome: 'answered' } }
+      try { agent.steer?.(message) } catch (error) { queued.delete(callId); throw error }
+      // Queued replies can still be discarded before admission; a non-admitting Host keeps it unresolved.
+      if (answerAdmits) {
+        append(agent.id, 'user/message', message)
+        state.active = state.active.filter((call: any) => call.callId !== callId)
+        state.settled = [...state.settled, { callId, answers: structuredClone(answer.answers) }]
+        state.asOfSeq++
+      }
+      return true
+    },
+  }
+  const services: Record<string, any> = { agentPresets, agentDefaultModel, sessionPersistence, llm, ...(options.userQuestions === false ? {} : { userQuestions }) }
   const ctx: RuntimeContext = {
+    ...(options.userQuestions === false ? {} : { userQuestions }),
     workspaceRegistry: { list: () => options.sessionWork?.projects ?? [] },
     remoteAccess: { allows({id}) { return !options.sessionWork?.denied?.has(id) } },
     get(name: string) { return name === 'sessionPersistence' ? (persistenceAvailable ? sessionPersistence : undefined) : services[name] },
@@ -115,13 +162,20 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; atta
       calls.snapshots.push({ id: session.id, keys: [...keys] })
       const projected = options.sessionWork?.values.get(session.id) ?? {}
       const values: Record<string, unknown> = {}
+      let asOfSeq = 3
       for (const key of keys) {
         if (key === 'agentPreset') { values.agentPreset = headers.get(session.id)?.agentPreset ?? null; continue }
         if (key === 'modelSelection') { values.modelSelection = { lastUsed: wakeSelections.get(session.id) ?? null, next: null }; continue }
+        if (key === 'userQuestions') {
+          const state = questionState(session.id)
+          values.userQuestions = { active: structuredClone(state.active), settled: structuredClone(state.settled) }
+          asOfSeq = state.asOfSeq
+          continue
+        }
         if (key in projected) values[key] = projected[key]
       }
       // Honor the selected projection keys; no full transcript or settled answers are read.
-      return { asOfSeq: 3, values }
+      return { asOfSeq, values }
     } },
     effect(factory) { return factory() },
     on(name, callback) {
@@ -223,10 +277,12 @@ function fixture(options: { production?: boolean; config?: Partial<Config>; atta
   })
   return {
     get store() { return store }, get runtime() { return runtime }, calls, workers: workerHandles, interruptions,
+    questionState, setAnswerMode(value: 'ok' | 'false' | 'throw' | 'reply-queued' | 'bad') { answerMode = value },
+    setAnswerAdmits(value: boolean) { answerAdmits = value },
     stateDir: () => dir, setImageModalities(value: readonly string[] | null) { imageModalities = value }, setSaveImageFailure(value: Error | undefined) { saveImageFailure = value },
     imageOriginalPath: (digestHex: string) => join(dir, 'image-originals', digestHex + '.png'),
     mountedPresets, disposedHandles, createdSessions, modelSet, wakeReceived, headers, wakeSelections,
-    seedExternal(id: string) { const agent = { id, status: 'idle', model: { current: vi.fn(() => ({ provider: 'original-provider', model: 'original-model' })), set: vi.fn() }, answer: vi.fn(), steer: vi.fn(), followup: vi.fn() }; agents.set(id, agent); return agent },
+    seedExternal(id: string) { logs.set(id, []); const agent: any = { id, status: 'idle', session: { id, header: {} }, model: { current: vi.fn(() => ({ provider: 'original-provider', model: 'original-model' })), set: vi.fn() }, answer: vi.fn(), steer: vi.fn(), followup: vi.fn() }; agents.set(id, agent); return agent },
     router: () => router, events: () => logs.get(router.id)!,
     restoreHistory(id: string) { missingSessions.delete(id) },
     seedLiveWorker(ticketId: string) {
@@ -448,30 +504,171 @@ describe('workspace runtime: real SQLite and explicitly fake Host contract', () 
     expect(f.calls.realActivation).not.toHaveBeenCalled(); expect(f.calls.resume).not.toHaveBeenCalled()
   })
 
-  it.each(['live-continued', 'cold-continued', 'live-open'])('G6 exact bounded projection keeps %s non-dispatching and stores no answer text', async mode => {
+  it.each(['cold-continued', 'live-open'])('G6 exact bounded projection keeps %s non-dispatching and stores no answer text', async mode => {
     const observations = observation({ active: [{ callId: 'call-one', state: mode === 'live-open' ? 'open' : 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }], settled: [{ answers: ['PRIVATE HISTORY ANSWER'] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
     const agent = mode.startsWith('live') ? f.seedExternal(observations.id) : undefined
     const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
     f.calls.history.mockClear(); f.calls.snapshots.length = 0
     const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
-    expect(listed).toMatchObject({ complete: true, availability: agent ? 'live' : 'cold', canAnswer: false, calls: [{ callId: 'call-one', canAnswer: false }] })
+    expect(listed).toMatchObject({ complete: true, availability: agent ? 'live' : 'cold', canAnswer: Boolean(agent), approval: false,
+      uncovered: [{ kind: 'legacy-blocking-question' }, { kind: 'dsh-generic-approval' }], calls: [{ callId: 'call-one', state: mode === 'live-open' ? 'open' : 'continued', canAnswer: false }] })
+    if (!agent) expect(listed).toMatchObject({ code: 'session_decision_answer_unavailable' }); else expect(listed).not.toHaveProperty('code')
     expect(f.calls.snapshots.some(cut => cut.keys.length === 1 && cut.keys[0] === 'userQuestions')).toBe(true)
     expect(f.calls.snapshots.every(cut => cut.keys.join(',') === 'userQuestions' || cut.keys.join(',') === 'title,goal,todos,agentTeam,userQuestions')).toBe(true)
     expect(f.calls.history).not.toHaveBeenCalled(); expect(JSON.stringify(listed)).not.toContain('PRIVATE HISTORY ANSWER')
     const actionId = randomUUID(), input = { action: 'prepare', epoch, target, actionId, requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'], custom: 'PRIVATE EXACT ANSWER' }] }
-    if (mode === 'live-continued') {
-      const receipt = await f.runtime.panelPorts.sessionDecision(input)
-      expect(receipt).toMatchObject({ state: 'blocked', code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED', executed: false, completed: false, approval: false })
-      const persisted = JSON.stringify(f.store.repos.side_effect.get(`session-decision:v1:${actionId}`))
-      expect(persisted).not.toContain('PRIVATE EXACT ANSWER'); expect(persisted).not.toContain('Choose scope')
-      expect(await f.runtime.panelPorts.sessionDecision({ action: 'status', epoch, actionId })).toEqual(receipt)
-    } else await expect(f.runtime.panelPorts.sessionDecision(input)).rejects.toMatchObject({ code: mode === 'live-open' ? 'session_decision_not_continued' : 'session_decision_target_not_live' })
+    await expect(f.runtime.panelPorts.sessionDecision(input)).rejects.toMatchObject({ code: mode === 'live-open' ? 'session_decision_not_continued' : 'session_decision_target_not_live' })
+    expect(f.calls.userAnswers).toEqual([])
     await f.runtime.panelPorts.sessionWork({ action: 'set-included', epoch, sessionId: observations.id, included: false, revision: target.scopeRevision })
     observations.reads.length = 0; f.calls.snapshots.length = 0
     await expect(f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })).rejects.toMatchObject({ status: 409 })
     expect(observations.reads).toEqual([]); expect(f.calls.snapshots).toEqual([])
-    if (agent) { expect(agent.answer).not.toHaveBeenCalled(); expect(agent.steer).not.toHaveBeenCalled() }
     expect(f.calls.realActivation).not.toHaveBeenCalled(); expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.modelCall).not.toHaveBeenCalled()
+  })
+
+  it('G8 answers one exact continued call through the installed Host seam and never re-answers or re-reads', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }, { label: 'B' }] }] }], settled: [{ answers: ['PRIVATE HISTORY ANSWER'] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const agent = f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    f.calls.history.mockClear()
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    expect(listed).toMatchObject({ availability: 'live', complete: true, canAnswer: true, approval: false, calls: [{ callId: 'call-one', state: 'continued', canAnswer: true }],
+      uncovered: [{ kind: 'legacy-blocking-question' }, { kind: 'dsh-generic-approval' }] })
+    expect(JSON.stringify(listed)).not.toContain('PRIVATE HISTORY ANSWER')
+    const actionId = randomUUID(), input = { action: 'prepare', epoch, target, actionId, requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'], custom: 'PRIVATE EXACT ANSWER\n未裁剪原文' }] }
+    const receipt: any = await f.runtime.panelPorts.sessionDecision(input)
+    // The Host boolean is admission of the reply into the live inbox, never completion or approval.
+    expect(receipt).toMatchObject({ state: 'accepted', accepted: true, acceptedBy: 'host-answer', disposition: 'host-queue-accepted', approval: false, executed: null, completed: null })
+    expect(f.calls.userAnswers).toHaveLength(1)
+    expect(f.calls.userAnswers[0]).toEqual({ sessionId: observations.id, callId: 'call-one', answers: [{ id: 'q', selected: ['A'], custom: 'PRIVATE EXACT ANSWER\n未裁剪原文' }] })
+    expect(f.calls.history).toHaveBeenCalledTimes(0)
+    // Same request/action is idempotent: no second Host answer, identical receipt.
+    expect(await f.runtime.panelPorts.sessionDecision(input)).toEqual(receipt)
+    expect(f.calls.userAnswers).toHaveLength(1)
+    expect(await f.runtime.panelPorts.sessionDecision({ action: 'status', epoch, actionId })).toEqual(receipt)
+    expect(f.calls.userAnswers).toHaveLength(1)
+    const persisted = JSON.stringify([f.store.repos.side_effect.all(), f.store.repos.kv.all()])
+    for (const marker of ['PRIVATE EXACT ANSWER', '未裁剪原文', 'Choose scope', '"A"']) expect(persisted).not.toContain(marker)
+    expect(JSON.stringify(receipt)).not.toContain('PRIVATE EXACT ANSWER')
+    expect(f.calls.realActivation).not.toHaveBeenCalled(); expect(f.calls.resume).not.toHaveBeenCalled(); expect(f.calls.modelCall).not.toHaveBeenCalled()
+    expect(agent.steer).toHaveBeenCalledTimes(1)
+  })
+
+  it('G8 reconciles an uncertain Host answer only from exact settlement and never answers twice', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    f.setAnswerMode('throw')
+    const actionId = randomUUID(), input = { action: 'prepare', epoch, target, actionId, requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'] }] }
+    expect(await f.runtime.panelPorts.sessionDecision(input)).toMatchObject({ state: 'dispatch_unknown', accepted: false, approval: false, disposition: 'reconcile-only' })
+    expect(f.calls.userAnswers).toHaveLength(1)
+    // Another call (different action) must not slip past an outstanding unknown fence.
+    const other: any = await f.runtime.panelPorts.sessionDecision({ ...input, requestId: randomUUID(), actionId: randomUUID() })
+    expect(other).toMatchObject({ state: 'blocked', code: 'session_decision_target_unknown' })
+    expect(f.calls.userAnswers).toHaveLength(1)
+    // The admitted reply settles exactly this call; reconcile promotes it without resubmitting.
+    f.setAnswerMode('ok')
+    const settled = await f.runtime.panelPorts.sessionDecision(input)
+    expect(settled).toMatchObject({ state: 'dispatch_unknown' })
+    const cut = f.questionState(observations.id), question = cut.active.find((call: any) => call.callId === 'call-one')
+    expect(question).toBeTruthy()
+    // Simulate the Host admitting the queued reply on its own schedule, then a status-only reconcile.
+    cut.active = cut.active.filter((call: any) => call.callId !== 'call-one'); cut.settled = [...cut.settled, { callId: 'call-one', answers: [{ id: 'q', selected: ['A'] }] }]; cut.asOfSeq++
+    expect(await f.runtime.panelPorts.sessionDecision({ action: 'status', epoch, actionId })).toMatchObject({ state: 'accepted', acceptedBy: 'target-settled', disposition: 'target-durable-receipt', approval: false, completed: null })
+    expect(f.calls.userAnswers).toHaveLength(1)
+  })
+
+  it('G8 records Host admission without claiming settlement when the reply is only queued', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    f.setAnswerAdmits(false)
+    const actionId = randomUUID(), input = { action: 'prepare', epoch, target, actionId, requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'] }] }
+    const receipt: any = await f.runtime.panelPorts.sessionDecision(input)
+    expect(receipt).toMatchObject({ state: 'accepted', acceptedBy: 'host-answer', disposition: 'host-queue-accepted', approval: false, executed: null, completed: null })
+    // The projection still lists the call: no settlement evidence exists and none is fabricated.
+    expect(f.questionState(observations.id).active).toHaveLength(1)
+    expect(await f.runtime.panelPorts.sessionDecision({ action: 'status', epoch, actionId })).toEqual(receipt)
+    expect(f.calls.userAnswers).toHaveLength(1)
+    // A second, distinct action is refused by the Host's own single-reply guard, never answered twice.
+    const retry: any = await f.runtime.panelPorts.sessionDecision({ ...input, requestId: randomUUID(), actionId: randomUUID() })
+    expect(retry).toMatchObject({ state: 'blocked', code: 'session_decision_answer_already_queued', accepted: false })
+    expect(f.calls.userAnswers).toHaveLength(2)
+  })
+
+  it('G8 reconciles an uncertain answer only by exact settlement after a restart and never resends', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    f.setAnswerMode('throw')
+    const actionId = randomUUID(), input = { action: 'prepare', epoch, target, actionId, requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'], custom: 'PRIVATE RESTART ANSWER' }] }
+    expect(await f.runtime.panelPorts.sessionDecision(input)).toMatchObject({ state: 'dispatch_unknown', accepted: false })
+    expect(f.calls.userAnswers).toHaveLength(1)
+    // The Host admits the reply on its own schedule while this process is gone.
+    const cut = f.questionState(observations.id)
+    cut.active = cut.active.filter((call: any) => call.callId !== 'call-one'); cut.settled = [...cut.settled, { callId: 'call-one', answers: [{ id: 'q', selected: ['A'], custom: 'PRIVATE RESTART ANSWER' }] }]; cut.asOfSeq++
+    await f.restart({ production: true })
+    expect(await f.runtime.panelPorts.sessionDecision({ action: 'status', epoch: (await f.runtime.panelPorts.workspace()).epoch, actionId })).toMatchObject({ state: 'accepted', acceptedBy: 'target-settled', approval: false, completed: null })
+    expect(f.calls.userAnswers).toHaveLength(1)
+    const persisted = JSON.stringify([f.store.repos.side_effect.all(), f.store.repos.kv.all()])
+    for (const marker of ['PRIVATE RESTART ANSWER', 'Choose scope']) expect(persisted).not.toContain(marker)
+  })
+
+  it.each([
+    ['false', 'blocked', 'session_decision_not_continued'],
+    ['bad', 'blocked', 'session_decision_answer_mismatch'],
+    ['reply-queued', 'blocked', 'session_decision_answer_already_queued'],
+  ] as const)('G8 never claims acceptance for a %s Host answer', async (mode, state, code) => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    f.setAnswerMode(mode as any)
+    const receipt: any = await f.runtime.panelPorts.sessionDecision({ action: 'prepare', epoch, target, actionId: randomUUID(), requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'] }] })
+    expect(receipt).toMatchObject({ state, accepted: false, executed: false, completed: false, approval: false, code })
+    expect(f.calls.userAnswers).toHaveLength(1)
+    expect(f.questionState(observations.id).active).toHaveLength(1)
+  })
+
+  it('G8 refuses changed snapshots, scope, cold targets and delegated callers before any Host answer', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    const agent = f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    const base = { action: 'prepare', epoch, target, requestId: randomUUID(), actionId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'] }] }
+    await expect(f.runtime.panelPorts.sessionDecision({ ...base, snapshot: { ...base.snapshot, revision: 'f'.repeat(64) } })).rejects.toMatchObject({ code: 'session_decision_question_changed' })
+    await expect(f.runtime.panelPorts.sessionDecision({ ...base, requestId: randomUUID(), actionId: randomUUID(), target: { ...target, scopeRevision: 'e'.repeat(64) } })).rejects.toMatchObject({ status: 409 })
+    await expect(f.runtime.panelPorts.sessionDecision({ ...base, requestId: randomUUID(), actionId: randomUUID(), answers: [{ id: 'foreign', selected: ['A'] }] })).rejects.toMatchObject({ code: 'session_decision_answer_mismatch', status: 400 })
+    await expect(f.runtime.panelPorts.sessionDecision({ ...base, requestId: randomUUID(), actionId: randomUUID(), answers: [{ id: 'q', selected: ['not-offered'] }] })).rejects.toMatchObject({ code: 'session_decision_answer_mismatch', status: 400 })
+    await expect(f.runtime.panelPorts.sessionDecision({ ...base, requestId: randomUUID(), actionId: randomUUID(), answers: [{ id: 'q', selected: ['A'] }, { id: 'extra', selected: [], custom: 'extra' }] })).rejects.toMatchObject({ code: 'session_decision_answer_mismatch', status: 400 })
+    // A delegated caller is refused by the exact answer authority, not silently answered.
+    agent.session = { id: observations.id, header: { origin: 'subagent' } }
+    expect(await f.runtime.panelPorts.sessionDecision({ ...base, requestId: randomUUID(), actionId: randomUUID() })).toMatchObject({ state: 'blocked', code: 'session_decision_delegated_caller', accepted: false })
+    expect(f.calls.userAnswers).toEqual([])
+  })
+
+  it('G8 blocks honestly when the installed Host exposes no answer service and never fakes an answer', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, userQuestions: false, sessionWork: observations }); await f.runtime.ready
+    f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    expect(listed).toMatchObject({ availability: 'live', complete: true, canAnswer: false, code: 'session_decision_answer_unavailable', calls: [{ callId: 'call-one', canAnswer: false }] })
+    const receipt: any = await f.runtime.panelPorts.sessionDecision({ action: 'prepare', epoch, target, actionId: randomUUID(), requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'] }] })
+    expect(receipt).toMatchObject({ state: 'blocked', code: 'session_decision_adapter_unavailable', accepted: false, executed: false, approval: false })
+    expect(f.calls.userAnswers).toEqual([])
+  })
+
+  it('G8 rejects a stale epoch before answering', async () => {
+    const observations = observation({ active: [{ callId: 'call-one', state: 'continued', questions: [{ id: 'q', question: 'Choose scope', options: [{ label: 'A' }] }] }] }), f = fixture({ production: true, sessionWork: observations }); await f.runtime.ready
+    f.seedExternal(observations.id)
+    const epoch = (await f.runtime.panelPorts.workspace()).epoch, target = await targetInput(f, epoch)
+    const listed: any = await f.runtime.panelPorts.sessionDecision({ action: 'list', epoch, target })
+    const input = { action: 'prepare', epoch: 'stale-decisions-epoch', target, actionId: randomUUID(), requestId: randomUUID(), callId: 'call-one', snapshot: { asOfSeq: listed.asOfSeq, revision: listed.snapshotRevision }, answers: [{ id: 'q', selected: ['A'] }] }
+    await expect(f.runtime.panelPorts.sessionDecision(input)).rejects.toMatchObject({ status: 409 })
+    expect(f.calls.userAnswers).toEqual([])
   })
   it('G6 closes an absent original answer ID through the production panel port without target activation or dispatch', async () => {
     const f = fixture({ production: true }); await f.runtime.ready

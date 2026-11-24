@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { encodeJson, openStore, type Store } from '../../src/store/index.js'
 import { WorkspaceError } from '../../src/workspace/commands.js'
 import { createSessionDecisions, sessionDecisionDigest, sessionDecisionSnapshotDigest, validSessionDecision,
-  type SessionDecisionInput, type SessionDecisionPorts, type SessionDecisionProjection, type SessionDecisionRecord, type SessionDecisionEvidence, type SessionDecisionClosure,
+  type SessionDecisionInput, type SessionDecisionPorts, type SessionDecisionProjection, type SessionDecisionRecord, type SessionDecisionEvidence, type SessionDecisionClosure, type SessionDecisionDispatchDecision,
 } from '../../src/workspace/session-decisions.js'
 import type { SessionTargetBinding } from '../../src/workspace/session-actions.js'
 
@@ -53,6 +53,7 @@ function fixture() {
       { id: 'notes', question: '还有哪些条件？', multiSelect: true, options: [{ label: '回归' }, { label: '文档' }] },
     ] }] } as SessionDecisionProjection,
     deny: false, evidenceUnavailable: false, dispatchThrows: false, noTargetReceipt: false,
+    dispatchDecision: undefined as ((record: SessionDecisionRecord) => SessionDecisionDispatchDecision | void | undefined) | undefined,
     gateWait: undefined as (() => Promise<void>) | undefined,
     evidenceOverride: undefined as ((v: SessionDecisionEvidence | undefined) => unknown) | undefined,
     projectionOverride: undefined as ((v: any) => any) | undefined,
@@ -75,6 +76,7 @@ function fixture() {
       const result = { ...projection, snapshotRevision: sessionDecisionSnapshotDigest(target as SessionTargetBinding, projection), fence() { if (generation !== state.questionGeneration) throw new Error('question changed') } }
       return state.projectionOverride ? state.projectionOverride(result) : result
     },
+    async authorized() { return !state.excluded },
     async gate() {
       counts.gate++
       if (state.gateWait) await state.gateWait()
@@ -92,6 +94,7 @@ function fixture() {
       sent.push(structuredClone(answer))
       if (!state.noTargetReceipt) destination.store.repos.kv.insert({ k: record.actionId, v: { actionId: record.actionId, sessionId: record.target.sessionId, callId: record.callId,
         snapshotRevision: record.snapshot.revision, digest: record.digest, durable: true, accepted: true } })
+      if (state.dispatchDecision) return state.dispatchDecision(record)
       if (state.dispatchThrows) throw new Error('synthetic acknowledgment lost')
     },
     async evidence(record) {
@@ -138,8 +141,10 @@ describe('G6 exact decisions: synthetic ports and independent durable target', (
   })
   it('lists exact bounded questions with a snapshot cut, no grant, gate, body or dispatch', async () => {
     const f = fixture(), result = await f.decisions.list(f.listInput())
-    expect(result).toMatchObject({ availability: 'live', complete: true, asOfSeq: 4, canAnswer: false, approval: false,
-      calls: [{ callId: CALL, state: 'continued', canAnswer: false, questions: [{ id: 'compat', question: '需要兼容旧系统吗？' }, { id: 'notes', question: '还有哪些条件？' }] }] })
+    expect(result).toMatchObject({ availability: 'live', complete: true, asOfSeq: 4, canAnswer: true, approval: false,
+      uncovered: [{ kind: 'legacy-blocking-question' }, { kind: 'dsh-generic-approval' }],
+      calls: [{ callId: CALL, state: 'continued', canAnswer: true, questions: [{ id: 'compat', question: '需要兼容旧系统吗？' }, { id: 'notes', question: '还有哪些条件？' }] }] })
+    expect(result).not.toHaveProperty('code')
     expect(result.snapshotRevision).toBe(f.input().snapshot.revision)
     expect(f.counts).toEqual({ target: 1, questions: 1, gate: 0, dispatch: 0, evidence: 0, body: 0 })
     expect(f.journal.store.repos.side_effect.all()).toEqual([])
@@ -196,13 +201,13 @@ describe('G6 exact decisions: synthetic ports and independent durable target', (
   })
   it.each(['cold', 'unavailable'] as const)('lists %s honestly but does not manufacture a live answer path', async availability => {
     const f = fixture(); f.state.projection.availability = availability
-    expect(await f.decisions.list(f.listInput())).toMatchObject({ availability, canAnswer: false })
+    expect(await f.decisions.list(f.listInput())).toMatchObject({ availability, canAnswer: false, code: 'session_decision_answer_unavailable' })
     await expect(f.decisions.prepare(f.input())).rejects.toMatchObject({ code: 'session_decision_target_not_live' })
     expect(f.counts).toMatchObject({ gate: 0, dispatch: 0 })
   })
   it('does not use the continued-answer API for an open foreground question', async () => {
     const f = fixture(); f.state.projection.active[0]!.state = 'open'
-    expect(await f.decisions.list(f.listInput())).toMatchObject({ calls: [{ state: 'open', canAnswer: false }] })
+    expect(await f.decisions.list(f.listInput())).toMatchObject({ calls: [{ state: 'open', canAnswer: false }], canAnswer: true })
     await expect(f.decisions.prepare(f.input())).rejects.toMatchObject({ code: 'session_decision_not_continued' })
     expect(f.counts.gate).toBe(0)
   })
@@ -217,6 +222,7 @@ describe('G6 exact decisions: synthetic ports and independent durable target', (
     ['missing question', (v: SessionDecisionInput) => { v.answers.pop() }],
     ['unknown label', (v: SessionDecisionInput) => { v.answers[0]!.selected = ['not-offered'] }],
     ['foreign question ID', (v: SessionDecisionInput) => { v.answers[0]!.id = 'foreign' }],
+    ['extra answer', (v: SessionDecisionInput) => { v.answers.push({ id: 'extra', selected: [], custom: 'extra' }) }],
   ] as const)('refuses %s before journal/gate', async (_name, change) => {
     const f = fixture(), input = f.input(); change(input)
     await expect(f.decisions.prepare(input)).rejects.toMatchObject({ code: 'session_decision_answer_mismatch', status: 400 })
@@ -368,15 +374,16 @@ describe('G6 exact decisions: synthetic ports and independent durable target', (
     expect(await f.decisions.prepare(input)).toMatchObject({ state: 'accepted' })
     expect(f.sent).toEqual([{ answers: input.answers }])
   })
-  it('keeps post-dispatch question-version changes unknown rather than reading a newly scoped receipt', async () => {
+  it('reconciles a settled answer after its own settlement changes the question snapshot, using only exact scope and evidence', async () => {
     const f = fixture(), input = f.input(); f.state.evidenceUnavailable = true
     await f.decisions.prepare(input); f.reopen()
+    // Settlement legitimately advances asOfSeq and removes the answered call from `active`.
     f.state.projection.asOfSeq++; f.state.projection.active = []; f.state.questionGeneration++
     f.state.evidenceUnavailable = false
-    const before = f.counts.evidence
-    expect(await f.decisions.status(status(input))).toMatchObject({ state: 'dispatch_unknown' })
-    expect(f.counts.evidence).toBe(before)
-    expect(f.counts.dispatch).toBe(1)
+    const evidence = f.counts.evidence
+    expect(await f.decisions.status(status(input))).toMatchObject({ state: 'accepted', acceptedBy: 'target-settled', disposition: 'target-durable-receipt', completed: null })
+    expect(f.counts.dispatch).toBe(1); expect(f.counts.evidence).toBe(evidence + 1)
+    expect(await f.decisions.prepare(input)).toMatchObject({ state: 'accepted' }); expect(f.counts.dispatch).toBe(1); expect(f.counts.evidence).toBe(evidence + 1)
   })
   it.each([
     (v: any) => ({ ...v, snapshotRevision: hash('forged') }),
@@ -753,5 +760,77 @@ describe('G6 explicit close: exact original payload, durable absence fence, neve
     assertNoBody(); f.reopen()
     expect(await f.decisions.status(status(input))).toEqual(closed); expect(await f.decisions.prepare(input)).toEqual(closed)
     assertNoBody(); expect(f.counts).toEqual({ target: 0, questions: 0, gate: 0, dispatch: 0, evidence: 0, body: 0 })
+  })
+})
+
+describe('G6 real answer dispatch decisions: one Host call, honest receipt, no replay', () => {
+  it('accepts only the Host boolean, persists the acceptance basis and never re-dispatches or re-reads a receipt', async () => {
+    const f = fixture(), input = f.input()
+    f.state.dispatchDecision = () => ({ state: 'accepted' })
+    const result = await f.decisions.prepare(input)
+    expect(result).toMatchObject({ state: 'accepted', accepted: true, durable: true, seq: 3, acceptedBy: 'host-answer',
+      disposition: 'host-queue-accepted', executed: null, completed: null, approval: false, digest: sessionDecisionDigest(input) })
+    expect(f.record(input.actionId)).toMatchObject({ state: 'accepted', acceptedBy: 'host-answer' })
+    expect(f.counts).toMatchObject({ dispatch: 1, evidence: 0 })
+    const after = { ...f.counts }
+    f.reopen()
+    expect(await f.decisions.prepare(input)).toEqual(result)
+    expect(await f.decisions.status(status(input))).toEqual(result)
+    expect(f.counts).toEqual(after)
+    expect(f.counts.dispatch).toBe(1)
+    // The Host boolean is admission, not durable settlement: re-dispatch and evidence are both absent.
+    expect(await f.decisions.status(status(input))).toMatchObject({ completed: null, approval: false })
+  })
+  it.each([
+    ['session_decision_answer_mismatch', 'session_decision_answer_mismatch'],
+    ['session_decision_not_continued', 'session_decision_not_continued'],
+    ['session_decision_answer_already_queued', 'session_decision_answer_already_queued'],
+  ])('blocks a definitive Host refusal %s without evidence or acceptance', async (_name, code) => {
+    const f = fixture(), input = f.input()
+    f.state.dispatchDecision = () => ({ state: 'blocked', code })
+    const result = await f.decisions.prepare(input)
+    expect(result).toMatchObject({ state: 'blocked', accepted: false, executed: false, completed: false, approval: false, disposition: 'not-dispatched', code })
+    expect(f.counts).toMatchObject({ dispatch: 1, evidence: 0 })
+    f.reopen()
+    expect(await f.decisions.prepare(input)).toEqual(result)
+    expect(f.counts.dispatch).toBe(1)
+  })
+  it('treats an unrecognized or thrown dispatch as unknown and promotes only exact settled evidence', async () => {
+    const f = fixture(), input = f.input(); f.state.evidenceUnavailable = true
+    for (const decision of [(): any => ({ state: 'recorded' }), (): any => { throw new Error('synthetic lost acknowledgment') }, (): any => undefined]) {
+      f.state.dispatchDecision = decision
+      expect(await f.decisions.prepare(input)).toMatchObject({ state: 'dispatch_unknown', accepted: false, disposition: 'reconcile-only', code: 'session_decision_reconcile_required' })
+      expect(f.counts.dispatch).toBe(1)
+    }
+    f.reopen(); f.state.evidenceUnavailable = false
+    expect(await f.decisions.status(status(input))).toMatchObject({ state: 'accepted', acceptedBy: 'target-settled', disposition: 'target-durable-receipt' })
+    expect(f.counts.dispatch).toBe(1)
+  })
+  it('keeps an unknown answer blocked after exclusion without consulting question or evidence ports', async () => {
+    const f = fixture(), input = f.input(); f.state.evidenceUnavailable = true
+    await f.decisions.prepare(input); f.reopen(); f.state.excluded = true; f.state.evidenceUnavailable = false
+    const before = { ...f.counts }
+    expect(await f.decisions.status(status(input))).toMatchObject({ state: 'dispatch_unknown', accepted: false })
+    expect(f.counts.questions).toBe(before.questions); expect(f.counts.evidence).toBe(before.evidence)
+  })
+  it('lists answerability from the live exact projection and always names the uncovered categories', async () => {
+    const f = fixture(), live = await f.decisions.list(f.listInput())
+    expect(live).toMatchObject({ canAnswer: true, approval: false, calls: [{ callId: CALL, canAnswer: true }],
+      uncovered: [{ kind: 'legacy-blocking-question', code: 'session_decision_uncovered_legacy_blocking' }, { kind: 'dsh-generic-approval', code: 'session_decision_uncovered_generic_approval' }] })
+    expect(live).not.toHaveProperty('code')
+    const { dispatch: _dispatch, ...ports } = f.ports
+    const withoutAdapter = await createSessionDecisions(f.journal.store, ports).list(f.listInput())
+    expect(withoutAdapter).toMatchObject({ canAnswer: false, code: 'session_decision_answer_unavailable', calls: [{ canAnswer: false }] })
+    f.state.projection.availability = 'cold'
+    expect(await f.decisions.list(f.listInput())).toMatchObject({ availability: 'cold', canAnswer: false, code: 'session_decision_answer_unavailable', uncovered: expect.any(Array) })
+  })
+  it('persists no question text, option label or free answer for a Host-accepted dispatch', async () => {
+    const f = fixture(), input = f.input(); f.state.dispatchDecision = () => ({ state: 'accepted' })
+    input.answers[1]!.custom = 'private-dispatch-answer-marker'
+    await f.decisions.prepare(input)
+    const persisted = JSON.stringify({ journal: f.journal.store.repos.side_effect.all(), kv: f.journal.store.repos.kv.all() })
+    for (const marker of ['需要兼容', '兼容', 'private-dispatch-answer-marker', '另一个方案']) expect(persisted).not.toContain(marker)
+    const receipt = await f.decisions.status(status(input))
+    expect(JSON.stringify(receipt)).not.toContain('private-dispatch-answer-marker')
   })
 })

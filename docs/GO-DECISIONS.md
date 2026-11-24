@@ -35,4 +35,34 @@ Host 可以在授权后选取 userQuestions 投影，只返回 active 原题；�
 
 2026-11-21 最终独立门禁：使用安装版 Electron/Node 执行 `node_modules/vitest/vitest.mjs run tests/workspace/session-decisions.test.ts`，**62 tests通过，exit0**；定向 diff whitespace 检查 exit0。全量 TypeScript 当次失败仅见并行接线 `go-decisions.js` 尚未落盘以及 `stageModels.save` 参数数量，两项均不属于本3文件；需主线程集成后复跑，不宣称全量通过。未运行 build。
 
-此窄服务保守绑定整个 active 题快照和 asOfSeq：答案若已经进入真实会话使题目 settled，或其他会话事实变化，后续状态对账会保持 unknown 而不越过旧快照继续读取；合成 acceptance 测试的独立目标仅保存控制回执，未模拟真实投影变动。未来须独立审核“范围仍允许的最小历史回执”端口及其版本语义，不能因本服务合成通过宣称真实对账闭环。题 ID 按安装合同保留有限非空 Unicode 字符串，不当作文件/会话路径。list 返回原题而非脱敏摘要，调用面必须限于已授权人类交互，展示必须转义且不得进入普通日志。
+此窄服务保守绑定整个 active 题快照和 asOfSeq：答案若已经进入真实会话使题目 settled，或其他会话事实变化，后续状态对账会保持 unknown 而不越过旧快照继续读取；合成 acceptance 测试的独立目标仅保存控制回执，未模拟真实投影变动。未来须独立审核“范围仍允许的最小历史回执”端口及其版本语义，不能因本服务合成通过宣称真实对账闭环。题 ID 按安装合同保留有限非空 Unicode 字符串，不当作文件/会话路径。list 返回原题而非脱敏摘要，调用面必须限于已授权人类交互，展示必须转义且不得进入普通日志。**该段「settled 后保持 unknown」的对账限制已由下文 #8「对账语义修正」取代**：settled 会改变投影与 factRevision，因此对账改为廉价 scope 检查 + 精确 settled 证据，而不是等旧快照完全相等。
+
+## #8 待决策接真实投影（2026-11-25）
+
+本切片把 G6 的合成-only 服务接到安装版 rc.5 的真实 timed-question 投影与 `ctx.userQuestions.answer` 回答通道，并让待决策列表只声明两类覆盖。门禁为本地 `pnpm -s build && pnpm -s typecheck && pnpm -s vitest run`，测试全部是 Fake Host + 真实隔离 SQLite + 真实 HTTP 路由 seam，**不是**真实 Desktop Host/GUI 验收。
+
+### 生产接线（runtime）
+
+- `questions` 端口仍只经 `ctx.sessionQuery.inspectSession` + `ctx.sessionProjections.snapshot(['userQuestions'])` 读取 `active` 原题；`settled` 答案正文不进入 DTO，`intent` 题仍整体拒绝。`availability` 由 `ctx.agents.get` 判定：cold 只列出，不唤醒。
+- `gate`（生产回答授权）只在下列条件同时成立时允许：Host 存在可调用的 `userQuestions.answer`；`ctx.agents.get(sessionId)` 是精确 live 普通 root（`session.header.origin === 'subagent'` 拒绝）；当前 bounded 投影与请求的 `snapshot.revision/asOfSeq` 完全一致且 `complete`、`live`；`callId` 存在且 `state==='continued'`；答案覆盖该 call 全部题 ID 各一次、选中 label 来自原题、单选不得多选。返回值 `controlRevision` 是目标/快照/callId 的绑定 digest，`grantRevision` 是精确答案批 digest；**二者是派生绑定摘要，不是 Host 签发的审批或执行许可**，receipt 中不改变 `approval:false`。
+- `dispatch` 在持久 `dispatch_unknown` fence 之后恰好调用一次 `ctx.userQuestions.answer(agent, callId, {answers})`（仅协议字段；`skip` 已在服务内剥离，不发送）。按 Host 返回分类：`true` → `accepted`（受理），`false` → `blocked: session_decision_not_continued`，`BAD_ANSWER`/`REPLY_QUEUED`/`CALLER_NOT_LIVE`/`DELEGATED_CALLER` → 固定码 blocked，其余异常 → `dispatch_unknown`（不重发、不换 ID）。
+- `evidence` 只读精确 durable 证据：该 call 已离开 `active` 且出现在同一 Session 的 `settled`。settled 答案正文不离开投影回调、不持久化。它证明「这个 call 已被回答并进入会话」，不能区分同一 call 上另一个经授权的人类回答；Host 对同一 call 只允许一个 reply。
+
+### 回执语义
+
+- `accepted:true` 有两种 basis，均**不代表完成、已读或操作批准**：`acceptedBy:'host-answer'` 表示 Host 的 `answer()` 返回 true（reply 已进入 live inbox 队列，durability 未知，crash 可能丢弃），disposition `host-queue-accepted`；`acceptedBy:'target-settled'` 表示精确 settled 投影证据，disposition `target-durable-receipt`。
+- `blocked` 是 Host 明确拒绝（未排队）的终态；`dispatch_unknown` 只允许对账。重复 prepare 同 `requestId/actionId` 返回同一回执，永不第二次调用 Host。
+- 记录仍只有 ID/绑定/快照 cursor/digest/answer digest 与计数/选择数/custom 字节数/skip 数/状态/固定码；不保存原题、选项、自由答案或其脱敏替代。
+
+### 对账语义修正
+
+settled 会改变 `userQuestions` 投影与 session-work 的 `factRevision`，旧「快照必须完全相等才对账」会让真实回答永远停在 unknown。现在 `dispatch_unknown` 对账改为：`authorized`（只读当前 scope/access/exclusion 的廉价检查，不读题面、不唤醒）通过后，直接调用精确 evidence 端口；evidence 必须匹配 action/session/call/snapshot/digest/durable/accepted。排除或失去访问仍撤销进一步查找。
+
+### 列表与客户端
+
+- `sessionDecision.list` 返回 `canAnswer`（=live+complete+本部署有回答适配器）与每个 call 的 `canAnswer`（=目标可答且 `continued`），不可答时给固定 `code:'session_decision_answer_unavailable'`；始终返回 `uncovered:[{kind:'legacy-blocking-question'},…{kind:'dsh-generic-approval'}]`，不再把「没有活动问题」当作全覆盖。
+- 客户端单项详情可提交（建议直接选/补充条件/自行说明/显式 skip），未选或无内容禁止提交，skip 明确标注不代表同意；回执按 basis 显示「Host 已受理（排队）」或「目标持久受理」，并常驻「只覆盖两类 + 两类未覆盖」。失效/范围变化显示重新读取提示，旧草稿只作证据。
+
+### 仍未验
+
+没有在真实 Desktop Host 上对真实 Session 调用过 `userQuestions.answer`，未证明真实 settled 时序、真实 GUI 点击/回执核对、真实 scope 变化；Fake Host 的 answer 语义按 rc.5 只读源码建模，不构成真实回答验收。回答授权仍以「精确 live 普通 root + 精确 continued 快照」为界，不提供工具级执行权限，也不解除 L1/L2 或 Worker fail-closed。

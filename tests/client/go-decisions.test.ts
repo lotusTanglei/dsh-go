@@ -16,15 +16,16 @@ const target = { sessionId: 'session-one', scopeRevision: scope, factRevision: f
 const candidate = { sessionId: target.sessionId, factRevision: fact, project: target.project, title: 'Handle work' }
 const located = { status: 'located', coverage: 'complete', controlAvailable: false, executionReason: 'SA_EXECUTION_BOUNDARY_UNVERIFIED', revision: scope, target: candidate, candidates: [candidate] }
 const question = { id: 'q1', question: 'Choose a plan?', options: [{ label: 'Keep compatibility', description: 'Retain old clients' }, { label: 'New only' }] }
-const questionCall = { callId: 'call-one', state: 'continued', questions: [question], canAnswer: false }
-const list = (extra: any = {}) => ({ target, availability: 'live', complete: true, asOfSeq: 12, snapshotRevision: revision, calls: [questionCall], canAnswer: false, approval: false, code: 'session_decision_execution_unverified', ...extra })
+const questionCall = { callId: 'call-one', state: 'continued', questions: [question], canAnswer: true }
+const uncovered = [{ kind: 'legacy-blocking-question', code: 'session_decision_uncovered_legacy_blocking' }, { kind: 'dsh-generic-approval', code: 'session_decision_uncovered_generic_approval' }]
+const list = (extra: any = {}) => ({ target, availability: 'live', complete: true, asOfSeq: 12, snapshotRevision: revision, calls: [questionCall], canAnswer: true, approval: false, uncovered, ...extra })
 const clone = (value: any) => JSON.parse(JSON.stringify(value))
 function harness() {
   const calls: any[] = [], events: any[] = [], g: any = { TextEncoder, Uint8Array, crypto: webcrypto, tr: (key: string) => key,
     array: (v: any) => Array.isArray(v) ? v : [], mounted: { current: true }, generation: { current: 0 }, composing: { current: false }, busyRef: { current: null }, listsRef: { current: {} }, entriesRef: { current: {} }, selectedRef: { current: '' }, opener: { current: null }, mint: () => uuid,
     call: async (input: any) => { calls.push(input); return list() },
   }
-  for (const name of ['hashValid', 'idValid', 'plain', 'bytes', 'digestValue', 'bindingKey', 'locatedBinding', 'sameTarget', 'validQuestion', 'validList', 'listDigest', 'canonicalAnswers', 'inputDigest', 'answerSummary', 'callKey', 'emptyAnswer', 'compileAnswers', 'validReceipt', 'validClosure']) g[name] = closure(name, g)
+  for (const name of ['hashValid', 'idValid', 'plain', 'bytes', 'digestValue', 'bindingKey', 'locatedBinding', 'sameTarget', 'validQuestion', 'uncoveredKinds', 'validUncovered', 'validList', 'listDigest', 'canonicalAnswers', 'inputDigest', 'answerSummary', 'callKey', 'emptyAnswer', 'compileAnswers', 'validReceipt', 'validClosure']) g[name] = closure(name, g)
   const current = g.locatedBinding('epoch', located); g.viewRef = { current: { epoch: 'epoch', active: true, current } }; g.listsRef.current[current.key] = list()
   for (const key of ['Entries', 'Lists', 'Selected', 'History', 'Error', 'Busy']) g[`set${key}`] = (v: any) => { g[key[0]!.toLowerCase() + key.slice(1)] = v; events.push([key, v]) }
   for (const name of ['saveEntry', 'activeEntry', 'unresolved', 'canClose', 'readQuestions', 'openCall', 'editAnswer', 'checkAnswers', 'checkStatus', 'confirmClose', 'closeDecision', 'newDraft']) g[name] = closure(name, g)
@@ -82,15 +83,17 @@ describe('G6 exact business answer closures', () => {
     await listInstalled
     view = render(true); const detail = nodes(view).find((node: any) => node.tag === 'button' && node.children.includes('查看原问题与答案草稿')); expect(detail).toBeTruthy(); detail.props.onClick(); view = render(true)
     const elements = nodes(view); expect(elements.some((node: any) => node.tag === 'p' && node.children.includes('<script>untrusted</script>'))).toBe(true); expect(elements.some((node: any) => node.tag === 'script' || node.props?.dangerouslySetInnerHTML)).toBe(false)
-    expect(elements.find((node: any) => node.tag === 'button' && node.children.includes('核对答案（不发送）')).props.disabled).toBe(true); expect(requests.map(input => input.action)).toEqual(['list'])
+    expect(elements.find((node: any) => node.tag === 'button' && node.children.includes('提交答案到 Host（受理不等于完成）')).props.disabled).toBe(true); expect(requests.map(input => input.action)).toEqual(['list'])
   })
   it('requires exact located target, project, scope and fact evidence', () => {
     const { g } = harness(); expect(g.locatedBinding('epoch', located).target).toEqual(target)
     for (const patch of [{ status: 'clarify' }, { coverage: 'partial' }, { revision: 'bad' }, { controlAvailable: true }, { target: { ...candidate, factRevision: 'f'.repeat(64) } }, { target: { ...candidate, project: { kind: 'unknown', key: 'unknown' } } }]) expect(g.locatedBinding('epoch', { ...located, ...patch })).toBeNull()
   })
-  it('validates exact original question DTO and never accepts canAnswer or approval upgrades', () => {
+  it('validates exact original question DTO and never accepts approval or uncovered-coverage upgrades', () => {
     const { g, current } = harness(); expect(g.validList(list(), current)).toBe(true)
-    for (const patch of [{ canAnswer: true }, { approval: true }, { target: { ...target, factRevision: 'f'.repeat(64) } }, { calls: [{ ...questionCall, questions: [question, question] }] }, { snapshotRevision: 'invalid' }]) expect(g.validList(list(patch), current)).toBe(false)
+    expect(g.validList(list({ canAnswer: false, code: 'session_decision_answer_unavailable', calls: [{ ...questionCall, canAnswer: false }] }), current)).toBe(true)
+    for (const patch of [{ approval: true }, { target: { ...target, factRevision: 'f'.repeat(64) } }, { calls: [{ ...questionCall, questions: [question, question] }] }, { snapshotRevision: 'invalid' },
+      { canAnswer: false }, { canAnswer: true, code: 'session_decision_answer_unavailable' }, { calls: [{ ...questionCall, canAnswer: false }] }, { uncovered: [] }, { uncovered: [...uncovered, ...uncovered] }, { uncovered: [{ kind: 'dsh-generic-approval', code: 'session_decision_uncovered_generic_approval' }, ...uncovered.slice(0, 1)] }]) expect(g.validList(list(patch), current)).toBe(false)
   })
   it('preserves bounded Unicode and prototype-like question IDs as exact IDs, not inherited form values', () => {
     const { g } = harness()
@@ -128,7 +131,7 @@ describe('G6 exact business answer closures', () => {
     const { g } = harness(), multi = { ...questionCall, questions: [{ ...question, multiSelect: true }] }; const form = { q1: { mode: 'options', selected: ['New only', 'Keep compatibility'] } }
     expect(g.compileAnswers(multi, form)[0].selected).toEqual(['New only', 'Keep compatibility']); expect(g.compileAnswers(questionCall, form)).toBeNull()
   })
-  it.each([{ availability: 'cold' }, { complete: false }, { calls: [{ ...questionCall, state: 'open' }] }])('shows but never checks unanswerable projections %j', async patch => {
+  it.each([{ availability: 'cold', canAnswer: false, code: 'session_decision_answer_unavailable', calls: [{ ...questionCall, canAnswer: false }] }, { complete: false, canAnswer: false, code: 'session_decision_answer_unavailable', calls: [{ ...questionCall, canAnswer: false }] }, { calls: [{ ...questionCall, state: 'open', canAnswer: false }] }])('shows but never checks unanswerable projections %j', async patch => {
     const { g, calls, current } = harness(); g.listsRef.current[current.key] = list(patch); opened(g); g.editAnswer('q1', 'mode', 'skip'); await g.checkAnswers(); expect(calls).toEqual([])
   })
   it('prepares one exact immutable payload and validates matching blocked receipt and answer digest without sending approval', async () => {
@@ -277,17 +280,51 @@ describe('G6 exact business answer closures', () => {
     g.viewRef.current.epoch = 'new-epoch'; g.viewRef.current.current = null; g.viewRef.current.active = false; finish(closedReceipt(entry)); await closing
     expect(g.entriesRef.current[key].status).toBe('closed'); expect(g.entriesRef.current[key].pending).toBe(entry.pending); expect(g.entriesRef.current[key].epoch).toBe('epoch'); g.newDraft(); expect(g.entriesRef.current[key].pending).toBe(entry.pending)
   })
+  it('accepts only a consistent Host-queue acceptance receipt and rejects a fabricated or downgraded basis', async () => {
+    const { g } = harness(); opened(g); g.editAnswer('q1', 'mode', 'skip')
+    g.call = async () => receipt(g, g.entriesRef.current[g.selectedRef.current], 'accepted', { acceptedBy: 'host-answer', disposition: 'host-queue-accepted' })
+    await g.checkAnswers()
+    const entry = g.entriesRef.current[g.selectedRef.current]
+    expect(entry.status).toBe('accepted'); expect(entry.receipt.acceptedBy).toBe('host-answer'); expect(entry.receipt.approval).toBe(false)
+    expect(g.validReceipt(entry.receipt, entry)).toBe(true)
+    for (const patch of [{ disposition: 'target-durable-receipt' }, { acceptedBy: 'target-settled' }, { acceptedBy: 'forged' }, { acceptedBy: undefined }]) expect(g.validReceipt({ ...entry.receipt, ...patch }, entry)).toBe(false)
+    expect(g.validReceipt({ ...receipt(g, entry, 'blocked'), acceptedBy: 'host-answer' }, { ...entry, receipt: undefined, status: 'draft' })).toBe(false)
+  })
+  it('renders Host-queue acceptance copy, the two covered groups and the explicitly uncovered categories', async () => {
+    const { g } = harness(), dto = list(); dto.snapshotRevision = await g.listDigest(target, dto)
+    const ui = factoryHarness()
+    ui.respond(async input => {
+      if (input.action === 'list') return dto
+      if (input.action === 'prepare') {
+        const entry = ui.entry()
+        return { version: 1, epoch: input.epoch, requestId: input.requestId, actionId: input.actionId, target: JSON.parse(JSON.stringify(entry.target)), callId: input.callId, snapshot: input.snapshot, digest: entry.digest, answerSummary: entry.summary, seq: 3, at: 100, updatedAt: 101,
+          state: 'accepted', durable: true, accepted: true, acceptedBy: 'host-answer', executed: null, completed: null, approval: false, disposition: 'host-queue-accepted', controlRevision: 'd'.repeat(64), grantRevision: 'e'.repeat(64) }
+      }
+      throw new Error('unexpected action')
+    })
+    ui.render(); ui.button('读取当前目标问题').props.onClick(); await ui.waitFor(() => Object.keys(ui.slots[0]).length === 1); ui.button('查看原问题与答案草稿').props.onClick()
+    let view = ui.render(); const skip = ui.nodes(view).find((node: any) => node.tag === 'label' && node.children.includes('明确跳过此题（不代表同意）')); ui.nodes(skip).find((node: any) => node.tag === 'input').props.onChange(); view = ui.render()
+    expect(ui.nodes(view).some((node: any) => node.children?.includes('本列表只覆盖两类：Host 稳定投影的 timed 问题与 Go 自家审批。legacy blocking 问题与通用操作审批不在本处，明确未覆盖。'))).toBe(true)
+    expect(ui.nodes(view).some((node: any) => node.children?.includes('legacy blocking 问题（无稳定投影）'))).toBe(true)
+    expect(ui.nodes(view).some((node: any) => node.children?.includes('DSH 通用操作审批（无集中投影）'))).toBe(true)
+    ui.button('提交答案到 Host（受理不等于完成）').props.onClick()
+    await ui.waitFor(() => ui.entry()?.status === 'accepted')
+    view = ui.render()
+    expect(ui.nodes(view).some((node: any) => node.children?.includes('Host 已受理（答案已排队进入会话），不代表已进入会话、完成、已读或批准；不会自动重发。'))).toBe(true)
+    expect(ui.nodes(view).some((node: any) => node.children?.includes('明确跳过'))).toBe(true)
+    expect(ui.requests.map((input: any) => input.action)).toEqual(['list', 'prepare'])
+  })
   it('actual factory handlers expose a cancelable two-step close, preserve exact evidence, and create only an explicit blank draft', async () => {
     const { g } = harness(), dto = list(); dto.snapshotRevision = await g.listDigest(target, dto)
     const ui = factoryHarness(); ui.respond(async input => { if (input.action === 'list') return dto; if (input.action === 'prepare') throw new Error('lost response'); if (input.action === 'close') return closedReceipt(ui.entry()); throw new Error('unexpected action') }); ui.render()
     ui.button('读取当前目标问题').props.onClick(); await ui.waitFor(() => Object.keys(ui.slots[0]).length === 1); ui.button('查看原问题与答案草稿').props.onClick()
     let view = ui.render(); const custom = ui.nodes(view).find(node => node.tag === 'label' && node.children.includes('自行说明 / 另一种方案')); ui.nodes(custom).find(node => node.tag === 'input').props.onChange(); view = ui.render(); ui.nodes(view).find(node => node.tag === 'textarea').props.onChange({ target: { value: 'Exact local answer 原文' } })
-    ui.button('核对答案（不发送）').props.onClick(); await ui.waitFor(() => ui.entry()?.status === 'unknown'); const original = ui.entry(), initial = ui.requests[1]
+    ui.button('提交答案到 Host（受理不等于完成）').props.onClick(); await ui.waitFor(() => ui.entry()?.status === 'unknown'); const original = ui.entry(), initial = ui.requests[1]
     expect(ui.button('再次确认：仅封存原ID，不投递答案')).toBeUndefined(); ui.button('封存未确认的原记录ID（不停止会话）').props.onClick(); expect(ui.requests.map(input => input.action)).toEqual(['list', 'prepare'])
     expect(ui.nodes(ui.render()).some(node => node.children?.includes('仅当原ID尚无记录时封存；不停止、撤销或批准任何操作。保留原题、答案与回执证据，不换ID、不重新核对。'))).toBe(true)
     ui.button('返回').props.onClick(); expect(ui.button('再次确认：仅封存原ID，不投递答案')).toBeUndefined(); ui.button('封存未确认的原记录ID（不停止会话）').props.onClick(); ui.button('再次确认：仅封存原ID，不投递答案').props.onClick(); await ui.waitFor(() => ui.entry()?.status === 'closed')
     expect(ui.requests[2]).toEqual({ ...initial, action: 'close' }); expect(ui.entry().pending).toBe(original.pending); expect(ui.entry().form).toBe(original.form); expect(ui.button('查询原操作状态（不重投）')).toBeUndefined(); expect(ui.button('封存未确认的原记录ID（不停止会话）')).toBeUndefined()
-    expect(ui.nodes(ui.render()).some(node => node.children?.includes('原记录ID已持久封存，未投递；不代表停止、撤销或批准'))).toBe(true); expect(ui.button('核对答案（不发送）').props.disabled).toBe(true)
+    expect(ui.nodes(ui.render()).some(node => node.children?.includes('原记录ID已持久封存，未投递；不代表停止、撤销或批准'))).toBe(true); expect(ui.button('提交答案到 Host（受理不等于完成）').props.disabled).toBe(true)
     ui.button('显式新建空白答案草稿（保留原回执）').props.onClick(); expect(ui.entry().form).toEqual({}); expect(ui.entry().pending).toBeUndefined(); const history = (Object.values(ui.slots[2]) as any[]).find(value => value.history); expect(history.pending).toBe(original.pending); expect(history.receipt.state).toBe('closed'); expect(ui.requests.map(input => input.action)).toEqual(['list', 'prepare', 'close'])
   })
 })

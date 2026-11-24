@@ -18,12 +18,28 @@ export interface SessionDecisionInput {
   epoch: string; requestId: string; actionId: string; target: SessionDecisionTarget; callId: string
   snapshot: { asOfSeq: number; revision: string }; answers: SessionDecisionAnswer[]
 }
+/** The two decision categories this slice covers. Anything else stays visibly uncovered. */
+export type SessionDecisionUncoveredKind = 'legacy-blocking-question' | 'dsh-generic-approval'
+/** Why a covered answer is not dispatchable right now; never an approval or a completion claim. */
+export interface SessionDecisionUncovered { kind: SessionDecisionUncoveredKind; code: string }
+/**
+ * One fenced Host answer outcome. `accepted` means the Host's own continued-question answer API
+ * returned true (the reply was admitted into the live Agent inbox) — never completion or approval.
+ * `blocked` means the Host definitively refused before queueing anything; `dispatch_unknown` means
+ * the call returned no trustworthy answer and must only be reconciled, never retried.
+ */
+export type SessionDecisionDispatchDecision =
+  | { state: 'accepted' }
+  | { state: 'blocked'; code: string }
+  | { state: 'dispatch_unknown'; code?: string }
+/** Which evidence upgraded an accepted record: the Host boolean or a durable settled projection. */
+export type SessionDecisionAcceptedBy = 'host-answer' | 'target-settled'
 export interface SessionDecisionRecord {
   version: 1; epoch: string; requestId: string; actionId: string; target: SessionTargetBinding; callId: string
   snapshot: { asOfSeq: number; revision: string }; digest: string
   answerSummary: { digest: string; questions: number; selections: number; customBytes: number; skipped: number }
   seq: number; at: number; updatedAt: number; state: 'recorded' | 'blocked' | 'dispatch_unknown' | 'accepted'
-  code?: string; controlRevision?: string; grantRevision?: string
+  code?: string; controlRevision?: string; grantRevision?: string; acceptedBy?: SessionDecisionAcceptedBy
 }
 export interface SessionDecisionClosure {
   version: 1; epoch: string; requestId: string; actionId: string; target: SessionDecisionTarget; callId: string
@@ -40,8 +56,19 @@ export interface SessionDecisionPorts {
   questions(target: Readonly<SessionTargetBinding>): Promise<SessionDecisionSnapshot>
   gate(input: Readonly<SessionDecisionInput>, target: Readonly<SessionTargetBinding>): Promise<
     { allowed: false; code: string } | { allowed: true; controlRevision: string; grantRevision: string; fence(): void }>
-  /** Synthetic adapters only until real isolation, atomic revision and durable receipt contracts are proved. */
-  dispatch?(record: Readonly<SessionDecisionRecord>, answer: Readonly<{ answers: readonly Omit<SessionDecisionAnswer, 'skip'>[] }>): Promise<void>
+  /**
+   * Cheap current-scope re-check for an already recorded target, used only for reconcile. It must
+   * not read question facts (settling the question legitimately changes them after dispatch) and it
+   * must not wake or dispatch anything. Anything but `true` keeps the record honestly unknown.
+   */
+  authorized(record: Readonly<SessionDecisionRecord>): Promise<boolean>
+  /**
+   * One exact Host `userQuestions.answer(agent, callId, {answers})` call after the durable fence.
+   * It returns `accepted` only for a true Host answer, `blocked` only when the Host refused before
+   * queueing a reply, and `dispatch_unknown` (or throws) when the outcome cannot be trusted.
+   */
+  dispatch?(record: Readonly<SessionDecisionRecord>, answer: Readonly<{ answers: readonly Omit<SessionDecisionAnswer, 'skip'>[] }>): Promise<SessionDecisionDispatchDecision | void>
+  /** Read-only exact durable settlement lookup for this action/call; never submits a reply. */
   evidence?(record: Readonly<SessionDecisionRecord>): Promise<SessionDecisionEvidence | undefined>
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -91,10 +118,22 @@ function freeze<T>(v: T): T {
   if (v && typeof v === 'object') { Object.freeze(v); for (const child of Object.values(v)) freeze(child) }
   return v
 }
+const RECORD_KEYS = ['version', 'epoch', 'requestId', 'actionId', 'target', 'callId', 'snapshot', 'digest', 'answerSummary', 'seq', 'at', 'updatedAt', 'state', 'code', 'controlRevision', 'grantRevision', 'acceptedBy']
+const RECORD_STATES: readonly SessionDecisionRecord['state'][] = ['recorded', 'blocked', 'dispatch_unknown', 'accepted']
+const RECORD_SEQ: Record<SessionDecisionRecord['state'], number> = { recorded: 1, blocked: 2, dispatch_unknown: 2, accepted: 3 }
+const ACCEPTED_BY: readonly SessionDecisionAcceptedBy[] = ['host-answer', 'target-settled']
 function recordValid(v: unknown): v is SessionDecisionRecord {
-  if (!plain(v) || !only(v, ['version', 'epoch', 'requestId', 'actionId', 'target', 'callId', 'snapshot', 'digest', 'answerSummary', 'seq', 'at', 'updatedAt', 'state', 'code', 'controlRevision', 'grantRevision']) || v.version !== 1 || !id(v.epoch) || !uuid(v.requestId) || !uuid(v.actionId) || !bindingValid(v.target) || !id(v.callId) || !snapshotValid(v.snapshot) || !digestValid(v.digest) || !integer(v.at) || !integer(v.updatedAt) || v.updatedAt < v.at || !['recorded', 'blocked', 'dispatch_unknown', 'accepted'].includes(v.state) || v.seq !== ({ recorded: 1, blocked: 2, dispatch_unknown: 2, accepted: 3 } as Record<string, number>)[v.state] || v.code !== undefined && (typeof v.code !== 'string' || !CODE.test(v.code))) return false
+  if (!plain(v) || !only(v, RECORD_KEYS) || v.version !== 1 || !id(v.epoch) || !uuid(v.requestId) || !uuid(v.actionId) || !bindingValid(v.target) || !id(v.callId) || !snapshotValid(v.snapshot) || !digestValid(v.digest) || !integer(v.at) || !integer(v.updatedAt) || v.updatedAt < v.at || !RECORD_STATES.includes(v.state)) return false
+  if (v.seq !== RECORD_SEQ[v.state as SessionDecisionRecord['state']] || (v.code !== undefined && (typeof v.code !== 'string' || !CODE.test(v.code)))) return false
+  if (v.acceptedBy !== undefined && !ACCEPTED_BY.includes(v.acceptedBy)) return false
+  if (v.state !== 'accepted' && v.acceptedBy !== undefined) return false
+  if (v.controlRevision !== undefined && !digestValid(v.controlRevision) || v.grantRevision !== undefined && !digestValid(v.grantRevision)) return false
+  if (['dispatch_unknown', 'accepted'].includes(v.state) && (!digestValid(v.controlRevision) || !digestValid(v.grantRevision))) return false
   const s = v.answerSummary
-  return plain(s) && only(s, ['digest', 'questions', 'selections', 'customBytes', 'skipped']) && digestValid(s.digest) && integer(s.questions, 1) && s.questions <= 64 && integer(s.selections) && s.selections <= 4096 && integer(s.customBytes) && s.customBytes <= 65_536 && integer(s.skipped) && s.skipped <= s.questions && (v.controlRevision === undefined || digestValid(v.controlRevision)) && (v.grantRevision === undefined || digestValid(v.grantRevision)) && (!['dispatch_unknown', 'accepted'].includes(v.state) || digestValid(v.controlRevision) && digestValid(v.grantRevision))
+  if (!plain(s) || !only(s, ['digest', 'questions', 'selections', 'customBytes', 'skipped']) || !digestValid(s.digest)) return false
+  if (!integer(s.questions, 1) || s.questions > 64 || !integer(s.selections) || s.selections > 4096) return false
+  if (!integer(s.customBytes) || s.customBytes > 65_536 || !integer(s.skipped) || s.skipped > s.questions) return false
+  return true
 }
 function closureValid(v: unknown): v is SessionDecisionClosure {
   return plain(v) && only(v, ['version', 'epoch', 'requestId', 'actionId', 'target', 'callId', 'snapshot', 'digest', 'seq', 'at', 'updatedAt', 'state', 'bindingVerified'])
@@ -103,7 +142,20 @@ function closureValid(v: unknown): v is SessionDecisionClosure {
 }
 const closureReceipt = (v: SessionDecisionClosure) => ({ ...structuredClone(v), durable: true as const, accepted: false as const, executed: null, completed: null,
   approval: false as const, disposition: 'closed-before-dispatch' as const, code: 'session_decision_id_closed' as const })
-const receipt = (v: SessionDecisionRecord) => ({ ...structuredClone(v), durable: true as const, accepted: v.state === 'accepted', executed: ['recorded', 'blocked'].includes(v.state) ? false : null, completed: ['recorded', 'blocked'].includes(v.state) ? false : null, approval: false as const, disposition: v.state === 'accepted' ? 'target-durable-receipt' : v.state === 'dispatch_unknown' ? 'reconcile-only' : 'not-dispatched' })
+const receipt = (v: SessionDecisionRecord) => {
+  const accepted = v.state === 'accepted'
+  // `host-answer` means the Host's own continued-question answer call returned true: the reply was
+  // admitted into the live Agent inbox. It is not a durable settlement and never completion/approval.
+  const disposition = accepted ? (v.acceptedBy === 'host-answer' ? 'host-queue-accepted' as const : 'target-durable-receipt' as const)
+    : v.state === 'dispatch_unknown' ? 'reconcile-only' as const : 'not-dispatched' as const
+  return { ...structuredClone(v), durable: true as const, accepted, executed: ['recorded', 'blocked'].includes(v.state) ? false : null,
+    completed: ['recorded', 'blocked'].includes(v.state) ? false : null, approval: false as const, disposition }
+}
+/** Fixed uncovered categories: the list never implies the whole decision surface is covered. */
+const uncovered = (): SessionDecisionUncovered[] => [
+  { kind: 'legacy-blocking-question', code: 'session_decision_uncovered_legacy_blocking' },
+  { kind: 'dsh-generic-approval', code: 'session_decision_uncovered_generic_approval' },
+]
 
 /** Exact-question business answers. No direct Agent calls, no raw-body persistence and no replay. */
 export function createSessionDecisions(store: Store, ports: SessionDecisionPorts) {
@@ -137,9 +189,15 @@ export function createSessionDecisions(store: Store, ports: SessionDecisionPorts
     if (Boolean(p) !== Boolean(current)) return fail('session_decision_record_invalid', 503)
     return current
   }
-  function update(v: SessionDecisionRecord, patch: { state: SessionDecisionRecord['state']; code?: string; controlRevision?: string; grantRevision?: string }) {
-    if (!(v.state === 'recorded' && ['blocked', 'dispatch_unknown'].includes(patch.state) || v.state === 'dispatch_unknown' && patch.state === 'accepted')) return fail('session_decision_conflict')
-    const next = { ...v, ...patch, seq: v.seq + 1, updatedAt: Math.max(Date.now(), v.updatedAt) }
+  function update(v: SessionDecisionRecord, patch: { state: SessionDecisionRecord['state']; code?: string; controlRevision?: string; grantRevision?: string; acceptedBy?: SessionDecisionAcceptedBy }) {
+    // recorded→blocked/dispatch_unknown, dispatch_unknown→blocked (definitive Host refusal) or
+    // accepted (Host boolean or exact settled evidence). No other transition is reachable.
+    const allowed = v.state === 'recorded' && ['blocked', 'dispatch_unknown'].includes(patch.state)
+      || v.state === 'dispatch_unknown' && ['blocked', 'accepted'].includes(patch.state)
+    if (!allowed) return fail('session_decision_conflict')
+    // Sequence is a pure function of state, so a definitive refusal after an unknown fence returns to
+    // the blocked sequence instead of inventing a third one. CAS still compares the previous sequence.
+    const next = { ...v, ...patch, seq: RECORD_SEQ[patch.state], updatedAt: Math.max(Date.now(), v.updatedAt) }
     if (patch.code === undefined) delete next.code
     if (!recordValid(next)) return fail('session_decision_record_invalid', 503)
     const changed = store.db.prepare('UPDATE side_effect SET state=?,detail=? WHERE key=? AND state=?').run(`v1:${next.seq}`, encodeJson(next, false), key(v.actionId), `v1:${v.seq}`)
@@ -183,23 +241,31 @@ export function createSessionDecisions(store: Store, ports: SessionDecisionPorts
   }
   async function reconcile(v: SessionDecisionRecord) {
     if (v.state !== 'dispatch_unknown' || !ports.evidence) return v
-    // Exclusion/revision changes revoke even further receipt lookup in this slice.
-    let cut: Awaited<ReturnType<typeof current>>
-    try { cut = await current(v.epoch, { sessionId: v.target.sessionId, scopeRevision: v.target.scopeRevision, factRevision: v.target.factRevision }); if (cut.snapshot.snapshotRevision !== v.snapshot.revision || cut.snapshot.asOfSeq !== v.snapshot.asOfSeq) return v }
-    catch { return v }
+    // Settlement legitimately changes the question projection (and the session-work fact revision), so
+    // reconcile must not re-read the old snapshot. A cheap current-scope check still revokes exclusion
+    // and replacement; the evidence port itself must match the exact action/session/call/snapshot/digest.
+    let allowed: unknown
+    try { allowed = await ports.authorized(freeze(structuredClone(v))) } catch { return v }
+    if (allowed !== true) return v
+    ports.requireEpoch(v.epoch)
     let evidence: SessionDecisionEvidence | undefined
-    try { const raw = await ports.evidence(freeze(structuredClone(v))); evidence = raw === undefined ? undefined : structuredClone(raw); cut.fence() } catch { return v }
+    try { const raw = await ports.evidence(freeze(structuredClone(v))); evidence = raw === undefined ? undefined : structuredClone(raw) } catch { return v }
     ports.requireEpoch(v.epoch)
     if (!plain(evidence) || !only(evidence, ['actionId', 'sessionId', 'callId', 'snapshotRevision', 'digest', 'durable', 'accepted']) || evidence.actionId !== v.actionId || evidence.sessionId !== v.target.sessionId || evidence.callId !== v.callId || evidence.snapshotRevision !== v.snapshot.revision || evidence.digest !== v.digest || evidence.durable !== true || evidence.accepted !== true) return v
-    return store.transaction(() => { const latest = read(v.actionId)!; return latest.state === 'dispatch_unknown' ? update(latest, { state: 'accepted' }) : latest })
+    return store.transaction(() => { const latest = read(v.actionId)!; return latest.state === 'dispatch_unknown' ? update(latest, { state: 'accepted', acceptedBy: 'target-settled' }) : latest })
   }
   return {
     async list(raw: { epoch: string; target: SessionDecisionTarget }) {
       if (!plain(raw) || !only(raw, ['epoch', 'target']) || !id(raw.epoch) || !targetValid(raw.target)) return fail('session_decision_invalid', 400)
       const input = structuredClone(raw), cut = await current(input.epoch, input.target)
       cut.fence()
+      // Only the exact live timed projection is answerable here. Cold targets are never woken for this
+      // surface, and a missing adapter stays visible instead of pretending answers are disabled forever.
+      const answerable = cut.snapshot.availability === 'live' && cut.snapshot.complete && Boolean(ports.dispatch)
       return { target: structuredClone(cut.binding), availability: cut.snapshot.availability, complete: cut.snapshot.complete, asOfSeq: cut.snapshot.asOfSeq, snapshotRevision: cut.snapshot.snapshotRevision,
-        calls: cut.snapshot.active.map(call => ({ ...structuredClone(call), canAnswer: false as const })), canAnswer: false as const, code: 'session_decision_execution_unverified', approval: false as const }
+        calls: cut.snapshot.active.map(call => ({ ...structuredClone(call), canAnswer: answerable && call.state === 'continued' })),
+        canAnswer: answerable, approval: false as const, uncovered: uncovered(),
+        ...(answerable ? {} : { code: 'session_decision_answer_unavailable' as const }) }
     },
     async prepare(raw: SessionDecisionInput) {
       if (!validSessionDecision(raw)) return fail('session_decision_invalid', 400)
@@ -257,8 +323,22 @@ export function createSessionDecisions(store: Store, ports: SessionDecisionPorts
         })
         if (record.state !== 'dispatch_unknown') return receipt(record)
         const answer = freeze({ answers: input.answers.map(a => ({ id: a.id, selected: [...a.selected], ...(a.custom === undefined ? {} : { custom: a.custom }) })) })
-        try { await ports.dispatch(freeze(structuredClone(record)), answer) } catch { /* unknown outcome: only independently reconcile */ }
+        // The durable fence exists before this one Host call. Every outcome below is honest about what
+        // the Host actually reported: true is an admission into the live inbox (not completion), false
+        // or a Host contract rejection is a definitive block with no reply queued, and anything else is
+        // unknown and must only be reconciled against exact settled evidence.
+        let decision: SessionDecisionDispatchDecision = { state: 'dispatch_unknown' }
+        try {
+          const raw = await ports.dispatch(freeze(structuredClone(record)), answer)
+          decision = raw && typeof raw === 'object' && ['accepted', 'blocked', 'dispatch_unknown'].includes((raw as { state?: string }).state as string)
+            ? raw as SessionDecisionDispatchDecision : { state: 'dispatch_unknown' }
+        } catch { decision = { state: 'dispatch_unknown' } }
         ports.requireEpoch(input.epoch)
+        if (decision.state === 'blocked') {
+          const code = typeof decision.code === 'string' && CODE.test(decision.code) ? decision.code : 'session_decision_answer_rejected'
+          return receipt(store.transaction(() => update(record!, { state: 'blocked', code })))
+        }
+        if (decision.state === 'accepted') return receipt(store.transaction(() => update(record!, { state: 'accepted', acceptedBy: 'host-answer' })))
         return receipt(await reconcile(record))
       })
     },

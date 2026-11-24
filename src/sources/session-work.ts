@@ -201,6 +201,19 @@ export class SessionWorkSource implements Source {
     })())
   }
   private available() { return this.active && !this.ports.signal.aborted && !this.localAbort.signal.aborted }
+  /**
+   * Current-scope check for an already recorded target. Used only to reconcile an unknown answer:
+   * it loads/refreshes the membership roster (a read-only Host query) but reads no session facts —
+   * settling the answered question legitimately changes those — and it never wakes or dispatches.
+   * Any missing roster, access or exclusion evidence stays `false`.
+   */
+  async authorize(sessionId: string): Promise<boolean> {
+    if (!idValid(sessionId) || !this.available()) return false
+    try { await this.getRoster(false) } catch { return false }
+    const roster = this.roster
+    if (!roster) return false
+    return roster.included.includes(sessionId) && this.access(sessionId) && !this.exclusion(sessionId, this.readProjects(roster.ordinary).projects)
+  }
   private access(id: string) { try { return this.ports.canAccess(id) === true } catch { return false } }
   private runtime(id: string): SessionWorkItem['runtime'] {
     try { const agent = this.ports.agent(id); return !agent ? 'unavailable' : agent.status === 'running' || agent.status === 'idle' ? agent.status : 'unknown' } catch { return 'unknown' }

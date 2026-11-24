@@ -8,12 +8,12 @@ import { installPanelRoutes } from '../../src/panel/routes.js'
 import { createConfigMutations, type ConfigMutationJSON, type ConfigMutationKind } from '../../src/workspace/config-mutations.js'
 import { createStageModels, STAGES } from '../../src/workspace/stage-models.js'
 import { bindWorkspace, WorkspaceError } from '../../src/workspace/commands.js'
-import { createSessionDecisions, sessionDecisionDigest } from '../../src/workspace/session-decisions.js'
+import { createSessionDecisions, sessionDecisionDigest, sessionDecisionSnapshotDigest } from '../../src/workspace/session-decisions.js'
 
 const cleanups: Array<() => void> = []
 afterEach(() => { for (const fn of cleanups.splice(0).reverse()) fn() })
 const jsonValue = (value: unknown): ConfigMutationJSON => JSON.parse(JSON.stringify(value))
-function fixture() {
+function fixture(options: { decisionPorts?: any } = {}) {
   const parent = realpathSync(tmpdir()), root = mkdtempSync(join(parent, 'go-route-fixture-')), identity = lstatSync(root)
   cleanups.push(() => { const stat = lstatSync(root); if (dirname(root) !== parent || !basename(root).startsWith('go-route-fixture-') || realpathSync(root) !== root || !stat.isDirectory() || stat.isSymbolicLink() || stat.ino !== identity.ino || stat.dev !== identity.dev) throw new Error('unsafe fixture cleanup'); rmSync(root, { recursive: true }) })
   const store = openStore({ dbPath: join(root, 'fixture.sqlite') }); cleanups.push(() => store.close())
@@ -27,10 +27,10 @@ function fixture() {
     return service[action === 'plan-origin' ? 'planOrigin' : action]({ epoch: requestedEpoch, ...body, ...(['claim', 'plan-origin'].includes(action) ? { requestId } : {}) })
   }
   const forbidden = () => { throw new Error('closure must not read or dispatch a target') }
-  const decisions = createSessionDecisions(store, { requireEpoch, target: forbidden, questions: forbidden, gate: forbidden, dispatch: forbidden, evidence: forbidden })
+  const decisions = createSessionDecisions(store, options.decisionPorts ?? { requireEpoch, target: forbidden, questions: forbidden, gate: forbidden, authorized: forbidden, dispatch: forbidden, evidence: forbidden })
   const routes = new Map<string, (request: Request) => Promise<Response>>()
   const ports: any = {
-    async sessionDecision(input: any) { const { action, ...payload } = input; return action === 'close' ? decisions.close(payload) : action === 'prepare' ? decisions.prepare(payload) : decisions.status(payload) },
+    async sessionDecision(input: any) { const { action, ...payload } = input; return action === 'close' ? decisions.close(payload) : action === 'prepare' ? decisions.prepare(payload) : action === 'list' ? decisions.list(payload) : decisions.status(payload) },
     async configMutation(input: any) { const { action, ...body } = input; return action === 'close' ? mutations.close(body) : mutations.status(body) },
     async stageModels(input: any) { requireEpoch(input.epoch); if (input.action !== 'save') return models.settings(); return mutations.run({ epoch, requestId: input.requestId, kind: 'stage-save', payload: { config: input.config } }, async (commit, checkpoint) => jsonValue(await models.save(input.config, checkpoint, value => commit(jsonValue(value))))) },
   }
@@ -63,5 +63,41 @@ describe('Go HTTP integration with real isolated SQLite, no provider or remote d
     expect((await f.post('session-decision', { action: 'close', ...input, actor: 'owner' })).status).toBe(400)
     expect((await f.post('session-decision', { action: 'close', ...input }, 'https://foreign.invalid')).status).toBe(403)
     const body = JSON.stringify(closed.data); expect(body).not.toContain('Keep exact answer'); expect(body).not.toContain('范围说明'); expect(f.store.repos.side_effect.all()).toEqual([])
+  })
+  it('G8 answers one exact continued call over HTTP and returns a minimal receipt without question or answer bodies', async () => {
+    const sessionId = 'session-answer-one', callId = 'call-answer-one', scope = 'a'.repeat(64), fact = 'b'.repeat(64)
+    const question = { id: 'q1', question: 'PRIVATE ORIGINAL QUESTION', options: [{ label: 'Keep compatibility' }] }
+    const answers = [{ id: 'q1', selected: ['Keep compatibility'], custom: 'PRIVATE HTTP ANSWER\n原文' }]
+    const binding = { sessionId, scopeRevision: scope, factRevision: fact, project: { kind: 'project' as const, key: 'project-one' } }
+    const projection = { availability: 'live' as const, complete: true, asOfSeq: 7, active: [{ callId, state: 'continued' as const, questions: [question] }] }
+    const revision = sessionDecisionSnapshotDigest(binding, projection), sent: any[] = []
+    const ports: any = {
+      requireEpoch() {},
+      async target() { return { binding, fence() {} } },
+      async questions() { return { ...structuredClone(projection), snapshotRevision: revision, fence() {} } },
+      async gate() { return { allowed: true, controlRevision: 'c'.repeat(64), grantRevision: 'd'.repeat(64), fence() {} } },
+      async authorized() { return true },
+      async dispatch(_record: any, answer: any) { sent.push(structuredClone(answer)); return { state: 'accepted' } },
+      async evidence() { return undefined },
+    }
+    const f = fixture({ decisionPorts: ports }), target = { sessionId, scopeRevision: scope, factRevision: fact }
+    const listed = await f.post('session-decision', { action: 'list', epoch: f.epoch, target })
+    expect(listed.status).toBe(200)
+    expect(listed.data).toMatchObject({ canAnswer: true, approval: false, calls: [{ callId, state: 'continued', canAnswer: true }],
+      uncovered: [{ kind: 'legacy-blocking-question' }, { kind: 'dsh-generic-approval' }] })
+    expect(JSON.stringify(listed.data)).toContain('PRIVATE ORIGINAL QUESTION')
+    const input = { action: 'prepare', epoch: f.epoch, requestId: randomUUID(), actionId: randomUUID(), target, callId, snapshot: { asOfSeq: 7, revision }, answers }
+    const prepared = await f.post('session-decision', input)
+    expect(prepared.status).toBe(200)
+    expect(prepared.data).toMatchObject({ state: 'accepted', accepted: true, acceptedBy: 'host-answer', disposition: 'host-queue-accepted', approval: false, executed: null, completed: null })
+    expect(sent).toEqual([{ answers }])
+    const body = JSON.stringify(prepared.data)
+    for (const marker of ['PRIVATE ORIGINAL QUESTION', 'PRIVATE HTTP ANSWER', '原文', 'Keep compatibility']) expect(body).not.toContain(marker)
+    // Same request/action stays idempotent across HTTP and never dispatches twice.
+    expect((await f.post('session-decision', input)).data).toEqual(prepared.data); expect(sent).toHaveLength(1)
+    // Caller authority fields are rejected before the service runs.
+    expect((await f.post('session-decision', { ...input, requestId: randomUUID(), actionId: randomUUID(), actor: 'owner' })).status).toBe(400)
+    expect((await f.post('session-decision', { action: 'status', epoch: f.epoch, actionId: input.actionId, approved: true })).status).toBe(400)
+    expect(sent).toHaveLength(1)
   })
 })

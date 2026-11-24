@@ -20,13 +20,13 @@ import { createWatchdog, type WatchdogAssignment } from './engine/watchdog.js'
 import { sampleDeviation } from './sessions/watchdog.js'
 import { createWorkspaceRuntime } from './workspace/runtime.js'
 import { createScopePreferences } from './workspace/scope-preferences.js'
-import { createSessionActions, type SessionActionInput } from './workspace/session-actions.js'
+import { createSessionActions, type SessionActionInput, type SessionTargetBinding } from './workspace/session-actions.js'
 import { createWorkspaceImages } from './workspace/images.js'
 import { createDeliveries, type DeliveryDispatchRecord, type DeliveryImageCapability, type DeliveryImageReference, type DeliveryModelSelection, type DeliveryTargetState, type DeliveryWakeDecision } from './workspace/deliveries.js'
 import { createStageModels, type StageCallConfig, type StageCatalogPort, type StageModelInfo } from './workspace/stage-models.js'
 import { createStageCallHost, createStageLocateService, type StageCallHost, type StageLlmHost, type StageLocateService } from './workspace/stage-call.js'
 import { WorkspaceError } from './workspace/commands.js'
-import { createSessionDecisions, sessionDecisionSnapshotDigest, type SessionDecisionProjection } from './workspace/session-decisions.js'
+import { createSessionDecisions, sessionDecisionDigest, sessionDecisionSnapshotDigest, type SessionDecisionProjection, type SessionDecisionDispatchDecision, type SessionDecisionRecord } from './workspace/session-decisions.js'
 import { createConfigMutations, type ConfigMutationJSON, type ConfigMutationKind } from './workspace/config-mutations.js'
 import type { Spawner } from './sessions/worker.js'
 import { approvalImpact } from './engine/approval-impact.js'
@@ -44,6 +44,12 @@ export interface RuntimeContext {
   readonly sessions?: { flush(session: any): Promise<boolean> }
   /** Durable Host attachment store; `saveImage` validates and commits immutable image bytes. */
   readonly attachments?: { saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<any> }
+  /**
+   * Installed rc.5 exact continued-question answer service. `answer` only accepts the exact live
+   * ordinary root Agent and a `continued` call, throws a coded error for a contract refusal and
+   * returns true when the reply was admitted into that Agent's inbox (never completion/approval).
+   */
+  readonly userQuestions?: { answer(agent: any, callId: string, answer: { answers: readonly { id: string; selected: readonly string[]; custom?: string }[] }): boolean }
   readonly agentDefaultModel?: { currentSelection(): any }
   readonly llm?: { resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<any>; listProviders?(): readonly { id: string; name: string }[]; listModels?(provider: string): Promise<readonly { provider: string; id: string; name: string }[]>; prepareCall?(config: StageCallConfig, signal: AbortSignal | undefined, configure: (controls: Omit<StageCallConfig, 'provider' | 'model'>, info: StageModelInfo) => Omit<StageCallConfig, 'provider' | 'model'>): Promise<{ readonly config: StageCallConfig; stream(options: Readonly<Record<string, unknown>>): AsyncIterable<unknown> }>; stream?(options: Readonly<Record<string, unknown>>): AsyncIterable<unknown> }
   readonly effect: (factory: () => (() => void | Promise<void>)) => unknown
@@ -728,29 +734,117 @@ export function createRuntime(ctx: RuntimeContext, store: Store, config: Config,
         } catch { return undefined }
       },
     })
+    // Exact business answers to the installed rc.5 continued-question surface: one fenced Host
+    // `userQuestions.answer` call for an exact live ordinary root, reconciled only against the exact
+    // settled projection. Cold targets are never woken, open calls stay in the original waterfall, and
+    // the Host boolean means admission of the reply — never completion, approval or durable settlement.
+    /** Installed Host answer service, read lazily so an older installation degrades to explicit block. */
+    const hostUserQuestions = (): RuntimeContext['userQuestions'] => ctx.userQuestions ?? (ctx.get ? ctx.get('userQuestions') : undefined)
+    /** Read the bounded timed-question projection; only `active` leaves this callback. */
+    const questionSnapshot = (sessionId: string, binding: Readonly<SessionTargetBinding>, signal?: AbortSignal) => {
+      if (!ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess?.allows({ kind: 'session', id: sessionId })) throw new WorkspaceError('session_decision_projection_unavailable', 503)
+      return ctx.sessionQuery.inspectSession(sessionId, session => {
+        const project = () => {
+          const cut = ctx.sessionProjections!.snapshot(session, ['userQuestions'])
+          const value = cut.values.userQuestions as any, active = value?.active
+          // Permission and plan-review intents must remain in their original Host approval surface.
+          const complete = Number.isSafeInteger(cut.asOfSeq) && cut.asOfSeq >= -1 && value && Array.isArray(active) && active.length <= 64 && active.every((call: any) => Array.isArray(call?.questions) && call.questions.length > 0 && call.questions.every((question: any) => question && typeof question === 'object' && question.intent === undefined))
+          const projection: SessionDecisionProjection = { availability: ctx.agents.get(sessionId) ? 'live' : 'cold', complete: Boolean(complete), asOfSeq: cut.asOfSeq,
+            active: complete ? structuredClone(active) : [] }
+          return { ...projection, snapshotRevision: sessionDecisionSnapshotDigest(binding as SessionTargetBinding, projection) }
+        }
+        const cut = project()
+        return { ...cut, fence() {
+          if (disposed || controller.signal.aborted || !ctx.remoteAccess?.allows({ kind: 'session', id: sessionId }) || project().snapshotRevision !== cut.snapshotRevision) throw new WorkspaceError('session_decision_question_changed', 409)
+        } }
+      }, signal ?? controller.signal)
+    }
+    /** Fixed, non-echoing reason for one Host answer-contract refusal. */
+    const answerRefusal = (error: unknown): SessionDecisionDispatchDecision => {
+      const code = String((error as { code?: unknown } | undefined)?.code ?? '')
+      if (code === 'BAD_ANSWER') return { state: 'blocked', code: 'session_decision_answer_mismatch' }
+      if (code === 'REPLY_QUEUED') return { state: 'blocked', code: 'session_decision_answer_already_queued' }
+      if (code === 'CALLER_NOT_LIVE') return { state: 'blocked', code: 'session_decision_target_not_live' }
+      if (code === 'DELEGATED_CALLER') return { state: 'blocked', code: 'session_decision_delegated_caller' }
+      if (code === 'ASK_ABORTED' || code === 'ASK_TIMED_OUT') return { state: 'blocked', code: 'session_decision_not_continued' }
+      return { state: 'dispatch_unknown', code: 'session_decision_answer_unknown' }
+    }
     sessionDecisions = createSessionDecisions(store, {
       requireEpoch(epoch) { if (disposed || !workspace) throw new WorkspaceError('session_decision_unavailable', 503); workspace.requireEpoch(epoch) },
       target: input => sessionWork!.actionTarget(input),
-      async questions(binding) {
-        if (!ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess?.allows({ kind: 'session', id: binding.sessionId })) throw new WorkspaceError('session_decision_projection_unavailable', 503)
-        return ctx.sessionQuery.inspectSession(binding.sessionId, session => {
-          const project = () => {
-            const cut = ctx.sessionProjections!.snapshot(session, ['userQuestions'])
-            const value = cut.values.userQuestions as any, active = value?.active
-            // Permission and plan-review intents must remain in their original Host approval surface.
-            const complete = Number.isSafeInteger(cut.asOfSeq) && cut.asOfSeq >= -1 && value && Array.isArray(active) && active.length <= 64 && active.every((call: any) => Array.isArray(call?.questions) && call.questions.length > 0 && call.questions.every((question: any) => question && typeof question === 'object' && question.intent === undefined))
-            const projection: SessionDecisionProjection = { availability: ctx.agents.get(binding.sessionId) ? 'live' : 'cold', complete: Boolean(complete), asOfSeq: cut.asOfSeq,
-              active: complete ? structuredClone(active) : [] }
-            return { ...projection, snapshotRevision: sessionDecisionSnapshotDigest(binding, projection) }
-          }
-          const cut = project()
-          return { ...cut, fence() {
-            if (disposed || controller.signal.aborted || !ctx.remoteAccess?.allows({ kind: 'session', id: binding.sessionId }) || project().snapshotRevision !== cut.snapshotRevision) throw new WorkspaceError('session_decision_question_changed', 409)
-          } }
-        }, controller.signal)
+      questions: binding => questionSnapshot(binding.sessionId, binding),
+      /**
+       * Answer authority: exact live ordinary root, exact current bounded projection equal to the
+       * requested snapshot, continued call, and the exact original question set. The two revisions are
+       * derived control/answer binding digests, not Host-issued permission revisions.
+       */
+      async gate(input, binding) {
+        if (disposed || controller.signal.aborted) return { allowed: false, code: 'session_decision_unavailable' }
+        const userQuestions = hostUserQuestions()
+        if (!userQuestions || typeof userQuestions.answer !== 'function') return { allowed: false, code: 'session_decision_adapter_unavailable' }
+        const agent = ctx.agents.get(binding.sessionId)
+        if (!agent || agent.id !== binding.sessionId) return { allowed: false, code: 'session_decision_target_not_live' }
+        if (agent.session?.header?.origin === 'subagent') return { allowed: false, code: 'session_decision_delegated_caller' }
+        const cut = await questionSnapshot(binding.sessionId, binding)
+        cut.fence()
+        if (cut.snapshotRevision !== input.snapshot.revision || cut.asOfSeq !== input.snapshot.asOfSeq) return { allowed: false, code: 'session_decision_question_changed' }
+        if (!cut.complete) return { allowed: false, code: 'session_decision_projection_incomplete' }
+        if (cut.availability !== 'live') return { allowed: false, code: 'session_decision_target_not_live' }
+        const call = cut.active.find(item => item.callId === input.callId)
+        if (!call || call.state !== 'continued') return { allowed: false, code: 'session_decision_not_continued' }
+        if (call.questions.length !== input.answers.length || !call.questions.every(question => input.answers.some(answer => answer.id === question.id))) return { allowed: false, code: 'session_decision_answer_mismatch' }
+        for (const question of call.questions) {
+          const answer = input.answers.find(item => item.id === question.id)!
+          if (question.multiSelect !== true && answer.selected.length > 1 || !answer.selected.every(label => question.options?.some(option => option.label === label))) return { allowed: false, code: 'session_decision_answer_mismatch' }
+        }
+        // The exact answer batch and the exact verified control facts, not a Host approval.
+        const grantRevision = sessionDecisionDigest(input)
+        const controlRevision = createHash('sha256').update(JSON.stringify(['session-decision-control-v1', binding.sessionId, binding.project.kind, binding.project.key,
+          binding.scopeRevision, binding.factRevision, input.callId, input.snapshot.revision])).digest('hex')
+        const exactAgent = agent
+        return { allowed: true, controlRevision, grantRevision, fence() {
+          if (disposed || controller.signal.aborted || ctx.agents.get(binding.sessionId) !== exactAgent) throw new WorkspaceError('session_decision_target_changed', 409)
+          if (!workspace) throw new WorkspaceError('session_decision_unavailable', 503)
+          workspace.requireEpoch(input.epoch)
+        } }
       },
-      gate: async () => ({ allowed: false, code: 'SA_EXECUTION_BOUNDARY_UNVERIFIED' }),
-      // No live answer/steer or receipt adapter until isolation and durable exact-question authority is proved.
+      async authorized(record) {
+        if (disposed || controller.signal.aborted || !workspace || !sessionWork) return false
+        workspace.requireEpoch(record.epoch)
+        if (!ctx.remoteAccess?.allows({ kind: 'session', id: record.target.sessionId })) return false
+        return (await sessionWork.authorize(record.target.sessionId)) === true
+      },
+      /** Exactly one Host answer call for a fenced action; no retry, wake or alternate identity. */
+      ...(hostUserQuestions()?.answer ? { async dispatch(record: Readonly<SessionDecisionRecord>, answer: Readonly<{ answers: readonly { id: string; selected: readonly string[]; custom?: string }[] }>): Promise<SessionDecisionDispatchDecision> {
+        if (disposed || controller.signal.aborted) return { state: 'blocked', code: 'session_decision_unavailable' }
+        const userQuestions = hostUserQuestions()
+        if (!userQuestions || typeof userQuestions.answer !== 'function') return { state: 'blocked', code: 'session_decision_adapter_unavailable' }
+        const agent = ctx.agents.get(record.target.sessionId)
+        if (!agent || agent.id !== record.target.sessionId) return { state: 'blocked', code: 'session_decision_target_not_live' }
+        // Only the protocol batch reaches the Host: `skip` was already stripped by the service.
+        const batch = { answers: answer.answers.map(item => ({ id: item.id, selected: [...item.selected], ...(item.custom === undefined ? {} : { custom: item.custom }) })) }
+        let accepted: unknown
+        try { accepted = userQuestions.answer(agent, record.callId, batch) } catch (error) { return answerRefusal(error) }
+        return accepted === true ? { state: 'accepted' } : { state: 'blocked', code: 'session_decision_not_continued' }
+      } } : {}),
+      /**
+       * Durable settlement evidence only: the exact call left `active` and entered `settled` for this
+       * Session. The settled answer body never leaves the projection callback and is never persisted.
+       * It cannot distinguish another authorized answer for the same call; the Host allows one reply.
+       */
+      async evidence(record: SessionDecisionRecord) {
+        if (!ctx.sessionQuery.inspectSession || !ctx.sessionProjections || !ctx.remoteAccess?.allows({ kind: 'session', id: record.target.sessionId })) return undefined
+        try {
+          const cut = await ctx.sessionQuery.inspectSession(record.target.sessionId, session => {
+            const projected = ctx.sessionProjections!.snapshot(session, ['userQuestions'])
+            const value = projected.values.userQuestions as { active?: unknown; settled?: unknown } | undefined
+            const active = Array.isArray(value?.active) ? value.active : [], settled = Array.isArray(value?.settled) ? value.settled : []
+            return { active: active.some((call: any) => call?.callId === record.callId), settled: settled.some((call: any) => call?.callId === record.callId) }
+          }, controller.signal)
+          if (!cut || cut.active !== false || cut.settled !== true) return undefined
+          return { actionId: record.actionId, sessionId: record.target.sessionId, callId: record.callId, snapshotRevision: record.snapshot.revision, digest: record.digest, durable: true as const, accepted: true as const }
+        } catch { return undefined }
+      },
     })
     const requireGoEpoch = (epoch: string) => {
       if (disposed || !workspace) throw new WorkspaceError('workspace_unavailable', 503)
