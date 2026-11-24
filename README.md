@@ -1,5 +1,7 @@
 # Go
 
+> **v1 边界已冻结（2026-11-24）：[SCOPE-V1](docs/SCOPE-V1.md)。** 本 README 中企微/本地/腾讯来源及 v2 五条基线的旧描述，与 SCOPE-V1 冲突时一律以 SCOPE-V1 为准；外部来源实现将从 v1 移除、下一版重新接入。
+
 Go 是跑在 DeepSeek Harness 上的任务编排 bundle：一个常驻调度会话（Router）+ 每个任务一个独立执行会话（Worker）+ 独立巡检会话（Watchdog）+ Web 面板。
 
 **当前状态：看板工作区开发中，部分完成／不可交付，非生产就绪。** 本轮真实安装版探针证明 L1 spawn 继承父根、L2 同票未授权/deny 路径仍可被 native/shell 写入；生产 Worker 启动与恢复执行现已 fail-closed。历史 A/B/C 证据保留，不代表当前安全门禁已通过。

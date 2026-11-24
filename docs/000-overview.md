@@ -1,5 +1,7 @@
 # 000 · 总览
 
+> **2026-11-24：v1 边界已重新冻结，见 [SCOPE-V1](SCOPE-V1.md)。** 本文的目标/边界（七页只读面板、GitHub 接口位、被动入站范围、A3 三事件两票两 Worker）保留为历史设计记录；与 SCOPE-V1 冲突处一律以 SCOPE-V1 为准。
+
 ## 1. 这份文档集是什么
 
 **Go**：一个跑在 DeepSeek Harness（DSH）上的 **Super-agent bundle** 的完整设计与开发计划。
